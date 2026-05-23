@@ -1,0 +1,390 @@
+<!DOCTYPE html><html class="light" lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Chi tiết Dự án Chăn nuôi | VET-CRM Sanh Long Vetco</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "error-container": "#ffdad6",
+                    "secondary-fixed-dim": "#bbc8d7",
+                    "surface-tint": "#265fa2",
+                    "on-secondary": "#ffffff",
+                    "secondary": "#54606d",
+                    "outline-variant": "#c2c6d2",
+                    "on-tertiary": "#ffffff",
+                    "on-primary-fixed": "#001c3a",
+                    "tertiary-fixed-dim": "#88d6af",
+                    "surface-container-highest": "#d9e3f5",
+                    "primary": "#00427d",
+                    "on-surface": "#121c29",
+                    "secondary-fixed": "#d7e4f4",
+                    "primary-fixed-dim": "#a5c8ff",
+                    "surface-bright": "#f8f9ff",
+                    "on-secondary-fixed-variant": "#3c4855",
+                    "tertiary-container": "#0e6646",
+                    "surface-variant": "#d9e3f5",
+                    "surface-container": "#e5eeff",
+                    "on-secondary-container": "#596673",
+                    "inverse-primary": "#a5c8ff",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-container": "#92e1b8",
+                    "tertiary-fixed": "#a4f3ca",
+                    "on-primary-fixed-variant": "#004785",
+                    "error": "#ba1a1a",
+                    "background": "#f8f9ff",
+                    "on-surface-variant": "#424750",
+                    "on-error-container": "#93000a",
+                    "on-tertiary-fixed": "#002113",
+                    "on-tertiary-fixed-variant": "#005236",
+                    "inverse-on-surface": "#eaf1ff",
+                    "outline": "#727781",
+                    "primary-fixed": "#d4e3ff",
+                    "on-primary": "#ffffff",
+                    "surface-dim": "#d0dbed",
+                    "surface": "#f8f9ff",
+                    "on-background": "#121c29",
+                    "surface-container-low": "#eff4ff",
+                    "on-secondary-fixed": "#111d28",
+                    "on-primary-container": "#b6d2ff",
+                    "primary-container": "#1e5a9c",
+                    "surface-container-high": "#dfe9fb",
+                    "inverse-surface": "#27313f",
+                    "tertiary": "#004c32",
+                    "secondary-container": "#d7e4f4",
+                    "on-error": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "input-height": "40px",
+                    "header-height": "64px",
+                    "mobile-margin": "16px",
+                    "desktop-margin": "40px",
+                    "sidebar-width": "240px",
+                    "card-padding": "24px",
+                    "card-padding-mobile": "16px",
+                    "unit": "4"
+            },
+            "fontFamily": {
+                    "headline-lg": ["Be Vietnam Pro"],
+                    "display-lg": ["Be Vietnam Pro"],
+                    "label-lg": ["Be Vietnam Pro"],
+                    "body-lg": ["Be Vietnam Pro"],
+                    "title-lg": ["Be Vietnam Pro"],
+                    "body-md": ["Be Vietnam Pro"],
+                    "label-md": ["Be Vietnam Pro"],
+                    "headline-md": ["Be Vietnam Pro"]
+            },
+            "fontSize": {
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAFBFC;
+            color: #121C29;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .active-tab-indicator {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: #00427D;
+        }
+    </style>
+</head>
+<body class="flex min-h-screen">
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full w-[240px] bg-white border-r border-[#E5E9EE] flex flex-col z-50 font-['Be_Vietnam_Pro']">
+<div class="p-6">
+<div class="text-headline-md font-semibold text-primary mb-1">Quản lý Thú y</div>
+<div class="text-label-md font-label-md text-secondary uppercase tracking-wider">Hệ thống Vận hành</div>
+</div>
+<nav class="flex-1 px-0 mt-4 overflow-y-auto">
+<a class="flex items-center text-[#4A5663] hover:bg-[#F4F6F8] px-4 py-3 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="dashboard">dashboard</span>
+<span class="text-body-md font-normal">Bảng điều khiển</span>
+</a>
+<a class="flex items-center bg-[#EEF4FB] text-[#143C69] font-semibold border-l-[3px] border-[#1E5A9C] px-4 py-3" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="pets" style="font-variation-settings: 'FILL' 1;">pets</span>
+<span class="text-body-md">Chăn nuôi</span>
+</a>
+<a class="flex items-center text-[#4A5663] hover:bg-[#F4F6F8] px-4 py-3 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="payments">payments</span>
+<span class="text-body-md font-normal">Bán hàng</span>
+</a>
+<a class="flex items-center text-[#4A5663] hover:bg-[#F4F6F8] px-4 py-3 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="event_note">event_note</span>
+<span class="text-body-md font-normal">Lịch trình</span>
+</a>
+<a class="flex items-center text-[#4A5663] hover:bg-[#F4F6F8] px-4 py-3 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="precision_manufacturing">precision_manufacturing</span>
+<span class="text-body-md font-normal">Kỹ thuật</span>
+</a>
+<a class="flex items-center text-[#4A5663] hover:bg-[#F4F6F8] px-4 py-3 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="analytics">analytics</span>
+<span class="text-body-md font-normal">Báo cáo</span>
+</a>
+</nav>
+<div class="mt-auto border-t border-[#E5E9EE] p-4 space-y-1">
+<a class="flex items-center text-[#4A5663] hover:bg-[#F4F6F8] px-4 py-2 rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="settings">settings</span>
+<span class="text-label-md font-normal">Cài đặt</span>
+</a>
+<a class="flex items-center text-error hover:bg-error-container/30 px-4 py-2 rounded-lg transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="logout">logout</span>
+<span class="text-label-md font-label-md">Đăng xuất</span>
+</a>
+</div>
+</aside>
+<main class="ml-[240px] flex-1 flex flex-col min-h-screen">
+<!-- TopAppBar Shell -->
+<header class="h-16 flex justify-between items-center px-10 bg-surface-container-lowest border-b border-outline-variant sticky top-0 z-40">
+<div class="flex items-center space-x-4 w-1/2">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline" data-icon="search">search</span>
+<input class="w-full h-10 pl-10 pr-4 bg-surface-container-low border border-outline-variant rounded-lg text-body-md focus:ring-4 focus:ring-primary-container focus:outline-none transition-all" placeholder="Tìm kiếm dự án, bác sĩ hoặc thuốc..." type="text">
+</div>
+</div>
+<div class="flex items-center space-x-6">
+<button class="relative p-2 text-secondary hover:bg-surface-container-high rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border border-surface-container-lowest"></span>
+</button>
+<button class="p-2 text-secondary hover:bg-surface-container-high rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+<div class="h-8 w-[1px] bg-outline-variant mx-2"></div>
+<div class="flex items-center space-x-3 cursor-pointer">
+<div class="text-right">
+<p class="text-label-md font-bold text-primary">Admin Quản lý</p>
+<p class="text-[10px] text-secondary">Sanh Long Vetco</p>
+</div>
+<img alt="Ảnh đại diện quản trị viên" class="w-10 h-10 rounded-full object-cover border border-outline-variant" data-alt="A professional headshot of a middle-aged Vietnamese veterinarian manager with a kind smile and spectacles. He is wearing a clean, crisp white lab coat over a professional blue dress shirt. The background is a brightly lit, sterile, and modern veterinary office with high-key lighting and a soft-focus clean medical aesthetic. The color palette is dominated by professional blues and clean whites." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2El0wmGM62eWZei99-3TK_SBq7voW8bFHFlY0n9aquBtTNXnzWC0rSbn5Pw40po2dE6Inh8bjHFcJJhw7sy6iJ8d7o_NF6iNnQH6He9Ye0DSYDz-8mM0TI5yWMBVcR-wslR6HLAL9H6Ia5AVIjh6hAuYyVB6yCTmOsU7FUpxrVlQw5FbBDpb5cGc_kQWKSufdrYDwDhNfMMaDWj6AeWj60e6CK7uBtbo7EzfMjmfZiN1IXTc9orXDUGauP2NZrWDiHv6u-cDnvzw">
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="p-10 max-w-7xl mx-auto w-full">
+<!-- Header Section -->
+<div class="mb-10 flex justify-between items-end">
+<div>
+<nav class="flex text-label-md text-secondary mb-2">
+<a class="hover:text-primary" href="#">Dự án chăn nuôi</a>
+<span class="mx-2">/</span>
+<span class="text-on-surface">Đàn CP-2023-X92</span>
+</nav>
+<h1 class="text-headline-lg font-headline-lg text-primary">Quản lý Dự án: Đàn CP-2023-X92</h1>
+<p class="text-body-md text-secondary mt-1">Trang trại: Hưng Yên | Số lượng: 5,000 con | Ngày bắt đầu: 01/10/2023</p>
+</div>
+<button class="bg-primary text-white h-10 px-6 rounded-lg font-label-md hover:bg-primary-container transition-all flex items-center">
+<span class="material-symbols-outlined mr-2 text-[20px]" data-icon="add">add</span>
+                    Cập nhật tiến độ
+                </button>
+</div>
+<div class="grid grid-cols-12 gap-8">
+<!-- Left Column: Checklist Vertical Stepper -->
+<div class="col-span-12 lg:col-span-5 space-y-6">
+<div class="bg-white border border-outline-variant rounded-xl p-6">
+<h2 class="text-title-lg font-title-lg text-primary mb-8 flex items-center">
+<span class="material-symbols-outlined mr-3 text-primary" data-icon="checklist">checklist</span>
+                            Lịch trình Thú y
+                        </h2>
+<!-- Stepper Container -->
+<div class="relative pl-4 space-y-12">
+<!-- Stepper Line -->
+<div class="absolute left-7 top-2 bottom-2 w-[2px] bg-outline-variant"></div>
+<!-- Step 1: Done -->
+<div class="relative flex items-start group">
+<div class="absolute left-0 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-tertiary text-white mt-1 translate-x-1.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="check" data-weight="fill">check</span>
+</div>
+<div class="ml-12 w-full">
+<div class="flex items-center justify-between">
+<h3 class="text-body-lg font-bold text-primary">Tiêm vaccine Newcastle</h3>
+<span class="text-label-md px-2 py-1 bg-tertiary-fixed text-on-tertiary-fixed rounded">Hoàn thành</span>
+</div>
+<div class="mt-2 text-body-md text-secondary">
+<p class="">Thực hiện bởi: <span class="font-medium text-on-surface">Bs Hùng</span></p>
+<p class="">Ngày: <span class="font-medium text-on-surface">20/10/2023</span></p>
+</div>
+<div class="mt-4 flex gap-3">
+<div class="w-24 h-24 rounded-lg border border-outline-variant overflow-hidden group/img relative cursor-zoom-in">
+<img alt="Vaccine bottle evidence" class="w-full h-full object-cover" data-alt="A macro photograph of a medical vaccine glass vial for livestock, labeled Newcastle Vaccine, sitting on a clean stainless steel tray in a bright veterinary clinic. The lighting is crisp and cold, emphasizing the professional medical setting. The background shows soft blue and white tones of a modern laboratory. Professional high-detail product photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA35rc5iiX12arc_oYTRiQ0cHcfkkEieZC92qmkb_NasktFmnAV7iy8pc-IY4Dp8FnK_jelhhNkylqPV0xg2vNVbId4FR6wwP_Ty5Q0ehAr8DJiVGXLEnGCgZ2hoNMmLF5PSE612sLwf592R7J4TE7aq5UyAhdJ0C2O0RtP6fgUYCXlNjPscRHhginxX_scPylyNJ3edoe5VFRm2aTzRURBoxt9pKrmb1zyT8dSIbS969hwHFRaNh0TDWw6DOokYc1FHX8RsAYbNx0">
+<div class="absolute inset-0 bg-black/10 group-hover/img:bg-transparent transition-colors"></div>
+</div>
+<div class="w-24 h-24 rounded-lg border border-outline-variant overflow-hidden group/img relative cursor-zoom-in">
+<img alt="Injection site evidence" class="w-full h-full object-cover" data-alt="Close-up detail of a professional veterinarian's hands wearing blue nitrile gloves, preparing a sterile injection for poultry. The scene is illuminated by bright, clinical LED lights within a modern farm facility. The focus is sharp on the medical equipment and gloves, conveying safety and precision in livestock healthcare. The style is clean, documentary-like, and highly professional." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCdBhCCS1y7X2yXLW2oT-em8q48zXSi3ZyCH_hyW91iUJOkDR8Vly7UU97n9KWYiN8ZT8eb8OmrWLzfBTfI48D07BFUkno7SOo0rLiQAyRo3HfIWr84lQMsKnixpvfvFYPHJUiywZNDP6kCONaaqvlBG_2VRCrS66BtMUB8DrB8hADeOsn6X1bo1BtQxgbIDgo3rRirIe3JscFAjkDl7Z54j3ERsBEGWf3AZt7gpk_ZA0YhPCwHeool8u3S2GGD24LCErwQAu89Ogs">
+<div class="absolute inset-0 bg-black/10 group-hover/img:bg-transparent transition-colors"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Step 2: Warning -->
+<div class="relative flex items-start">
+<div class="absolute left-0 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-error text-white mt-1 translate-x-1.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="priority_high" data-weight="fill">priority_high</span>
+</div>
+<div class="ml-12 w-full">
+<div class="flex items-center justify-between">
+<h3 class="text-body-lg font-bold text-error">Tiêm vaccine Gumboro</h3>
+<span class="text-label-md px-2 py-1 bg-error-container text-on-error-container rounded font-bold uppercase tracking-tighter">Khẩn cấp</span>
+</div>
+<div class="mt-2 bg-error-container/20 border border-error-container p-3 rounded-lg">
+<p class="text-body-md text-error font-medium">⚠️ Quá hạn 1 ngày</p>
+<p class="text-label-md text-secondary mt-1">Lịch dự kiến: 24/10/2023. Cần tiêm chủng ngay để đảm bảo miễn dịch cộng đồng.</p>
+<button class="mt-3 w-full bg-primary text-white h-10 px-4 rounded-lg font-label-md hover:brightness-110 active:ring-4 active:ring-primary-container transition-all">
+                                            Thực hiện ngay
+                                        </button>
+</div>
+</div>
+</div>
+<!-- Step 3: Locked -->
+<div class="relative flex items-start opacity-50">
+<div class="absolute left-0 z-10 flex items-center justify-center w-6 h-6 rounded-full bg-outline-variant text-white mt-1 translate-x-1.5">
+<span class="material-symbols-outlined text-[16px]" data-icon="lock" data-weight="fill">lock</span>
+</div>
+<div class="ml-12 w-full">
+<h3 class="text-body-lg font-bold text-secondary">Đánh giá hao hụt</h3>
+<p class="text-label-md text-secondary italic mt-1">Đang chờ hoàn thành bước tiêm chủng Gumboro</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Results Tab Section -->
+<div class="col-span-12 lg:col-span-7 space-y-6">
+<div class="bg-white border border-outline-variant rounded-xl overflow-hidden">
+<!-- Custom Tabs Header -->
+<div class="flex border-b border-outline-variant bg-surface-container-low px-6">
+<button class="relative px-6 py-4 text-primary font-bold text-body-md border-b-2 border-primary">
+                                Kết quả dự án
+                            </button>
+<button class="px-6 py-4 text-secondary font-medium text-body-md hover:bg-surface-container-high transition-colors">
+                                Chi phí &amp; Lợi nhuận
+                            </button>
+<button class="px-6 py-4 text-secondary font-medium text-body-md hover:bg-surface-container-high transition-colors">
+                                Nhật ký trang trại
+                            </button>
+</div>
+<div class="p-8 space-y-8">
+<!-- Top Metrics Grid -->
+<div class="grid grid-cols-2 gap-6">
+<!-- Customer Rating -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 flex flex-col items-center justify-center text-center">
+<p class="text-label-md text-secondary mb-3 uppercase font-bold">Đánh giá từ khách hàng</p>
+<div class="flex text-primary mb-2">
+<span class="material-symbols-outlined text-[32px]" data-icon="star" data-weight="fill" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[32px]" data-icon="star" data-weight="fill" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[32px]" data-icon="star" data-weight="fill" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[32px]" data-icon="star" data-weight="fill" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-[32px]" data-icon="star" data-weight="fill" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<p class="text-headline-md font-bold text-on-surface">5.0 <span class="text-label-md text-secondary font-normal">/ 5</span></p>
+<p class="text-label-md text-tertiary mt-1 font-medium italic">"Chất lượng thuốc và bác sĩ rất tốt!"</p>
+</div>
+<!-- Mortality Calculator -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6">
+<p class="text-label-md text-secondary mb-4 uppercase font-bold text-center">Tỷ lệ hao hụt (Mortality)</p>
+<div class="space-y-4">
+<div>
+<div class="flex justify-between text-label-md mb-1">
+<span class="text-secondary">Dự kiến</span>
+<span class="font-bold">2.5%</span>
+</div>
+<div class="w-full bg-outline-variant/30 h-2 rounded-full overflow-hidden">
+<div class="bg-secondary h-full" style="width: 25%"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between text-label-md mb-1">
+<span class="text-primary font-bold">Thực tế</span>
+<span class="text-primary font-bold">1.8%</span>
+</div>
+<div class="w-full bg-outline-variant/30 h-2 rounded-full overflow-hidden ring-1 ring-primary-container">
+<div class="bg-primary h-full" style="width: 18%"></div>
+</div>
+</div>
+<div class="text-center pt-1">
+<span class="text-label-md text-tertiary bg-tertiary-fixed px-2 py-0.5 rounded-full font-bold">-0.7% (Đạt mục tiêu)</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Vet Notes Block -->
+<div class="bg-surface-container-low border border-outline-variant rounded-xl p-6">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center">
+<span class="material-symbols-outlined mr-2 text-primary" data-icon="note_alt">note_alt</span>
+<h4 class="text-title-lg font-bold text-on-surface">Ghi chú từ Bác sĩ Thú y</h4>
+</div>
+<button class="text-primary text-label-md font-bold hover:underline flex items-center">
+                                        Chỉnh sửa
+                                        <span class="material-symbols-outlined ml-1 text-[16px]" data-icon="edit">edit</span>
+</button>
+</div>
+<div class="bg-white border border-outline-variant p-4 rounded-lg shadow-inner min-h-[120px]">
+<p class="text-body-md text-on-surface leading-relaxed">
+                                        Tình trạng sức khỏe đàn CP-2023-X92 hiện đang rất ổn định. Sau đợt tiêm Newcastle vừa qua, không ghi nhận phản ứng sốc thuốc hay bỏ ăn hàng loạt. Trọng lượng trung bình hiện tại đạt 2.1kg (vượt 5% so với biểu đồ chuẩn). <br><br>
+<strong>Lưu ý:</strong> Cần theo dõi sát đợt tiêm Gumboro sắp tới do thời tiết đang chuyển lạnh, độ ẩm chuồng nuôi cần duy trì ở mức 65-70%.
+                                    </p>
+</div>
+<div class="flex items-center mt-4">
+<img alt="Avatar bác sĩ" class="w-6 h-6 rounded-full mr-2" data-alt="A small circular avatar photo of a young professional Vietnamese doctor in a clean white medical uniform. He has a clean-cut appearance and is looking directly into the camera with a confident expression. The lighting is soft and professional, set against a neutral, bright medical background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXbScqP6uUsc8E4MStzluU1OpP6QTzuwhgGz0laze_V2lsW0VoR4le6Tk-bdC5necF2OITWhDZXlL9H937UbDu0QNzxSbpcFQJi05OLetkN0kMmUYWn137WZLVCON4aKiqi4a4yAsv4QVjVTUg-5cgRcDCbttU2WEQCaM3nfT2swfr4YbcWvsi6Ex0M0xHO7K58CAh03EBGZ40VAzf_wTsyPR07YGe3n3tLi-mWUBnGvmQJveQxowpuFLdS2AJtuEllsCZX5QKDqc">
+<p class="text-label-md text-secondary">Cập nhật bởi <span class="font-bold">Bs. Nguyễn Văn Hùng</span> • 2 giờ trước</p>
+</div>
+</div>
+<!-- Quick Stats Bento Mini -->
+<div class="grid grid-cols-3 gap-4">
+<div class="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest text-center">
+<p class="text-[10px] text-secondary font-bold uppercase tracking-tight">Thức ăn tiêu thụ</p>
+<p class="text-title-lg font-bold text-primary">12.5 Tấn</p>
+</div>
+<div class="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest text-center">
+<p class="text-[10px] text-secondary font-bold uppercase tracking-tight">Lượng nước/ngày</p>
+<p class="text-title-lg font-bold text-primary">450 Lít</p>
+</div>
+<div class="p-4 border border-outline-variant rounded-lg bg-surface-container-lowest text-center">
+<p class="text-[10px] text-secondary font-bold uppercase tracking-tight">Nhiệt độ TB</p>
+<p class="text-title-lg font-bold text-primary">27.5 °C</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating Action Button (FAB) Suppression check: Should show on main management screen -->
+<button class="fixed bottom-10 right-10 w-14 h-14 bg-primary text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50">
+<span class="material-symbols-outlined text-[28px]" data-icon="add_task">add_task</span>
+</button>
+
+
+</body></html>

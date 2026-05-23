@@ -1,0 +1,397 @@
+<!DOCTYPE html><html lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Chốt ca làm việc | Sanh Long Vetco CRM</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-container": "#92e1b8",
+                        "on-primary-fixed": "#001c3a",
+                        "on-surface-variant": "#424750",
+                        "surface": "#f8f9ff",
+                        "primary": "#00427d",
+                        "surface-bright": "#f8f9ff",
+                        "on-surface": "#121c29",
+                        "on-secondary-fixed-variant": "#3c4855",
+                        "on-primary-fixed-variant": "#004785",
+                        "tertiary": "#004c32",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "secondary-fixed-dim": "#bbc8d7",
+                        "tertiary-container": "#0e6646",
+                        "secondary": "#54606d",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-fixed": "#d7e4f4",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "inverse-surface": "#27313f",
+                        "outline": "#727781",
+                        "surface-tint": "#265fa2",
+                        "surface-container-low": "#eff4ff",
+                        "primary-fixed-dim": "#a5c8ff",
+                        "on-secondary-container": "#596673",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#d0dbed",
+                        "on-tertiary-fixed": "#002113",
+                        "inverse-on-surface": "#eaf1ff",
+                        "primary-container": "#1e5a9c",
+                        "tertiary-fixed": "#a4f3ca",
+                        "secondary-container": "#d7e4f4",
+                        "on-primary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "primary-fixed": "#d4e3ff",
+                        "on-primary-container": "#b6d2ff",
+                        "surface-container-highest": "#d9e3f5",
+                        "inverse-primary": "#a5c8ff",
+                        "surface-variant": "#d9e3f5",
+                        "outline-variant": "#c2c6d2",
+                        "on-secondary-fixed": "#111d28",
+                        "error-container": "#ffdad6",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#121c29",
+                        "surface-container-high": "#dfe9fb",
+                        "on-error-container": "#93000a",
+                        "background": "#f8f9ff",
+                        "tertiary-fixed-dim": "#88d6af"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "4",
+                        "card-padding": "24px",
+                        "sidebar-width": "240px",
+                        "mobile-margin": "16px",
+                        "desktop-margin": "40px",
+                        "card-padding-mobile": "16px",
+                        "header-height": "64px",
+                        "input-height": "40px"
+                    },
+                    "fontFamily": {
+                        "label-lg": ["Be Vietnam Pro"],
+                        "headline-lg": ["Be Vietnam Pro"],
+                        "body-lg": ["Be Vietnam Pro"],
+                        "title-lg": ["Be Vietnam Pro"],
+                        "label-md": ["Be Vietnam Pro"],
+                        "body-md": ["Be Vietnam Pro"],
+                        "headline-md": ["Be Vietnam Pro"],
+                        "display-lg": ["Be Vietnam Pro"]
+                    },
+                    "fontSize": {
+                        "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAFBFC;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px #D6E4F4;
+            border-color: #1E5A9C;
+        }
+        /* Custom number input hide arrows */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body class="text-on-surface">
+<!-- Sidebar Navigation -->
+<aside class="w-[240px] h-screen fixed left-0 top-0 bg-white border-r border-[#E5E9EE] flex flex-col h-full py-6 font-['Be Vietnam Pro']">
+<div class="px-6 mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Sanh Long Vetco</h1>
+<p class="font-label-md text-label-md text-[#4A5663]">Hệ thống CRM</p>
+</div>
+<nav class="flex-1">
+<ul class="space-y-1"><li class="px-3">
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 font-medium text-label-lg rounded" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="dashboard">dashboard</span>
+                        Tổng quan
+                    </a>
+</li>
+<li class="px-3">
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 font-medium text-label-lg rounded" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="group">group</span>
+                        Khách hàng
+                    </a>
+</li>
+<li class="px-3">
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 font-medium text-label-lg rounded" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="inventory_2">inventory_2</span>
+                        Sản phẩm
+                    </a>
+</li>
+<li class="px-3">
+<a class="flex items-center gap-3 px-3 py-2.5 bg-[#EEF4FB] text-[#143C69] font-semibold border-l-[3px] border-[#1E5A9C] font-label-lg text-label-lg" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="payments">payments</span>
+                        Công nợ
+                    </a>
+</li>
+<li class="px-3">
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 font-medium text-label-lg rounded" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="bar_chart">bar_chart</span>
+                        Báo cáo
+                    </a>
+</li></ul>
+</nav>
+</aside>
+<!-- Main Content Wrapper -->
+<main class="ml-[240px] min-h-screen">
+<!-- Top App Bar -->
+<header class="h-16 fixed top-0 right-0 left-[240px] z-10 bg-surface-container-lowest border-b border-outline-variant flex items-center justify-between px-10">
+<div class="flex items-center gap-4">
+<span class="font-title-lg text-title-lg font-bold text-primary">Sanh Long Vetco CRM</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:bg-surface-container-high rounded-full p-2 transition-all">notifications</span>
+<span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full border-2 border-white"></span>
+</div>
+<div class="flex items-center gap-3 cursor-pointer hover:bg-surface-container-low p-1 pr-3 rounded-full transition-all">
+<img alt="Người dùng hệ thống" class="w-8 h-8 rounded-full object-cover" data-alt="A professional headshot of a smiling veterinarian wearing a clean white clinical coat in a brightly lit modern office setting. The background is softly blurred showing medical certificates and medical equipment. The lighting is natural and high-key, emphasizing a friendly and trustworthy professional presence for a financial CRM profile." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCnisUTfSGPn_kA_zmY-k6odA5dWgN7VcumNCKT0q7Zn30Oqx8YxHaiti4aCmQRer_eoGamfYdWuaSMtzlaNUukMZkTud3ExpitVTwrJL3EfPv38W3tvRTRcXty7eeah1fI7XMFRwIcn3eOtUf3MFpfVaElRnvy5eaSEmzuZmi4whSxnc-re5K4v5wc416kS-irw0Xar8nCJYrIfefJpAgLH-CQjzXMJ_8hAWZZ7yEi2y9rWM8xBz3rv1xZh9XKlh8KXKN52W8ISCc">
+<span class="font-label-lg text-label-lg text-on-surface">Admin</span>
+</div>
+</div>
+</header>
+<!-- Page Canvas -->
+<div class="pt-24 pb-12 px-10 max-w-5xl mx-auto">
+<!-- Breadcrumb & Title -->
+<div class="mb-8">
+<div class="flex items-center gap-2 text-on-surface-variant font-label-md text-label-md mb-2">
+<a class="hover:text-primary transition-colors" href="#">Sổ quỹ</a>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="">Chốt ca làm việc</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface">Chốt ca làm việc</h2>
+</div>
+<!-- Header Meta Info Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<div class="bg-white p-6 rounded-lg border border-outline-variant">
+<p class="font-label-md text-label-md text-on-surface-variant mb-1">Mã phiên</p>
+<p class="font-title-lg text-title-lg text-primary font-bold">CA-20231027-01</p>
+</div>
+<div class="bg-white p-6 rounded-lg border border-outline-variant">
+<p class="font-label-md text-label-md text-on-surface-variant mb-1">Thời gian mở</p>
+<p class="font-title-lg text-title-lg text-on-surface font-semibold">08:00 - 27/10/2023</p>
+</div>
+<div class="bg-white p-6 rounded-lg border border-outline-variant">
+<p class="font-label-md text-label-md text-on-surface-variant mb-1">Số dư đầu ca</p>
+<p class="font-title-lg text-title-lg text-on-surface font-semibold">2.000.000 ₫</p>
+</div>
+</div>
+<!-- Form Section -->
+<div class="bg-white rounded-lg border border-outline-variant overflow-hidden">
+<div class="p-8 border-b border-outline-variant bg-surface-container-lowest">
+<h3 class="font-title-lg text-title-lg text-on-surface mb-6">Đối soát tiền mặt</h3>
+<div class="space-y-8">
+<!-- System Balance Readout -->
+<div class="flex justify-between items-center py-4 px-6 bg-surface-container-low rounded-lg border border-outline-variant">
+<div>
+<span class="font-label-lg text-label-lg text-on-surface-variant">Số dư hệ thống</span>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Tổng cộng tiền mặt dự kiến có trong két</p>
+</div>
+<span class="font-headline-md text-headline-md text-on-surface font-bold" id="system-balance">15.450.000 ₫</span>
+</div>
+<!-- Actual Count Input -->
+<div>
+<label class="block font-label-lg text-label-lg text-on-surface font-bold mb-3 uppercase tracking-wider" for="actual-count">Đếm thực tế (₫)</label>
+<div class="relative">
+<input class="w-full h-20 text-center font-display-lg text-display-lg text-primary bg-white border-2 border-outline-variant rounded-xl px-4 focus:border-primary transition-all placeholder:text-surface-dim" id="actual-count" oninput="calculateDelta()" placeholder="0" type="number">
+<div class="absolute inset-y-0 right-6 flex items-center pointer-events-none">
+<span class="font-title-lg text-title-lg text-outline-variant">₫</span>
+</div>
+</div>
+</div>
+<!-- Delta Result -->
+<div class="hidden animate-in fade-in duration-300" id="delta-container">
+<div class="flex justify-between items-center py-4 px-6 rounded-lg border" id="delta-box">
+<span class="font-label-lg text-label-lg" id="delta-label">Chênh lệch</span>
+<span class="font-title-lg text-title-lg font-bold" id="delta-value">0 ₫</span>
+</div>
+<!-- Warning Box -->
+<div class="mt-4 p-4 bg-error-container text-on-error-container rounded-lg border border-error/20 flex items-start gap-3 hidden" id="warning-box">
+<span class="material-symbols-outlined text-error">warning</span>
+<div>
+<p class="font-label-lg text-label-lg font-bold">Cảnh báo chênh lệch tiền mặt</p>
+<p class="font-body-md text-body-md">Số tiền đếm thực tế không khớp với hệ thống. Vui lòng kiểm tra lại hoặc nhập lý do chênh lệch bắt buộc bên dưới.</p>
+</div>
+</div>
+</div>
+<!-- Discrepancy Textarea -->
+<div class="hidden" id="reason-section">
+<label class="block font-label-lg text-label-lg text-on-surface mb-2" for="reason">
+                                Lý do chênh lệch <span class="text-error font-bold">*</span>
+</label>
+<textarea class="w-full p-4 border border-outline-variant rounded-lg font-body-md text-body-md resize-none" id="reason" placeholder="Ví dụ: Khách chưa trả tiền thừa lẻ, chi trả hóa đơn ngoài chưa nhập hệ thống..." rows="3"></textarea>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="p-8 flex items-center justify-between bg-surface-container-lowest">
+<button class="px-6 h-10 font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors" type="button">
+                        Hủy bỏ
+                    </button>
+<button class="px-10 h-10 font-label-lg text-label-lg text-white bg-primary hover:bg-primary-container rounded-lg transition-all shadow-sm active:scale-95" id="submit-btn" type="button">
+                        Hoàn tất Chốt ca
+                    </button>
+</div>
+</div>
+<!-- Summary Table (Optional high-end addition for context) -->
+<div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="bg-white p-6 rounded-lg border border-outline-variant">
+<h4 class="font-label-lg text-label-lg font-bold mb-4 uppercase text-on-surface-variant">Chi tiết doanh thu ca</h4>
+<div class="space-y-3">
+<div class="flex justify-between font-body-md text-body-md">
+<span class="text-on-surface-variant">Doanh thu bán hàng</span>
+<span class="font-semibold">12.800.000 ₫</span>
+</div>
+<div class="flex justify-between font-body-md text-body-md">
+<span class="text-on-surface-variant">Thu nợ khách hàng</span>
+<span class="font-semibold">650.000 ₫</span>
+</div>
+<div class="flex justify-between font-body-md text-body-md">
+<span class="text-on-surface-variant">Tổng chi trong ca</span>
+<span class="font-semibold text-error">-(0 ₫)</span>
+</div>
+<div class="pt-3 border-t border-dashed border-outline-variant flex justify-between font-label-lg text-label-lg font-bold">
+<span class="">Phát sinh trong ca</span>
+<span class="text-primary">+13.450.000 ₫</span>
+</div>
+</div>
+</div>
+<div class="bg-white p-6 rounded-lg border border-outline-variant">
+<h4 class="font-label-lg text-label-lg font-bold mb-4 uppercase text-on-surface-variant">Hình thức thanh toán</h4>
+<div class="space-y-4">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded bg-surface-container-low flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">payments</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between mb-1">
+<span class="font-body-md text-body-md">Tiền mặt</span>
+<span class="font-semibold">15.450.000 ₫</span>
+</div>
+<div class="w-full bg-surface-container-low h-1.5 rounded-full">
+<div class="bg-primary h-1.5 rounded-full" style="width: 85%"></div>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded bg-surface-container-low flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">qr_code_2</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between mb-1">
+<span class="font-body-md text-body-md">Chuyển khoản / QR</span>
+<span class="font-semibold">2.300.000 ₫</span>
+</div>
+<div class="w-full bg-surface-container-low h-1.5 rounded-full">
+<div class="bg-secondary h-1.5 rounded-full" style="width: 15%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<script>
+        const systemBalanceValue = 15450000;
+        
+        function formatCurrency(number) {
+            return new Intl.NumberFormat('vi-VN').format(number) + ' ₫';
+        }
+
+        function calculateDelta() {
+            const actualInput = document.getElementById('actual-count');
+            const deltaContainer = document.getElementById('delta-container');
+            const deltaBox = document.getElementById('delta-box');
+            const deltaValue = document.getElementById('delta-value');
+            const deltaLabel = document.getElementById('delta-label');
+            const warningBox = document.getElementById('warning-box');
+            const reasonSection = document.getElementById('reason-section');
+            const submitBtn = document.getElementById('submit-btn');
+
+            const actualValue = parseInt(actualInput.value) || 0;
+            const delta = actualValue - systemBalanceValue;
+
+            if (actualInput.value !== "") {
+                deltaContainer.classList.remove('hidden');
+                deltaValue.innerText = formatCurrency(Math.abs(delta));
+
+                if (delta === 0) {
+                    deltaBox.className = 'flex justify-between items-center py-4 px-6 rounded-lg border border-tertiary-container bg-tertiary-fixed text-tertiary';
+                    deltaLabel.innerText = "Khớp số dư";
+                    warningBox.classList.add('hidden');
+                    reasonSection.classList.add('hidden');
+                    submitBtn.classList.remove('bg-error');
+                    submitBtn.classList.add('bg-primary');
+                } else {
+                    deltaBox.className = 'flex justify-between items-center py-4 px-6 rounded-lg border border-error-container bg-error-container text-on-error-container';
+                    deltaLabel.innerText = delta > 0 ? "Thừa tiền mặt" : "Thiếu tiền mặt";
+                    warningBox.classList.remove('hidden');
+                    reasonSection.classList.remove('hidden');
+                    submitBtn.classList.remove('bg-primary');
+                    submitBtn.classList.add('bg-error');
+                }
+            } else {
+                deltaContainer.classList.add('hidden');
+                reasonSection.classList.add('hidden');
+                submitBtn.classList.remove('bg-error');
+                submitBtn.classList.add('bg-primary');
+            }
+        }
+
+        // Add visual micro-interaction for submit button
+        document.getElementById('submit-btn').addEventListener('click', function() {
+            const actualInput = document.getElementById('actual-count');
+            const reasonInput = document.getElementById('reason');
+            const actualValue = parseInt(actualInput.value) || 0;
+            const delta = actualValue - systemBalanceValue;
+
+            if (delta !== 0 && !reasonInput.value.trim()) {
+                reasonInput.classList.add('border-error');
+                reasonInput.focus();
+                alert('Vui lòng nhập lý do chênh lệch trước khi hoàn tất!');
+                return;
+            }
+
+            this.innerHTML = '<span class="material-symbols-outlined animate-spin">sync</span> Đang xử lý...';
+            setTimeout(() => {
+                alert('Chốt ca thành công! Hệ thống đang in biên bản chốt ca.');
+                window.location.reload();
+            }, 1500);
+        });
+    </script>
+
+
+</body></html>

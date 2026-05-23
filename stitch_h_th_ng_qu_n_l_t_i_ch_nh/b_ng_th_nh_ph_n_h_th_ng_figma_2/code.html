@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Tài Chính Việt - Figma Component Sheet</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAFBFC;
+            color: #1F2731;
+        }
+        .component-section {
+            border-bottom: 1px solid #E5E9EE;
+            padding-bottom: 40px;
+            margin-bottom: 40px;
+        }
+        .spec-label {
+            color: #6B7785;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+    </style>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"surface-container-high": "#dfe9fb", "tertiary-container": "#0e6646", background: "#f8f9ff", primary: "#00427d", "inverse-primary": "#a5c8ff", surface: "#f8f9ff", "on-secondary-fixed-variant": "#3c4855", "primary-fixed-dim": "#a5c8ff", "on-surface": "#121c29", "on-secondary-fixed": "#111d28", "on-tertiary": "#ffffff", "primary-container": "#1e5a9c", "on-primary-fixed-variant": "#004785", "on-primary": "#ffffff", "inverse-surface": "#27313f", "on-tertiary-fixed": "#002113", "tertiary-fixed-dim": "#88d6af", "outline-variant": "#c2c6d2", "tertiary-fixed": "#a4f3ca", "on-tertiary-fixed-variant": "#005236", "surface-bright": "#f8f9ff", "secondary-container": "#d7e4f4", tertiary: "#004c32", "error-container": "#ffdad6", "on-error-container": "#93000a", "on-primary-fixed": "#001c3a", "on-tertiary-container": "#92e1b8", "surface-container": "#e5eeff", "inverse-on-surface": "#eaf1ff", outline: "#727781", "on-surface-variant": "#424750", "on-secondary-container": "#596673", "surface-container-lowest": "#ffffff", "on-error": "#ffffff", "surface-dim": "#d0dbed", "secondary-fixed": "#d7e4f4", "surface-container-low": "#eff4ff", error: "#ba1a1a", "on-background": "#121c29", "surface-container-highest": "#d9e3f5", secondary: "#54606d", "surface-variant": "#d9e3f5", "primary-fixed": "#d4e3ff", "on-secondary": "#ffffff", "surface-tint": "#265fa2", "secondary-fixed-dim": "#bbc8d7", "on-primary-container": "#b6d2ff"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {"margin-desktop": "40px", lg: "24px", xs: "4px", xl: "32px", gutter: "16px", md: "16px", unit: "4", sm: "8px", "max-width": "1200px", "margin-mobile": "16px", "card-padding": "24px", "mobile-margin": "16px", "card-padding-mobile": "16px", "input-height": "40px", "sidebar-width": "240px", "desktop-margin": "40px", "header-height": "64px"}, fontFamily: {"title-lg": ["Be Vietnam Pro"], "body-md": ["Be Vietnam Pro"], "headline-sm": ["Be Vietnam Pro"], "body-lg": ["Be Vietnam Pro"], "label-md": ["Be Vietnam Pro"], "headline-lg": ["Be Vietnam Pro"], "label-lg": ["Be Vietnam Pro"], "display-lg": ["Be Vietnam Pro"], "numeric-data": ["Be Vietnam Pro"], "headline-md": ["Be Vietnam Pro"]}, fontSize: {"title-lg": ["18px", {lineHeight: "26px", fontWeight: "600"}], "body-md": ["14px", {lineHeight: "22px", fontWeight: "400"}], "headline-sm": ["20px", {lineHeight: "28px", fontWeight: "600"}], "body-lg": ["16px", {lineHeight: "24px", fontWeight: "400"}], "label-md": ["12px", {lineHeight: "16px", fontWeight: "500"}], "headline-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "600"}], "label-lg": ["13px", {lineHeight: "20px", fontWeight: "500"}], "display-lg": ["48px", {lineHeight: "60px", letterSpacing: "-0.02em", fontWeight: "600"}], "numeric-data": ["16px", {lineHeight: "24px", fontWeight: "600"}], "headline-md": ["24px", {lineHeight: "32px", fontWeight: "600"}]}}}};</script>
+</head>
+<body class="bg-surface-container-lowest min-h-screen">
+<!-- Top Navigation Anchor (Simulated from JSON) -->
+<header class="bg-surface border-b border-outline-variant sticky top-0 z-50">
+<div class="max-w-[1200px] mx-auto h-16 px-10 flex justify-between items-center">
+<div class="font-headline-md text-headline-md font-bold text-primary">Tài Chính Việt</div>
+<div class="flex items-center gap-6">
+<nav class="hidden md:flex items-center gap-8">
+<a class="text-primary border-b-2 border-primary py-5 font-label-lg text-label-lg" href="#">Thành phần</a>
+<a class="text-on-surface-variant hover:bg-surface-container-low transition-colors py-1 px-2 rounded font-label-lg text-label-lg" href="#">Hướng dẫn</a>
+<a class="text-on-surface-variant hover:bg-surface-container-low transition-colors py-1 px-2 rounded font-label-lg text-label-lg" href="#">Tài nguyên</a>
+</nav>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer">account_circle</span>
+</div>
+</div>
+</div>
+</header>
+<main class="max-w-[1200px] mx-auto px-10 py-12">
+<div class="mb-12">
+<h1 class="font-headline-lg text-headline-lg text-primary mb-2">Bảng Thành phần Hệ thống (v1.0)</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Hướng dẫn chi tiết các thành phần giao diện tối giản cho ứng dụng Tài chính Việt.</p>
+</div>
+<!-- Section 1: Buttons -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-8">1. Nút bấm (Buttons)</h2>
+<div class="grid grid-cols-1 md:grid-cols-5 gap-8 items-end">
+<!-- Primary -->
+<div class="flex flex-col gap-4">
+<div class="spec-label">Mặc định / Hover</div>
+<button class="h-10 px-6 bg-[#1E5A9C] hover:bg-[#194B82] text-white rounded-lg font-label-lg text-label-lg transition-colors flex items-center justify-center">
+                        Tiếp tục
+                    </button>
+<button class="h-10 px-6 bg-[#1E5A9C] opacity-80 scale-95 text-white rounded-lg font-label-lg text-label-lg flex items-center justify-center">
+                        Active State
+                    </button>
+</div>
+<!-- Ghost -->
+<div class="flex flex-col gap-4">
+<div class="spec-label">Ghost</div>
+<button class="h-10 px-6 bg-transparent hover:bg-surface-container-low text-primary rounded-lg font-label-lg text-label-lg transition-colors flex items-center justify-center">
+                        Bỏ qua
+                    </button>
+</div>
+<!-- Outline -->
+<div class="flex flex-col gap-4">
+<div class="spec-label">Outline / Focus</div>
+<button class="h-10 px-6 bg-white border border-[#E5E9EE] focus:ring-4 focus:ring-[#D6E4F4] outline-none text-[#1F2731] rounded-lg font-label-lg text-label-lg transition-all flex items-center justify-center">
+                        Quay lại
+                    </button>
+</div>
+<!-- Loading -->
+<div class="flex flex-col gap-4">
+<div class="spec-label">Đang tải</div>
+<button class="h-10 px-6 bg-[#1E5A9C] text-white rounded-lg font-label-lg text-label-lg flex items-center justify-center gap-2 cursor-wait">
+<svg class="animate-spin h-4 w-4 text-white" viewbox="0 0 24 24">
+<circle class="opacity-25" cx="12" cy="12" fill="none" r="10" stroke="currentColor" stroke-width="4"></circle>
+<path class="opacity-75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" fill="currentColor"></path>
+</svg>
+                        Xử lý...
+                    </button>
+</div>
+<!-- Disabled -->
+<div class="flex flex-col gap-4">
+<div class="spec-label">Vô hiệu hóa</div>
+<button class="h-10 px-6 bg-[#CCD3DB] text-white rounded-lg font-label-lg text-label-lg cursor-not-allowed flex items-center justify-center" disabled="">
+                        Gửi đi
+                    </button>
+</div>
+</div>
+</section>
+<!-- Section 2: Input Fields -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-8">2. Ô nhập liệu (Input Fields)</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
+<!-- Text Default -->
+<div class="flex flex-col gap-1.5">
+<label class="text-[13px] font-medium text-[#4A5663]">Họ và tên</label>
+<input class="h-10 px-4 border border-[#CCD3DB] rounded-lg focus:ring-4 focus:ring-[#D6E4F4] focus:border-primary outline-none text-body-md transition-all placeholder:text-[#6B7785]" placeholder="Nguyễn Văn A" type="text"/>
+</div>
+<!-- Search -->
+<div class="flex flex-col gap-1.5">
+<label class="text-[13px] font-medium text-[#4A5663]">Tìm kiếm giao dịch</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-2 text-[#6B7785] text-[20px]">search</span>
+<input class="w-full h-10 pl-10 pr-4 border border-[#CCD3DB] rounded-lg focus:ring-4 focus:ring-[#D6E4F4] focus:border-primary outline-none text-body-md transition-all" placeholder="Mã giao dịch, tên..." type="text"/>
+</div>
+</div>
+<!-- Currency -->
+<div class="flex flex-col gap-1.5">
+<label class="text-[13px] font-medium text-[#4A5663]">Số tiền gửi</label>
+<div class="relative">
+<input class="w-full h-10 px-4 border border-[#CCD3DB] rounded-lg focus:ring-4 focus:ring-[#D6E4F4] focus:border-primary outline-none text-body-md transition-all text-right pr-12" type="text" value="10.000.000"/>
+<span class="absolute right-4 top-2.5 text-label-md text-[#4A5663]">₫</span>
+</div>
+<span class="text-[12px] text-[#6B7785]">Hạn mức tối đa 50tr</span>
+</div>
+<!-- Error State -->
+<div class="flex flex-col gap-1.5">
+<label class="text-[13px] font-medium text-[#4A5663]">Số tài khoản</label>
+<input class="h-10 px-4 border border-error rounded-lg focus:ring-0 outline-none text-body-md bg-error-container/10" type="text" value="12345"/>
+<span class="text-[12px] text-error">Số tài khoản không hợp lệ</span>
+</div>
+</div>
+</section>
+<!-- Section 3: Dropdown & Combobox -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-8">3. Danh sách lựa chọn (Dropdown)</h2>
+<div class="max-w-md">
+<div class="flex flex-col gap-1.5">
+<label class="text-[13px] font-medium text-[#4A5663]">Chọn ngân hàng thụ hưởng</label>
+<div class="relative">
+<button class="w-full h-10 px-4 border border-primary rounded-t-lg bg-white flex items-center justify-between focus:outline-none">
+<span class="text-body-md">Ngân hàng TMCP Ngoại thương (VCB)</span>
+<span class="material-symbols-outlined text-primary">expand_less</span>
+</button>
+<!-- Open Menu -->
+<div class="absolute w-full border-x border-b border-[#E5E9EE] bg-white rounded-b-lg shadow-sm z-10">
+<div class="p-2">
+<input class="w-full h-8 px-3 border border-[#CCD3DB] rounded-md text-label-md outline-none mb-2" placeholder="Tìm nhanh..." type="text"/>
+</div>
+<div class="max-h-48 overflow-y-auto">
+<div class="px-4 py-2 hover:bg-[#F4F6F8] text-body-md cursor-pointer flex items-center justify-between">
+<span>VietinBank</span>
+</div>
+<div class="px-4 py-2 bg-[#F4F6F8] text-body-md font-semibold cursor-pointer flex items-center justify-between">
+<span>Vietcombank</span>
+<span class="material-symbols-outlined text-primary text-[18px]">check</span>
+</div>
+<div class="px-4 py-2 hover:bg-[#F4F6F8] text-body-md cursor-pointer">
+<span>BIDV</span>
+</div>
+<div class="px-4 py-2 hover:bg-[#F4F6F8] text-body-md cursor-pointer">
+<span>Agribank</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<!-- Section 4 & 5: Badges & Switches -->
+<section class="component-section border-none mb-0">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-8">4 &amp; 5. Trạng thái &amp; Nút gạt</h2>
+<div class="flex flex-col gap-10">
+<!-- Badges -->
+<div class="flex flex-wrap gap-4 items-center">
+<div class="spec-label w-full">Nhãn trạng thái (Badges)</div>
+<span class="inline-flex items-center gap-2 px-3 py-1 bg-[#F4F6F8] border border-[#E5E9EE] rounded-full text-[12px] font-medium text-[#1F2731]">
+<span class="w-2 h-2 rounded-full bg-outline"></span>
+                            Chờ duyệt
+                        </span>
+<span class="inline-flex items-center gap-2 px-3 py-1 bg-secondary-container border border-primary/20 rounded-full text-[12px] font-semibold text-primary">
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+                            Hoạt động
+                        </span>
+<span class="inline-flex items-center gap-2 px-3 py-1 bg-[#F4F6F8] border border-[#E5E9EE] rounded-full text-[12px] font-medium text-[#1F2731]">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+                            Lưu ý
+                        </span>
+</div>
+<!-- Switches -->
+<div class="flex gap-12 items-center">
+<div class="flex flex-col gap-4">
+<div class="spec-label">Toggle Tắt</div>
+<div class="w-12 h-6 bg-[#A8B2BD] rounded-full relative cursor-pointer p-1 transition-colors">
+<div class="w-4 h-4 bg-white rounded-full"></div>
+</div>
+</div>
+<div class="flex flex-col gap-4">
+<div class="spec-label">Toggle Bật</div>
+<div class="w-12 h-6 bg-[#1E5A9C] rounded-full relative cursor-pointer p-1 transition-colors flex justify-end">
+<div class="w-4 h-4 bg-white rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 6: Tooltips -->
+<section class="component-section border-none mb-0">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-8">6. Chú giải (Tooltips)</h2>
+<div class="h-40 flex items-center justify-center bg-surface-container rounded-xl border border-dashed border-outline-variant relative">
+<span class="material-symbols-outlined text-primary cursor-help">help</span>
+<!-- Tooltip Element -->
+<div class="absolute top-4 bg-[#2F3947] text-white text-[12px] px-3 py-2 rounded-lg max-w-[200px] text-center shadow-lg">
+                        Mã CVV là 3 chữ số bảo mật ở mặt sau thẻ của bạn.
+                        <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#2F3947] rotate-45"></div>
+</div>
+</div>
+</section>
+</div>
+<!-- Section 7: Steppers -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-8">7. Quy trình (Steppers)</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-16">
+<!-- Horizontal -->
+<div class="flex flex-col gap-6">
+<div class="spec-label">Quy trình ngang</div>
+<div class="flex items-center w-full">
+<div class="flex flex-col items-center relative">
+<div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">check</span>
+</div>
+<span class="absolute top-10 text-[12px] font-semibold text-primary whitespace-nowrap">Khởi tạo</span>
+</div>
+<div class="flex-1 h-[2px] bg-primary mx-2 mt-[-20px]"></div>
+<div class="flex flex-col items-center relative">
+<div class="w-8 h-8 rounded-full border-2 border-primary bg-white text-primary flex items-center justify-center font-bold text-[14px]">
+                                2
+                            </div>
+<span class="absolute top-10 text-[12px] font-semibold text-on-surface whitespace-nowrap">Xác thực</span>
+</div>
+<div class="flex-1 h-[2px] bg-[#E5E9EE] mx-2 mt-[-20px]"></div>
+<div class="flex flex-col items-center relative opacity-50">
+<div class="w-8 h-8 rounded-full border-2 border-[#CCD3DB] bg-white text-[#6B7785] flex items-center justify-center font-bold text-[14px]">
+                                3
+                            </div>
+<span class="absolute top-10 text-[12px] font-medium text-[#6B7785] whitespace-nowrap">Hoàn tất</span>
+</div>
+</div>
+</div>
+<!-- Vertical -->
+<div class="flex flex-col gap-6">
+<div class="spec-label">Quy trình dọc</div>
+<div class="space-y-0">
+<div class="flex gap-4 min-h-[60px]">
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-full bg-primary flex items-center justify-center text-white">
+<span class="material-symbols-outlined text-[16px]">check</span>
+</div>
+<div class="w-[2px] flex-1 bg-primary"></div>
+</div>
+<div class="pb-6">
+<div class="text-[14px] font-semibold">Đã nhận yêu cầu</div>
+<div class="text-[12px] text-[#6B7785]">14:30 - 20/05/2024</div>
+</div>
+</div>
+<div class="flex gap-4 min-h-[60px]">
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-full border-2 border-primary bg-white flex items-center justify-center text-primary">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+</div>
+<div class="w-[2px] flex-1 bg-[#E5E9EE]"></div>
+</div>
+<div class="pb-6">
+<div class="text-[14px] font-semibold text-primary">Đang thẩm định hồ sơ</div>
+<div class="text-[12px] text-on-surface-variant">Vui lòng chờ trong giây lát</div>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<div class="w-6 h-6 rounded-full border-2 border-[#CCD3DB] bg-white"></div>
+</div>
+<div>
+<div class="text-[14px] font-semibold text-[#6B7785]">Giải ngân khoản vay</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 8: Stepper Input -->
+<section class="component-section border-none">
+<h2 class="font-headline-sm text-headline-sm text-on-surface mb-8">8. Nhập số lượng (Stepper Input)</h2>
+<div class="flex items-center gap-12">
+<div class="flex flex-col gap-4">
+<div class="spec-label">Mặc định</div>
+<div class="inline-flex items-center border border-[#CCD3DB] rounded-lg overflow-hidden">
+<button class="w-10 h-10 flex items-center justify-center bg-white hover:bg-surface-container-low transition-colors text-primary active:scale-90">
+<span class="material-symbols-outlined">remove</span>
+</button>
+<div class="w-16 h-10 flex items-center justify-center border-x border-[#CCD3DB] font-numeric-data text-numeric-data">
+                            24
+                        </div>
+<button class="w-10 h-10 flex items-center justify-center bg-white hover:bg-surface-container-low transition-colors text-primary active:scale-90">
+<span class="material-symbols-outlined">add</span>
+</button>
+</div>
+</div>
+<div class="flex flex-col gap-4">
+<div class="spec-label">Trong ngữ cảnh giao dịch</div>
+<div class="bg-surface-container-low p-4 rounded-xl border border-[#E5E9EE] flex items-center gap-6">
+<span class="text-label-lg font-semibold">Thời hạn vay (Tháng)</span>
+<div class="inline-flex items-center bg-white border border-[#CCD3DB] rounded-lg">
+<button class="w-10 h-10 flex items-center justify-center text-[#6B7785] hover:text-primary">
+<span class="material-symbols-outlined">remove</span>
+</button>
+<input class="w-12 h-10 text-center border-none focus:ring-0 font-bold text-primary" type="text" value="12"/>
+<button class="w-10 h-10 flex items-center justify-center text-[#6B7785] hover:text-primary">
+<span class="material-symbols-outlined">add</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation (Mobile Only Anchor) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-surface border-t border-outline-variant flex justify-around items-center py-2 px-4 z-50">
+<div class="flex flex-col items-center justify-center text-primary font-bold">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-md text-label-md">Trang chủ</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-label-md text-label-md">Ví của tôi</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">qr_code_scanner</span>
+<span class="font-label-md text-label-md">Quét mã</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined">support_agent</span>
+<span class="font-label-md text-label-md">Hỗ trợ</span>
+</div>
+</nav>
+<footer class="max-w-[1200px] mx-auto px-10 py-12 border-t border-outline-variant">
+<div class="flex flex-col md:flex-row justify-between items-center gap-6">
+<div class="text-label-md text-[#6B7785]">
+                © 2024 Tài Chính Việt. Toàn bộ thiết kế tuân thủ tiêu chuẩn bảo mật ngân hàng.
+            </div>
+<div class="flex gap-6">
+<a class="text-label-md text-primary font-semibold" href="#">Chính sách bảo mật</a>
+<a class="text-label-md text-primary font-semibold" href="#">Điều khoản sử dụng</a>
+</div>
+</div>
+</footer>
+<script>
+        // Micro-interactions for buttons
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('mousedown', () => {
+                if(!btn.disabled) btn.style.transform = 'scale(0.98)';
+            });
+            btn.addEventListener('mouseup', () => {
+                btn.style.transform = 'scale(1)';
+            });
+        });
+
+        // Simple Switch Toggle Simulation
+        document.querySelectorAll('.w-12.h-6').forEach(toggle => {
+            toggle.addEventListener('click', function() {
+                const dot = this.querySelector('div');
+                if (this.classList.contains('bg-[#A8B2BD]')) {
+                    this.classList.remove('bg-[#A8B2BD]');
+                    this.classList.add('bg-[#1E5A9C]');
+                    this.classList.add('justify-end');
+                } else {
+                    this.classList.add('bg-[#A8B2BD]');
+                    this.classList.remove('bg-[#1E5A9C]');
+                    this.classList.remove('justify-end');
+                }
+            });
+        });
+    </script>
+</body></html>

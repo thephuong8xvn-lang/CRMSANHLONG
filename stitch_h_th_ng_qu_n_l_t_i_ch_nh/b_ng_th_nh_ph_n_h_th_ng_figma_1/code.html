@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Tài Chính Việt - Design System Shell</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-tertiary-container": "#92e1b8", "surface-container-highest": "#d9e3f5", "on-secondary-fixed": "#111d28", "on-error": "#ffffff", outline: "#727781", "on-tertiary-fixed": "#002113", "surface-bright": "#f8f9ff", "primary-fixed": "#d4e3ff", "on-tertiary": "#ffffff", "inverse-primary": "#a5c8ff", "on-primary": "#ffffff", "surface-container-high": "#dfe9fb", "primary-fixed-dim": "#a5c8ff", "surface-variant": "#d9e3f5", "tertiary-fixed-dim": "#88d6af", "on-surface": "#121c29", "tertiary-container": "#0e6646", "surface-dim": "#d0dbed", "on-secondary": "#ffffff", primary: "#00427d", "on-secondary-fixed-variant": "#3c4855", "on-primary-fixed": "#001c3a", "primary-container": "#1e5a9c", "on-error-container": "#93000a", "on-primary-fixed-variant": "#004785", background: "#f8f9ff", "surface-tint": "#265fa2", "surface-container-low": "#eff4ff", error: "#ba1a1a", "tertiary-fixed": "#a4f3ca", surface: "#f8f9ff", "inverse-on-surface": "#eaf1ff", "secondary-fixed": "#d7e4f4", "on-background": "#121c29", "on-tertiary-fixed-variant": "#005236", "on-secondary-container": "#596673", tertiary: "#004c32", "surface-container-lowest": "#ffffff", "on-primary-container": "#b6d2ff", "surface-container": "#e5eeff", "secondary-fixed-dim": "#bbc8d7", "secondary-container": "#d7e4f4", secondary: "#54606d", "on-surface-variant": "#424750", "error-container": "#ffdad6", "outline-variant": "#c2c6d2", "inverse-surface": "#27313f"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {gutter: "16px", "margin-mobile": "16px", xl: "32px", xs: "4px", sm: "8px", "margin-desktop": "40px", unit: "4", md: "16px", "max-width": "1200px", lg: "24px", "card-padding": "24px", "mobile-margin": "16px", "card-padding-mobile": "16px", "input-height": "40px", "sidebar-width": "240px", "desktop-margin": "40px", "header-height": "64px"}, fontFamily: {"headline-md": ["Be Vietnam Pro"], "numeric-data": ["Be Vietnam Pro"], "display-lg": ["Be Vietnam Pro"], "body-lg": ["Be Vietnam Pro"], "label-lg": ["Be Vietnam Pro"], "headline-lg": ["Be Vietnam Pro"], "headline-sm": ["Be Vietnam Pro"], "body-md": ["Be Vietnam Pro"], "title-lg": ["Be Vietnam Pro"], "label-md": ["Be Vietnam Pro"]}, fontSize: {"headline-md": ["24px", {lineHeight: "32px", fontWeight: "600"}], "numeric-data": ["16px", {lineHeight: "24px", fontWeight: "600"}], "display-lg": ["48px", {lineHeight: "60px", letterSpacing: "-0.02em", fontWeight: "600"}], "body-lg": ["16px", {lineHeight: "24px", fontWeight: "400"}], "label-lg": ["13px", {lineHeight: "20px", fontWeight: "500"}], "headline-lg": ["32px", {lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "600"}], "headline-sm": ["20px", {lineHeight: "28px", fontWeight: "600"}], "body-md": ["14px", {lineHeight: "22px", fontWeight: "400"}], "title-lg": ["18px", {lineHeight: "26px", fontWeight: "600"}], "label-md": ["12px", {lineHeight: "16px", fontWeight: "500"}]}}}};</script>
+<style>
+        body { background-color: #FAFBFC; font-family: 'Be Vietnam Pro', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+        .component-section { margin-bottom: 48px; border-bottom: 1px solid #E5E9EE; padding-bottom: 32px; }
+        .section-title { margin-bottom: 24px; color: #191c20; }
+        .grid-preview { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+        .state-label { font-size: 11px; color: #6B7785; text-transform: uppercase; margin-bottom: 8px; font-weight: 600; letter-spacing: 0.05em; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CCD3DB; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-surface p-margin-mobile md:p-margin-desktop max-w-max-width mx-auto">
+<!-- Header Section -->
+<header class="mb-12 border-b border-outline-variant pb-lg">
+<h1 class="font-headline-lg text-headline-lg text-primary mb-2">Tài Chính Việt UI Kit</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Tài liệu thành phần nguyên tử cốt lõi cho ứng dụng tài chính chuyên nghiệp.</p>
+</header>
+<!-- 1. Buttons -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm section-title">1. Nút bấm (Buttons)</h2>
+<div class="space-y-8">
+<!-- Primary -->
+<div>
+<p class="state-label">Chính (Primary)</p>
+<div class="flex flex-wrap gap-md items-center">
+<button class="h-10 px-lg bg-primary-container text-white rounded-lg font-label-lg transition-colors hover:bg-primary active:scale-95">Mặc định</button>
+<button class="h-10 px-lg bg-primary text-white rounded-lg font-label-lg transition-colors shadow-sm">Hover</button>
+<button class="h-10 px-lg bg-primary-container text-white rounded-lg font-label-lg ring-2 ring-primary-fixed-dim ring-offset-2">Focus</button>
+<button class="h-10 px-lg bg-outline-variant text-on-surface-variant rounded-lg font-label-lg cursor-not-allowed" disabled="">Vô hiệu</button>
+<button class="h-10 px-lg bg-primary-container text-white rounded-lg font-label-lg flex items-center gap-xs">
+<span class="material-symbols-outlined animate-spin text-sm">progress_activity</span> Đang tải
+                    </button>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-xl">
+<!-- Outline -->
+<div>
+<p class="state-label">Đường viền (Outline)</p>
+<div class="flex flex-wrap gap-sm">
+<button class="h-10 px-lg bg-white border border-outline-variant text-on-surface rounded-lg font-label-lg hover:bg-surface-container-low transition-colors">Giao dịch</button>
+</div>
+</div>
+<!-- Ghost -->
+<div>
+<p class="state-label">Trong suốt (Ghost)</p>
+<div class="flex flex-wrap gap-sm">
+<button class="h-10 px-lg text-primary font-label-lg hover:bg-primary-fixed-dim/20 rounded-lg transition-colors">Xem chi tiết</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- 2. Inputs -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm section-title">2. Ô nhập liệu (Inputs)</h2>
+<div class="grid-preview">
+<!-- Default -->
+<div class="flex flex-col gap-xs">
+<label class="text-[13px] font-medium text-on-surface-variant">Họ và tên</label>
+<input class="h-10 px-md border border-outline-variant rounded-lg font-body-md focus:outline-none focus:ring-1 focus:ring-primary-container focus:border-primary-container placeholder:text-[#6B7785]" placeholder="Nhập tên của bạn" type="text"/>
+</div>
+<!-- Search -->
+<div class="flex flex-col gap-xs">
+<label class="text-[13px] font-medium text-on-surface-variant">Tìm kiếm</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg" data-icon="search">search</span>
+<input class="h-10 pl-10 pr-md w-full border border-outline-variant rounded-lg font-body-md focus:outline-none focus:ring-1 focus:ring-primary-container placeholder:text-[#6B7785]" placeholder="Tìm kiếm giao dịch..." type="text"/>
+</div>
+</div>
+<!-- Currency -->
+<div class="flex flex-col gap-xs">
+<label class="text-[13px] font-medium text-on-surface-variant">Số tiền gửi</label>
+<div class="relative">
+<input class="h-10 pl-md pr-10 w-full border border-outline-variant rounded-lg font-body-md focus:outline-none focus:ring-1 focus:ring-primary-container text-right" placeholder="0" type="number"/>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-on-surface-variant">₫</span>
+</div>
+</div>
+<!-- Textarea -->
+<div class="flex flex-col gap-xs col-span-full">
+<label class="text-[13px] font-medium text-on-surface-variant">Ghi chú giao dịch</label>
+<textarea class="p-md border border-outline-variant rounded-lg font-body-md focus:outline-none focus:ring-1 focus:ring-primary-container placeholder:text-[#6B7785] resize-none" placeholder="Nội dung chuyển khoản..." rows="3"></textarea>
+</div>
+</div>
+</section>
+<!-- 3. Dropdown -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm section-title">3. Trình chọn (Dropdown)</h2>
+<div class="max-w-sm">
+<div class="relative">
+<label class="text-[13px] font-medium text-on-surface-variant block mb-1">Chọn ngân hàng</label>
+<button class="flex items-center justify-between w-full h-10 px-md border border-outline-variant rounded-lg bg-white text-left font-body-md" id="dropdownBtn">
+<span id="selectedValue">Vietcombank</span>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="expand_more">expand_more</span>
+</button>
+<div class="absolute z-10 w-full mt-1 bg-white border border-outline-variant rounded-lg shadow-lg overflow-hidden hidden" id="dropdownMenu">
+<div class="p-2 border-b border-outline-variant">
+<input class="w-full h-8 px-2 text-sm border-none focus:ring-0" placeholder="Tìm kiếm..." type="text"/>
+</div>
+<ul class="max-h-48 overflow-y-auto custom-scrollbar">
+<li class="px-md py-2 hover:bg-surface-container-low cursor-pointer font-body-md bg-secondary-container text-on-secondary-container">Vietcombank</li>
+<li class="px-md py-2 hover:bg-surface-container-low cursor-pointer font-body-md">Techcombank</li>
+<li class="px-md py-2 hover:bg-surface-container-low cursor-pointer font-body-md">BIDV</li>
+<li class="px-md py-2 hover:bg-surface-container-low cursor-pointer font-body-md">Agribank</li>
+</ul>
+</div>
+</div>
+</div>
+</section>
+<!-- 4. Badges & 5. Switches -->
+<section class="component-section grid grid-cols-1 md:grid-cols-2 gap-xl">
+<div>
+<h2 class="font-headline-sm text-headline-sm section-title">4. Huy hiệu (Badges)</h2>
+<div class="flex flex-wrap gap-md items-center">
+<div class="flex items-center gap-xs px-sm py-1 bg-[#F4F6F8] border border-[#E5E9EE] rounded-full text-on-surface text-[12px] font-medium">
+<span class="w-2 h-2 rounded-full bg-error"></span> Chờ duyệt
+                </div>
+<div class="flex items-center gap-xs px-sm py-1 bg-[#F4F6F8] border border-[#E5E9EE] rounded-full text-on-surface text-[12px] font-medium">
+<span class="w-2 h-2 rounded-full bg-secondary"></span> Lưu ý
+                </div>
+<div class="px-sm py-1 bg-secondary-container text-on-secondary-container rounded-full text-[12px] font-bold">
+                    Hoàn tất
+                </div>
+</div>
+</div>
+<div>
+<h2 class="font-headline-sm text-headline-sm section-title">5. Chuyển đổi (Switches)</h2>
+<div class="flex items-center gap-xl">
+<div class="flex items-center gap-md">
+<span class="text-sm font-medium text-on-surface-variant">Tắt</span>
+<button class="w-10 h-5 bg-[#A8B2BD] rounded-full relative p-0.5 transition-colors">
+<div class="w-4 h-4 bg-white rounded-full"></div>
+</button>
+</div>
+<div class="flex items-center gap-md">
+<span class="text-sm font-medium text-on-surface-variant">Bật</span>
+<button class="w-10 h-5 bg-primary-container rounded-full relative p-0.5 transition-colors">
+<div class="w-4 h-4 bg-white rounded-full ml-auto"></div>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- 6. Tooltips & 8. Stepper Input -->
+<section class="component-section grid grid-cols-1 md:grid-cols-2 gap-xl">
+<div>
+<h2 class="font-headline-sm text-headline-sm section-title">6. Chú thích (Tooltips)</h2>
+<div class="relative inline-block group">
+<div class="flex items-center gap-xs text-primary cursor-help">
+<span>Phí duy trì là gì?</span>
+<span class="material-symbols-outlined text-sm">info</span>
+</div>
+<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-[#2F3947] text-white text-[12px] rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    Phí này được thu định kỳ hàng tháng để duy trì các dịch vụ trực tuyến của bạn.
+                    <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-[#2F3947]"></div>
+</div>
+</div>
+</div>
+<div>
+<h2 class="font-headline-sm text-headline-sm section-title">8. Bộ tăng giảm (Stepper Input)</h2>
+<div class="flex items-center gap-md">
+<button class="w-10 h-10 flex items-center justify-center border border-outline-variant rounded-lg hover:bg-surface-container-low">
+<span class="material-symbols-outlined" data-icon="remove">remove</span>
+</button>
+<span class="font-numeric-data text-headline-sm w-12 text-center">24</span>
+<button class="w-10 h-10 flex items-center justify-center border border-outline-variant rounded-lg hover:bg-surface-container-low">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</section>
+<!-- 7. Steppers -->
+<section class="component-section">
+<h2 class="font-headline-sm text-headline-sm section-title">7. Thanh tiến trình (Steppers)</h2>
+<div class="mb-12">
+<p class="state-label mb-6">Ngang (Horizontal)</p>
+<div class="flex items-center w-full max-w-2xl">
+<!-- Completed -->
+<div class="flex items-center flex-1">
+<div class="w-8 h-8 rounded-full bg-primary-container text-white flex items-center justify-center font-bold text-sm">
+<span class="material-symbols-outlined text-sm">check</span>
+</div>
+<div class="flex-1 h-[2px] bg-primary-container mx-2"></div>
+</div>
+<!-- Active -->
+<div class="flex items-center flex-1">
+<div class="w-8 h-8 rounded-full border-2 border-primary-container text-primary-container flex items-center justify-center font-bold text-sm">2</div>
+<div class="flex-1 h-[2px] bg-outline-variant mx-2"></div>
+</div>
+<!-- Inactive -->
+<div class="flex items-center">
+<div class="w-8 h-8 rounded-full border-2 border-outline-variant text-outline-variant flex items-center justify-center font-bold text-sm">3</div>
+</div>
+</div>
+</div>
+<div>
+<p class="state-label mb-6">Dọc (Vertical)</p>
+<div class="space-y-0 pl-4 border-l-2 border-outline-variant">
+<div class="relative pb-8 -ml-[17px]">
+<div class="absolute w-8 h-8 rounded-full bg-primary-container text-white flex items-center justify-center font-bold text-sm">
+<span class="material-symbols-outlined text-sm">check</span>
+</div>
+<div class="ml-12 pt-1">
+<h4 class="font-title-lg text-title-lg text-primary">Thông tin tài khoản</h4>
+<p class="font-body-md text-on-surface-variant">Đã xác thực số điện thoại và email.</p>
+</div>
+</div>
+<div class="relative pb-8 -ml-[17px]">
+<div class="absolute w-8 h-8 rounded-full border-2 border-primary-container bg-surface text-primary-container flex items-center justify-center font-bold text-sm">2</div>
+<div class="ml-12 pt-1">
+<h4 class="font-title-lg text-title-lg text-on-surface">Định danh eKYC</h4>
+<p class="font-body-md text-on-surface-variant">Vui lòng tải lên ảnh CCCD mặt trước và sau.</p>
+</div>
+</div>
+<div class="relative -ml-[17px]">
+<div class="absolute w-8 h-8 rounded-full border-2 border-outline-variant bg-surface text-outline-variant flex items-center justify-center font-bold text-sm">3</div>
+<div class="ml-12 pt-1">
+<h4 class="font-title-lg text-title-lg text-outline-variant">Ký hợp đồng</h4>
+<p class="font-body-md text-outline-variant">Hoàn tất bằng chữ ký điện tử.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer Note -->
+<footer class="mt-12 text-center text-on-surface-variant border-t border-outline-variant pt-lg">
+<p class="font-label-md">© 2024 Tài Chính Việt. Mọi quyền được bảo lưu.</p>
+</footer>
+<script>
+        // Dropdown toggle logic
+        const dropdownBtn = document.getElementById('dropdownBtn');
+        const dropdownMenu = document.getElementById('dropdownMenu');
+        const selectedValue = document.getElementById('selectedValue');
+
+        dropdownBtn.addEventListener('click', () => {
+            dropdownMenu.classList.toggle('hidden');
+        });
+
+        document.querySelectorAll('#dropdownMenu li').forEach(item => {
+            item.addEventListener('click', () => {
+                selectedValue.textContent = item.textContent;
+                dropdownMenu.classList.add('hidden');
+                
+                // Active state styling
+                document.querySelectorAll('#dropdownMenu li').forEach(li => li.classList.remove('bg-secondary-container', 'text-on-secondary-container'));
+                item.classList.add('bg-secondary-container', 'text-on-secondary-container');
+            });
+        });
+
+        // Close dropdown when clicking outside
+        window.addEventListener('click', (e) => {
+            if (!dropdownBtn.contains(e.target) && !dropdownMenu.contains(e.target)) {
+                dropdownMenu.classList.add('hidden');
+            }
+        });
+    </script>
+</body></html>

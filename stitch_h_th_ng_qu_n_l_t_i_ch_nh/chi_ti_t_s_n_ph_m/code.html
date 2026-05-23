@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Chi tiết sản phẩm | Sanh Long Vetco CRM</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#27313f",
+                    "surface-tint": "#265fa2",
+                    "primary-container": "#1e5a9c",
+                    "on-tertiary": "#ffffff",
+                    "on-surface": "#121c29",
+                    "outline": "#727781",
+                    "on-primary-fixed": "#001c3a",
+                    "on-surface-variant": "#424750",
+                    "on-tertiary-container": "#92e1b8",
+                    "on-secondary": "#ffffff",
+                    "secondary-fixed": "#d7e4f4",
+                    "on-tertiary-fixed": "#002113",
+                    "secondary-container": "#d7e4f4",
+                    "surface": "#f8f9ff",
+                    "on-primary-fixed-variant": "#004785",
+                    "primary-fixed": "#d4e3ff",
+                    "tertiary-fixed-dim": "#88d6af",
+                    "outline-variant": "#c2c6d2",
+                    "on-tertiary-fixed-variant": "#005236",
+                    "inverse-primary": "#a5c8ff",
+                    "on-background": "#121c29",
+                    "surface-container-low": "#eff4ff",
+                    "secondary": "#54606d",
+                    "on-primary-container": "#b6d2ff",
+                    "error": "#ba1a1a",
+                    "background": "#f8f9ff",
+                    "surface-variant": "#d9e3f5",
+                    "primary-fixed-dim": "#a5c8ff",
+                    "surface-bright": "#f8f9ff",
+                    "on-error": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "surface-container-high": "#dfe9fb",
+                    "tertiary-fixed": "#a4f3ca",
+                    "tertiary-container": "#0e6646",
+                    "surface-dim": "#d0dbed",
+                    "surface-container-highest": "#d9e3f5",
+                    "on-primary": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "on-secondary-fixed-variant": "#3c4855",
+                    "primary": "#00427d",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary-container": "#596673",
+                    "tertiary": "#004c32",
+                    "inverse-on-surface": "#eaf1ff",
+                    "surface-container": "#e5eeff",
+                    "secondary-fixed-dim": "#bbc8d7",
+                    "on-secondary-fixed": "#111d28"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sidebar-width": "240px",
+                    "card-padding": "24px",
+                    "unit": "4",
+                    "header-height": "64px",
+                    "mobile-margin": "16px",
+                    "input-height": "40px",
+                    "card-padding-mobile": "16px",
+                    "desktop-margin": "40px"
+            },
+            "fontFamily": {
+                    "label-md": ["Be Vietnam Pro"],
+                    "headline-md": ["Be Vietnam Pro"],
+                    "body-md": ["Be Vietnam Pro"],
+                    "body-lg": ["Be Vietnam Pro"],
+                    "label-lg": ["Be Vietnam Pro"],
+                    "title-lg": ["Be Vietnam Pro"],
+                    "display-lg": ["Be Vietnam Pro"],
+                    "headline-lg": ["Be Vietnam Pro"]
+            },
+            "fontSize": {
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #CCD3DB; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-on-surface">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-[240px] flex flex-col py-6 border-r border-outline-variant bg-surface-container-lowest z-50">
+<div class="px-6 mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Vetco CRM</h1>
+<p class="font-body-md text-body-md text-secondary">Hệ thống quản trị</p>
+</div>
+<nav class="flex-1 px-3 space-y-1">
+<a class="flex items-center px-4 py-3 text-secondary font-label-lg text-label-lg hover:bg-surface-container-low transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3">dashboard</span> Tổng quan
+            </a>
+<a class="flex items-center px-4 py-3 bg-secondary-container text-primary font-bold font-label-lg text-label-lg border-l-[3px] border-primary scale-[0.98] transition-transform rounded-r-lg" href="#">
+<span class="material-symbols-outlined mr-3" style="font-variation-settings: 'FILL' 1;">pets</span> Đàn nuôi
+            </a>
+<a class="flex items-center px-4 py-3 text-secondary font-label-lg text-label-lg hover:bg-surface-container-low transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3">group</span> Khách hàng
+            </a>
+<a class="flex items-center px-4 py-3 text-secondary font-label-lg text-label-lg hover:bg-surface-container-low transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3">account_balance_wallet</span> Công nợ
+            </a>
+<a class="flex items-center px-4 py-3 text-secondary font-label-lg text-label-lg hover:bg-surface-container-low transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3">event_note</span> Lịch vaccine
+            </a>
+<a class="flex items-center px-4 py-3 text-secondary font-label-lg text-label-lg hover:bg-surface-container-low transition-colors rounded-lg group" href="#">
+<span class="material-symbols-outlined mr-3">analytics</span> Báo cáo
+            </a>
+</nav>
+<div class="px-6 pt-6 border-t border-outline-variant">
+<div class="flex items-center">
+<img alt="Sanh Long Vetco Logo" class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary font-bold" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWBTlIUNkoos4XWUQVyElQykq5yBhm6PyYrx9g4xNobEZXT8A5zk_hKZ_9RLNzgHKHC9i1JC12BKtHC3ZwZRtRNuf07-xnBQ6oOv7vcoRblNeN75cLwQOKy6Nqtqck2uGuohzF657T0bpm9zji1crcamsH8sj_JlAmltTIs4eEKaFTKwRlxFXxBNEA-Zd-bWGPrNRw6MMLhropgaVT2ei6_jMWwx1LPKr8l_1013jzWfBhIgJQXjNoenxbi8veIQ9q_2yn4Sl0qH0"/>
+<div class="ml-3 overflow-hidden">
+<p class="font-label-lg text-label-lg truncate text-on-surface">Sanh Long Vetco</p>
+<p class="font-label-md text-label-md text-secondary">Quản trị viên</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 left-[240px] h-[64px] flex items-center justify-between px-10 z-40 bg-surface-container-lowest border-b border-outline-variant">
+<div class="flex items-center flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full h-10 pl-10 pr-4 bg-surface-container-low border-none rounded-lg font-body-md text-body-md focus:ring-4 focus:ring-secondary-container" placeholder="Tìm kiếm sản phẩm, khách hàng..." type="text"/>
+</div>
+</div>
+<div class="flex items-center space-x-4">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors text-secondary">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors text-secondary">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<div class="h-8 w-px bg-outline-variant mx-2"></div>
+<button class="flex items-center font-label-lg text-label-lg text-primary font-bold hover:bg-surface-container-low px-3 py-2 rounded-lg transition-colors">
+<span class="material-symbols-outlined mr-2">account_circle</span>
+                Tài khoản
+            </button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-[240px] pt-[64px] min-h-screen">
+<div class="p-[40px]">
+<!-- Breadcrumb & Header -->
+<div class="mb-8 flex items-center justify-between">
+<div>
+<nav class="flex items-center space-x-2 text-secondary font-label-md text-label-md mb-2">
+<a class="hover:text-primary" href="#">Kho dược phẩm</a>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<a class="hover:text-primary" href="#">Kháng sinh &amp; Đặc trị</a>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-on-surface">VET-MAX 500 Gold</span>
+</nav>
+<h2 class="font-headline-md text-headline-md text-on-surface">VET-MAX 500 Gold (Đặc trị tiêu chảy)</h2>
+<div class="flex items-center mt-2 space-x-3">
+<span class="bg-primary-container text-on-tertiary px-2 py-1 rounded font-label-md text-label-md">VIP</span>
+<span class="bg-[#F4F6F8] border border-[#E5E9EE] px-2 py-1 rounded font-label-md text-label-md text-secondary flex items-center">
+<span class="w-2 h-2 rounded-full bg-tertiary mr-2"></span> Đang kinh doanh
+                        </span>
+</div>
+</div>
+<div class="flex space-x-3">
+<button class="h-10 px-4 border border-outline-variant text-on-surface font-label-lg text-label-lg rounded-lg hover:bg-surface-container-low transition-colors flex items-center">
+<span class="material-symbols-outlined mr-2">print</span> In nhãn
+                    </button>
+<button class="h-10 px-6 bg-primary-container text-on-tertiary font-label-lg text-label-lg rounded-lg hover:opacity-90 transition-all flex items-center">
+<span class="material-symbols-outlined mr-2">edit</span> Chỉnh sửa
+                    </button>
+</div>
+</div>
+<!-- Two-Column Grid -->
+<div class="grid grid-cols-12 gap-8">
+<!-- Left Panel (1/3) -->
+<div class="col-span-12 lg:col-span-4 space-y-6">
+<!-- Image Gallery -->
+<div class="bg-white border border-[#E5E9EE] rounded-xl overflow-hidden p-6">
+<div class="aspect-square bg-surface-container-low rounded-lg mb-4 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-contain" data-alt="A premium pharmaceutical glass vial of veterinary medicine titled VET-MAX 500 Gold. The setting is a clean, medical laboratory environment with clinical blue lighting and high-key white backgrounds. The product is placed on a reflective white surface, looking sharp and professional. The overall aesthetic is minimalist, sleek, and high-quality, emphasizing trust and scientific precision." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDUi4ubhNPg_B7biVKZ0gyfjK9cGSAB41BPdz_xSLEAMaLI3_0RGNPWiKmJsbwXx7dr9MV64ttm6Q5igjx3vzfbs9oauDEGT7GuD-cOMrCEbCsQQoB8thOFi3jKUbk5hxsug1324MUoI40QuhwQaqd3I8Q-Flc2nQ2Zz1Q33l1jqxlyA8E7Zqqqegav_vhxNqDVhQqroSwTw9gwjWp4tZXsSAjtg9W8j62qeQBhPZXH397K0IyJVMi90fZN_0cbtFE2eUqJPBKRxmg"/>
+</div>
+<div class="flex space-x-3 overflow-x-auto pb-2 custom-scrollbar">
+<button class="w-20 h-20 border-2 border-primary rounded-lg overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="Close-up side view of a veterinary medicine bottle on a white minimalist background with soft blue lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSfSrHIulxQUlqvzYByV8zgEBVPVT4VZitXzSv1MBvm2oDKu4eFwu1A8mAVf8COoBwdtCvRKmcrjMZVG8zfailHU-N3sUnDFD-n8UcoWiR39wSxp1dhYJZwWj9cTlqurxA72bJsIpcIfR3TSKAa5WOCRA5Pjf3gW_o1ShbOr0FBYHQWFeCmwP8XjIac8uk_73pM9iY_hwBZ6eAbl3nybrUqlor7XOCGcKlkNDqkkL5DuVmmTFBWeNzGDpWXhPpDRxsleLIdTLLcvs"/>
+</button>
+<button class="w-20 h-20 border border-outline-variant rounded-lg overflow-hidden flex-shrink-0 hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Rear view of pharmaceutical packaging showing instructions and ingredients in a minimalist studio setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDZ22Htp69pNtt_jVu1QpT8BANUGs_LCNsWSi9tvHDxU0W7C66kmCpuigI7NormyvEO41BjsTzXqExPmzz073oR52WAXVnaOMz7N3uHkNEzduFPcD6LykHy3debGtW7V0enjD76-_qaAImuSaF36HlvHsXljl_ox1agRcXIA5HFz5tJg_Ug9T97pO722luQVAdH6az9JgPdyypvm0B9tBlxEAL2nX6I-llQ1s1T75PM3-2p2MfQ8Fpm-1PzMF6RLx0PJsHEh1pBtiQ"/>
+</button>
+<button class="w-20 h-20 border border-outline-variant rounded-lg overflow-hidden flex-shrink-0 hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="External cardboard packaging for veterinary drugs, clean typography, medical branding style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEFOstrYisNJzrXmLF9CUCgZv0HDyB88vv3RZiBmAyaZTLGQgP5f8sB0G9jSdqMds2LA54qdQPAW4Oy80PY62f7kLCjkfDDOPB_t_OcOWP-1XLx3Hn3LaUAKPI7cuJXzh1_3l2HS090RBhytAs8GNNOWcAZiGmho21RFhbXibMFoGyg9GQP3nEv7vgMwcD1y31kmRzrmTaixGTKTzvq-OZGa9A7gPznCmX9DYwwLxlvsoIGrCVm4QB23XKPNbqGztxqk8ye9Jb7Nc"/>
+</button>
+<button class="w-20 h-20 border border-outline-variant rounded-lg overflow-hidden flex-shrink-0 hover:border-primary transition-colors">
+<img class="w-full h-full object-cover" data-alt="Top down view of a tamper-evident seal on a medical vial, bright studio lighting, minimalist style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQnVQdUR4WZWFwYQqh7e4FrLEjObDzNZvoTL57AqbxVH6rp5SG7qnVgr7XhctMsCHM34P8IWP3wWc7dcmnRSIw64Z_gUat2v_1tvZQpYL1NM2pue0Nf2JkN4Ur7SAz_54BuzNNF28HRPHSuWp19VyyehG2-9yBsUstxeiesQzDOrobHf_SThV0rO9u3RC-F2I35RQoWBiow3Jl0eqXyH-j-W_G_RAiRE1r2s4y6eMlRLqNPg-wSn4tp2T7aaGixiH03kgsjB42csc"/>
+</button>
+</div>
+</div>
+<!-- Thông tin pháp lý -->
+<div class="bg-white border border-[#E5E9EE] rounded-xl p-6">
+<div class="flex items-center mb-4">
+<span class="material-symbols-outlined text-primary mr-2">gavel</span>
+<h3 class="font-title-lg text-title-lg text-on-surface">Thông tin pháp lý</h3>
+</div>
+<div class="space-y-4">
+<div>
+<p class="font-label-md text-label-md text-secondary uppercase tracking-wider">Số đăng ký (SDK)</p>
+<p class="font-body-md text-body-md font-bold text-on-surface mt-1">VCO-2024-8859</p>
+</div>
+<div>
+<p class="font-label-md text-label-md text-secondary uppercase tracking-wider">Nhà sản xuất</p>
+<p class="font-body-md text-body-md text-on-surface mt-1">Sanh Long Pharma Co., Ltd</p>
+</div>
+<div>
+<p class="font-label-md text-label-md text-secondary uppercase tracking-wider">Xuất xứ</p>
+<p class="font-body-md text-body-md text-on-surface mt-1">Việt Nam</p>
+</div>
+</div>
+</div>
+<!-- Thành phần -->
+<div class="bg-white border border-[#E5E9EE] rounded-xl p-6">
+<div class="flex items-center mb-4">
+<span class="material-symbols-outlined text-primary mr-2">science</span>
+<h3 class="font-title-lg text-title-lg text-on-surface">Thành phần</h3>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between items-center p-3 bg-surface-container-low rounded-lg">
+<span class="font-body-md text-body-md text-on-surface">Amoxicillin Trihydrate</span>
+<span class="font-label-lg text-label-lg font-bold text-primary">500mg</span>
+</div>
+<div class="flex justify-between items-center p-3 bg-surface-container-low rounded-lg">
+<span class="font-body-md text-body-md text-on-surface">Colistin Sulfate</span>
+<span class="font-label-lg text-label-lg font-bold text-primary">2,500,000 UI</span>
+</div>
+<div class="flex justify-between items-center p-3 bg-surface-container-low rounded-lg">
+<span class="font-body-md text-body-md text-on-surface">Tá dược đặc biệt vừa đủ</span>
+<span class="font-label-lg text-label-lg font-bold text-primary">1g</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Panel (2/3) -->
+<div class="col-span-12 lg:col-span-8 space-y-6">
+<!-- Tab System -->
+<div class="bg-white border border-[#E5E9EE] rounded-xl overflow-hidden min-h-[600px] flex flex-col">
+<div class="flex border-b border-outline-variant bg-surface-container-lowest">
+<button class="flex-1 py-4 px-6 font-label-lg text-label-lg border-b-2 border-primary text-primary font-bold transition-all" id="btn-instructions" onclick="switchTab('tab-instructions')">
+                                Thông số &amp; Hướng dẫn
+                            </button>
+<button class="flex-1 py-4 px-6 font-label-lg text-label-lg border-b-2 border-transparent text-secondary hover:bg-surface-container-low transition-all" id="btn-inventory" onclick="switchTab('tab-inventory')">
+                                Phiên bản &amp; Lô hàng
+                            </button>
+</div>
+<div class="flex-1 p-8">
+<!-- Tab Content: Hướng dẫn -->
+<div class="space-y-8 animate-in fade-in duration-300" id="tab-instructions">
+<section>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-4 flex items-center">
+<span class="material-symbols-outlined mr-2 text-error">warning</span> Chống chỉ định
+                                    </h4>
+<div class="p-4 bg-error-container/20 rounded-lg border border-error-container">
+<p class="font-body-md text-body-md text-on-surface">Không sử dụng cho các động vật mẫn cảm với penicillin hoặc cephalosporin. Tuyệt đối không dùng cho thỏ, chuột lang hoặc chuột hamster vì có thể gây tử vong do rối loạn tiêu hóa nghiêm trọng.</p>
+</div>
+</section>
+<section>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-4 flex items-center">
+<span class="material-symbols-outlined mr-2 text-primary">thermostat</span> Bảo quản
+                                    </h4>
+<ul class="space-y-2">
+<li class="flex items-start">
+<span class="material-symbols-outlined text-[18px] text-primary mt-0.5 mr-2">check_circle</span>
+<span class="font-body-md text-body-md">Nơi khô ráo, thoáng mát, nhiệt độ không quá 30°C.</span>
+</li>
+<li class="flex items-start">
+<span class="material-symbols-outlined text-[18px] text-primary mt-0.5 mr-2">check_circle</span>
+<span class="font-body-md text-body-md">Tránh ánh sáng trực tiếp và tầm tay trẻ em.</span>
+</li>
+<li class="flex items-start">
+<span class="material-symbols-outlined text-[18px] text-primary mt-0.5 mr-2">check_circle</span>
+<span class="font-body-md text-body-md">Sử dụng ngay sau khi pha loãng với nước hoặc trộn thức ăn.</span>
+</li>
+</ul>
+</section>
+<section>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-4 flex items-center">
+<span class="material-symbols-outlined mr-2 text-tertiary">timer</span> Thời gian ngưng thuốc
+                                    </h4>
+<div class="grid grid-cols-2 gap-4">
+<div class="p-4 border border-outline-variant rounded-lg flex items-center justify-between">
+<span class="font-body-md text-body-md">Khai thác thịt:</span>
+<span class="font-bold text-primary">07 ngày</span>
+</div>
+<div class="p-4 border border-outline-variant rounded-lg flex items-center justify-between">
+<span class="font-body-md text-body-md">Khai thác trứng:</span>
+<span class="font-bold text-primary">03 ngày</span>
+</div>
+</div>
+</section>
+</div>
+<!-- Tab Content: Kho hàng -->
+<div class="hidden space-y-8 animate-in fade-in duration-300" id="tab-inventory">
+<section>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-4">Danh sách phiên bản (SKU)</h4>
+<div class="overflow-x-auto">
+<table class="w-full border-collapse">
+<thead>
+<tr class="bg-surface-container text-left border-b border-outline-variant">
+<th class="p-4 font-label-lg text-label-lg text-secondary">Mã SKU</th>
+<th class="p-4 font-label-lg text-label-lg text-secondary">Quy cách</th>
+<th class="p-4 font-label-lg text-label-lg text-secondary">Đơn vị tính</th>
+<th class="p-4 font-label-lg text-label-lg text-secondary text-right">Giá bán lẻ</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="p-4 font-body-md text-body-md font-bold">VMAX-G-100</td>
+<td class="p-4 font-body-md text-body-md">Gói 100g</td>
+<td class="p-4 font-body-md text-body-md">Gói</td>
+<td class="p-4 font-body-md text-body-md text-right font-bold text-primary">145.000 ₫</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="p-4 font-body-md text-body-md font-bold">VMAX-G-500</td>
+<td class="p-4 font-body-md text-body-md">Lon 500g</td>
+<td class="p-4 font-body-md text-body-md">Lon</td>
+<td class="p-4 font-body-md text-body-md text-right font-bold text-primary">680.000 ₫</td>
+</tr>
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="p-4 font-body-md text-body-md font-bold">VMAX-G-1K</td>
+<td class="p-4 font-body-md text-body-md">Túi 1kg</td>
+<td class="p-4 font-body-md text-body-md">Túi</td>
+<td class="p-4 font-body-md text-body-md text-right font-bold text-primary">1.250.000 ₫</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h4 class="font-title-lg text-title-lg text-on-surface mb-4">Lô hàng trong kho</h4>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<div class="p-4 border border-outline-variant rounded-lg bg-white relative overflow-hidden">
+<div class="absolute top-0 right-0 p-2">
+<span class="bg-tertiary-container/20 text-tertiary px-2 py-0.5 rounded font-label-md text-label-md">Đang bán</span>
+</div>
+<p class="font-label-md text-label-md text-secondary uppercase">Mã lô</p>
+<p class="font-body-lg text-body-lg font-bold mb-3">LOT-2024-A12</p>
+<div class="flex justify-between items-end">
+<div>
+<p class="font-label-md text-label-md text-secondary">Hạn sử dụng</p>
+<p class="font-body-md text-body-md text-on-surface">15/12/2026</p>
+</div>
+<div class="text-right">
+<p class="font-label-md text-label-md text-secondary">Tồn kho</p>
+<p class="font-body-md text-body-md font-bold text-on-surface">1,240 SP</p>
+</div>
+</div>
+</div>
+<div class="p-4 border border-outline-variant rounded-lg bg-white relative overflow-hidden">
+<div class="absolute top-0 right-0 p-2">
+<span class="bg-primary-container/10 text-primary px-2 py-0.5 rounded font-label-md text-label-md">Dự phòng</span>
+</div>
+<p class="font-label-md text-label-md text-secondary uppercase">Mã lô</p>
+<p class="font-body-lg text-body-lg font-bold mb-3">LOT-2024-B05</p>
+<div class="flex justify-between items-end">
+<div>
+<p class="font-label-md text-label-md text-secondary">Hạn sử dụng</p>
+<p class="font-body-md text-body-md text-on-surface">20/03/2027</p>
+</div>
+<div class="text-right">
+<p class="font-label-md text-label-md text-secondary">Tồn kho</p>
+<p class="font-body-md text-body-md font-bold text-on-surface">2,500 SP</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+<!-- Footer Action Card (Quick Stats) -->
+<div class="bg-surface-container-lowest border border-[#E5E9EE] rounded-xl p-6 flex items-center justify-between">
+<div class="flex space-x-10">
+<div>
+<p class="font-label-md text-label-md text-secondary mb-1">Giá bán gần nhất</p>
+<p class="font-headline-md text-headline-md text-on-surface">680.000 ₫ <span class="text-label-md font-normal text-secondary">/ Lon</span></p>
+</div>
+<div>
+<p class="font-label-md text-label-md text-secondary mb-1">Doanh số tháng này</p>
+<p class="font-headline-md text-headline-md text-tertiary">+12.5% <span class="material-symbols-outlined text-tertiary align-middle">trending_up</span></p>
+</div>
+</div>
+<button class="h-12 px-8 bg-primary text-on-primary font-bold font-label-lg text-label-lg rounded-lg hover:shadow-lg hover:scale-[1.02] transition-all flex items-center">
+<span class="material-symbols-outlined mr-2">shopping_cart</span> Nhập kho ngay
+                        </button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<script>
+        function switchTab(tabId) {
+            // Hide all tabs
+            document.getElementById('tab-instructions').classList.add('hidden');
+            document.getElementById('tab-inventory').classList.add('hidden');
+            
+            // Remove active classes
+            document.getElementById('btn-instructions').classList.remove('border-primary', 'text-primary', 'font-bold');
+            document.getElementById('btn-instructions').classList.add('border-transparent', 'text-secondary');
+            document.getElementById('btn-inventory').classList.remove('border-primary', 'text-primary', 'font-bold');
+            document.getElementById('btn-inventory').classList.add('border-transparent', 'text-secondary');
+
+            // Show active tab
+            document.getElementById(tabId).classList.remove('hidden');
+            
+            // Set active button style
+            const activeBtnId = tabId === 'tab-instructions' ? 'btn-instructions' : 'btn-inventory';
+            const btn = document.getElementById(activeBtnId);
+            btn.classList.add('border-primary', 'text-primary', 'font-bold');
+            btn.classList.remove('border-transparent', 'text-secondary');
+        }
+    </script>
+</body></html>

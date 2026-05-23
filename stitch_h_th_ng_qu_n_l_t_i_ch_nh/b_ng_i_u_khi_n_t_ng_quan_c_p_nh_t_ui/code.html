@@ -1,0 +1,348 @@
+<!DOCTYPE html><html class="light" lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Sanh Long Vetco CRM - Bảng điều khiển</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#1E5A9C",
+                        "on-background": "#121c29",
+                        "background": "#FAFBFC",
+                        "secondary": "#4A5663",
+                        "outline-variant": "#E5E9EE",
+                        "surface": "#FFFFFF",
+                        "sidebar-active-bg": "#EEF4FB",
+                        "sidebar-active-text": "#143C69",
+                        "badge-bg": "#F4F6F8",
+                        "badge-text": "#2F3947"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "8px",
+                        "xl": "10px",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "input-height": "40px",
+                        "card-padding-mobile": "16px",
+                        "desktop-margin": "40px",
+                        "sidebar-width": "240px",
+                        "card-padding": "24px",
+                        "unit": "4",
+                        "header-height": "64px",
+                        "mobile-margin": "16px"
+                    },
+                    "fontFamily": {
+                        "title-lg": ["Be Vietnam Pro"],
+                        "display-lg": ["Be Vietnam Pro"],
+                        "headline-lg": ["Be Vietnam Pro"],
+                        "label-md": ["Be Vietnam Pro"],
+                        "headline-md": ["Be Vietnam Pro"],
+                        "body-md": ["Be Vietnam Pro"],
+                        "body-lg": ["Be Vietnam Pro"],
+                        "label-lg": ["Be Vietnam Pro"]
+                    },
+                    "fontSize": {
+                        "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAFBFC;
+        }
+        .tabular-nums {
+            font-variant-numeric: tabular-nums;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body class="text-on-background antialiased bg-background">
+<!-- Side Navigation -->
+<aside class="fixed left-0 top-0 h-full w-[240px] bg-white border-r border-[#E5E9EE] flex flex-col py-6 z-50">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 bg-primary flex items-center justify-center rounded-lg">
+<span class="material-symbols-outlined text-white" data-icon="pets">pets</span>
+</div>
+<div>
+<h1 class="text-title-lg font-semibold text-primary leading-tight">Sanh Long Vetco</h1>
+<p class="text-label-md text-secondary">Hệ thống CRM</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-6 py-3 bg-[#EEF4FB] text-[#143C69] font-semibold border-l-[3px] border-[#1E5A9C] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-label-lg">Bảng điều khiển</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+<span class="text-label-lg">Quản lý nợ</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="local_shipping">local_shipping</span>
+<span class="text-label-lg">Giao hàng</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="text-label-lg">Báo cáo</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-label-lg">Cài đặt</span>
+</a>
+</nav>
+<div class="px-6 pt-6 border-t border-outline-variant">
+<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-[#F4F6F8] cursor-pointer transition-colors">
+<img alt="Ảnh đại diện người dùng" class="w-8 h-8 rounded-full bg-outline-variant object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuButvda1QP2mWXG1R4Ab8OkJ5dPEmUrY7CP6vMB1loFhgiRNv2aTXsIPB8ozKuEiDd5_yeLg3d_v96DYTrkkXqYftZrit9lkqA84MGyylzGtSsK1NQ16KD541NDuThgvxYj79Y0qWKS9iXhzsMsH51Z1cacO3JXgUKS7x5dKbUYL-BK341OVbeo_-PXRBg57fj0N1Mhw_KuN6v9jen8wuDrL0TyqPAme0cVd_8TZE2Vc_zAMTTOgJM8tUuZvFJbwevNGoDwiH16wgU">
+<div class="overflow-hidden">
+<p class="text-label-lg font-semibold truncate">Quản trị viên</p>
+<p class="text-label-md text-secondary truncate">admin@sanhlong.vn</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Top App Bar -->
+<header class="fixed top-0 right-0 w-[calc(100%-240px)] h-16 bg-surface border-b border-outline-variant flex justify-between items-center px-desktop-margin z-40">
+<div class="flex items-center bg-background rounded-lg px-4 h-10 w-96 border border-outline-variant focus-within:border-primary focus-within:ring-[4px] focus-within:ring-[#D6E4F4] transition-all">
+<span class="material-symbols-outlined text-secondary mr-2" data-icon="search">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-md w-full placeholder-secondary p-0" placeholder="Tìm kiếm khách hàng, hóa đơn..." type="text">
+</div>
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 flex items-center justify-center text-secondary hover:bg-background rounded-lg transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center text-secondary hover:bg-background rounded-lg transition-all">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+<div class="h-6 w-[1px] bg-outline-variant mx-2"></div>
+<button class="bg-primary text-white px-4 h-10 rounded-lg font-semibold text-label-lg hover:opacity-90 active:scale-95 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]" data-icon="add">add</span>
+            Tạo mới
+        </button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-[240px] pt-16 min-h-screen">
+<div class="p-desktop-margin max-w-[1600px] mx-auto">
+<!-- Welcome Header -->
+<div class="mb-8">
+<h2 class="text-headline-md font-semibold text-on-background">Chào buổi sáng, Quản trị viên</h2>
+<p class="text-body-md text-secondary">Đây là tóm tắt hoạt động của Sanh Long Vetco hôm nay.</p>
+</div>
+<!-- Metrics Summary -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<!-- Card 1 -->
+<div class="bg-surface border border-outline-variant rounded-xl p-card-padding">
+<div class="flex justify-between items-start mb-4">
+<span class="text-label-lg text-secondary">Doanh thu tháng</span>
+<div class="w-10 h-10 bg-sidebar-active-bg text-primary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+</div>
+<div class="text-headline-md font-semibold tabular-nums mb-2">480.500.000 ₫</div>
+<div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-badge-bg border border-outline-variant text-badge-text text-label-md">
+<span class="w-2 h-2 rounded-full bg-[#2E7D5B]"></span>
+                    +12% vs tháng trước
+                </div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface border border-outline-variant rounded-xl p-card-padding">
+<div class="flex justify-between items-start mb-4">
+<span class="text-label-lg text-secondary">Công nợ quá hạn</span>
+<div class="w-10 h-10 bg-[#FFF5F5] text-[#B23A3A] rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="warning">warning</span>
+</div>
+</div>
+<div class="text-headline-md font-semibold tabular-nums mb-2">45.200.000 ₫</div>
+<div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-badge-bg border border-outline-variant text-badge-text text-label-md">
+<span class="w-2 h-2 rounded-full bg-[#B23A3A]"></span>
+                    8 khách hàng đang trễ hạn
+                </div>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface border border-outline-variant rounded-xl p-card-padding">
+<div class="flex justify-between items-start mb-4">
+<span class="text-label-lg text-secondary">Lô hàng sắp hết hạn</span>
+<div class="w-10 h-10 bg-[#FFF9F2] text-[#B8722C] rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+</div>
+</div>
+<div class="text-headline-md font-semibold tabular-nums mb-2">14 lô</div>
+<div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-badge-bg border border-outline-variant text-badge-text text-label-md">
+<span class="w-2 h-2 rounded-full bg-[#B8722C]"></span>
+                    Trong 30 ngày tới
+                </div>
+</div>
+</div>
+<!-- Main Content Grid -->
+<div class="flex flex-col lg:flex-row gap-8">
+<!-- Left Column: Chart Container -->
+<div class="lg:w-2/3">
+<div class="bg-surface border border-outline-variant rounded-xl p-card-padding h-full min-h-[480px] flex flex-col">
+<div class="flex justify-between items-center mb-8">
+<h3 class="text-title-lg font-semibold">Xu hướng doanh thu &amp; Dòng tiền</h3>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 bg-primary rounded-sm"></span>
+<span class="text-label-md text-secondary">Thu vào</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="w-3 h-3 bg-[#D4E3FF] rounded-sm"></span>
+<span class="text-label-md text-secondary">Chi ra</span>
+</div>
+</div>
+</div>
+<!-- Mock Bar Chart -->
+<div class="flex-1 flex items-end justify-between gap-4 pt-4 px-2">
+<!-- Chart Bars -->
+<div class="flex-1 flex flex-col items-center gap-2 group">
+<div class="w-full flex justify-center gap-1 items-end h-64">
+<div class="w-1/3 bg-primary rounded-t-sm h-[60%] transition-all group-hover:opacity-80"></div>
+<div class="w-1/3 bg-[#D4E3FF] rounded-t-sm h-[40%] transition-all group-hover:opacity-80"></div>
+</div>
+<span class="text-label-md text-secondary">Tháng 1</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-2 group">
+<div class="w-full flex justify-center gap-1 items-end h-64">
+<div class="w-1/3 bg-primary rounded-t-sm h-[75%] transition-all group-hover:opacity-80"></div>
+<div class="w-1/3 bg-[#D4E3FF] rounded-t-sm h-[35%] transition-all group-hover:opacity-80"></div>
+</div>
+<span class="text-label-md text-secondary">Tháng 2</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-2 group">
+<div class="w-full flex justify-center gap-1 items-end h-64">
+<div class="w-1/3 bg-primary rounded-t-sm h-[90%] transition-all group-hover:opacity-80"></div>
+<div class="w-1/3 bg-[#D4E3FF] rounded-t-sm h-[50%] transition-all group-hover:opacity-80"></div>
+</div>
+<span class="text-label-md text-secondary">Tháng 3</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-2 group">
+<div class="w-full flex justify-center gap-1 items-end h-64">
+<div class="w-1/3 bg-primary rounded-t-sm h-[65%] transition-all group-hover:opacity-80"></div>
+<div class="w-1/3 bg-[#D4E3FF] rounded-t-sm h-[45%] transition-all group-hover:opacity-80"></div>
+</div>
+<span class="text-label-md text-secondary">Tháng 4</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-2 group">
+<div class="w-full flex justify-center gap-1 items-end h-64">
+<div class="w-1/3 bg-primary rounded-t-sm h-[80%] transition-all group-hover:opacity-80"></div>
+<div class="w-1/3 bg-[#D4E3FF] rounded-t-sm h-[30%] transition-all group-hover:opacity-80"></div>
+</div>
+<span class="text-label-md text-secondary">Tháng 5</span>
+</div>
+<div class="flex-1 flex flex-col items-center gap-2 group">
+<div class="w-full flex justify-center gap-1 items-end h-64">
+<div class="w-1/3 bg-primary rounded-t-sm h-[100%] transition-all group-hover:opacity-80"></div>
+<div class="w-1/3 bg-[#D4E3FF] rounded-t-sm h-[40%] transition-all group-hover:opacity-80"></div>
+</div>
+<span class="text-label-md font-semibold text-on-surface">Tháng 6</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Lists -->
+<div class="lg:w-1/3 space-y-8">
+<!-- Disbursements List -->
+<section class="bg-surface border border-outline-variant rounded-xl p-card-padding">
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-title-lg font-semibold">Phiếu chi chờ duyệt (3)</h3>
+<button class="text-primary text-label-lg font-semibold hover:underline">Tất cả</button>
+</div>
+<div class="space-y-6">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<img class="w-10 h-10 rounded-full border border-outline-variant object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPQDE5y1lq3FHp6cMOtyux2vZmAPQF8NS3fA0G06g-qtE1M11o7DP-7XOejRMBp8nFKS5vq8WkDU13Ku8PeKnhikdMGcMQLeb1_XK-_1urPHpxbjHp9W6TYLlkaoEA9GncFLjMbWN2dODUwbYFaZlfsTxqh4YkVxaLtu9l7w3uC5wHPL-KPmBvI_GwnM-06yySwIkG3GAlICqxpQSGsu0MGx9PD3dOm_R4-kvtQcRzm8ipHOXID-op-kyGp3j-t-qm-TU24orn5Xc">
+<div>
+<p class="text-body-md font-semibold">Trần Văn Hùng</p>
+<p class="text-label-md text-secondary">10:30 • Nhập thuốc</p>
+</div>
+</div>
+<p class="text-body-md font-semibold tabular-nums text-right">12.500.000 ₫</p>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<img class="w-10 h-10 rounded-full border border-outline-variant object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5LiH7hpBAxVYtFVI7OcK5QnEe7lzAupnjrwUqAc4GQtdzsH25WVU3bF98zgF_VCYQXq52kvYpTW_zx6IxfOmJiqgfIQPnWub6zMI9jMizbQNWoY4gza_EIku-TLwGHexWG-jiN65MiZVhfEprrNT2emmD5sNyEZHwg0qkvy2kbyXxSaY_2rPxH6psEPNubHEvs8tcqxL9WuOY2KEYUvWJKLjD19pFFWCXxXiM88SoaXhx84eDwnDOBcwCajv4sv_QesNG6kNX4RM">
+<div>
+<p class="text-body-md font-semibold">Lê Thị An</p>
+<p class="text-label-md text-secondary">09:15 • Vận chuyển</p>
+</div>
+</div>
+<p class="text-body-md font-semibold tabular-nums text-right">3.200.000 ₫</p>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<img class="w-10 h-10 rounded-full border border-outline-variant object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8q4zw75Mj8O8XbS5a0-F0J1-GoSAwBgv0OSsb1LWO_ixLvNS8JuaHf8pWmLlDBJoAg25VFwGcPpJ7gF_b_f1tR47qXoIkAIGevFjZ2JC25O7ELvSRnvguHyI5VqIj3V3HAEvmkEaZ1BdRzfI0fFPbsUYzYdK_dr9i0hZ0x6EjWpeO4TNfMc15UnIGaRt8NOPa7Nq0-90VmsdLezz4_I10JiisR_ueKmx9h7tUkBgmuAEbHyABgfKyrpcttCqqgzZmKMbRnCM0IGc">
+<div>
+<p class="text-body-md font-semibold">Nguyễn Minh</p>
+<p class="text-label-md text-secondary">08:45 • Vật tư</p>
+</div>
+</div>
+<p class="text-body-md font-semibold tabular-nums text-right">8.900.000 ₫</p>
+</div>
+</div>
+</section>
+<!-- Appointments List -->
+<section class="bg-surface border border-outline-variant rounded-xl p-card-padding">
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-title-lg font-semibold">Lịch hẹn hôm nay (5)</h3>
+</div>
+<div class="space-y-6">
+<div class="flex items-start gap-3">
+<div class="flex flex-col items-center min-w-[48px]">
+<span class="text-label-lg font-semibold text-primary tabular-nums">14:00</span>
+<div class="w-[2px] h-8 bg-outline-variant mt-1"></div>
+</div>
+<div class="flex-1 bg-background p-3 rounded-lg border-l-4 border-primary">
+<p class="text-body-md font-semibold">Phòng khám thú y PetCare</p>
+<p class="text-label-md text-secondary">Giao lô vắc-xin tổng hợp</p>
+</div>
+</div>
+<div class="flex items-start gap-3">
+<div class="flex flex-col items-center min-w-[48px]">
+<span class="text-label-lg font-semibold text-primary tabular-nums">15:30</span>
+<div class="w-[2px] h-8 bg-outline-variant mt-1"></div>
+</div>
+<div class="flex-1 bg-background p-3 rounded-lg border-l-4 border-primary">
+<p class="text-body-md font-semibold">Hộ chăn nuôi Anh Tuấn</p>
+<p class="text-label-md text-secondary">Tư vấn dinh dưỡng định kỳ</p>
+</div>
+</div>
+<div class="flex items-start gap-3">
+<div class="flex flex-col items-center min-w-[48px]">
+<span class="text-label-lg font-semibold text-primary tabular-nums">16:45</span>
+</div>
+<div class="flex-1 bg-background p-3 rounded-lg border-l-4 border-primary">
+<p class="text-body-md font-semibold">Đại lý thuốc thú y Miền Tây</p>
+<p class="text-label-md text-secondary">Ký kết hợp đồng phân phối mới</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+
+
+</body></html>

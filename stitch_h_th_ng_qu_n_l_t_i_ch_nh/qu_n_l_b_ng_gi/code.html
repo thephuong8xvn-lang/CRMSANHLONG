@@ -1,0 +1,627 @@
+<!DOCTYPE html><html class="light" lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Price List Editor - Sanh Long Vetco CRM</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#27313f",
+                    "surface-tint": "#265fa2",
+                    "primary-container": "#1e5a9c",
+                    "on-tertiary": "#ffffff",
+                    "on-surface": "#121c29",
+                    "outline": "#727781",
+                    "on-primary-fixed": "#001c3a",
+                    "on-surface-variant": "#424750",
+                    "on-tertiary-container": "#92e1b8",
+                    "on-secondary": "#ffffff",
+                    "secondary-fixed": "#d7e4f4",
+                    "on-tertiary-fixed": "#002113",
+                    "secondary-container": "#d7e4f4",
+                    "surface": "#f8f9ff",
+                    "on-primary-fixed-variant": "#004785",
+                    "primary-fixed": "#d4e3ff",
+                    "tertiary-fixed-dim": "#88d6af",
+                    "outline-variant": "#c2c6d2",
+                    "on-tertiary-fixed-variant": "#005236",
+                    "inverse-primary": "#a5c8ff",
+                    "on-background": "#121c29",
+                    "surface-container-low": "#eff4ff",
+                    "secondary": "#54606d",
+                    "on-primary-container": "#b6d2ff",
+                    "error": "#ba1a1a",
+                    "background": "#f8f9ff",
+                    "surface-variant": "#d9e3f5",
+                    "primary-fixed-dim": "#a5c8ff",
+                    "surface-bright": "#f8f9ff",
+                    "on-error": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "surface-container-high": "#dfe9fb",
+                    "tertiary-fixed": "#a4f3ca",
+                    "tertiary-container": "#0e6646",
+                    "surface-dim": "#d0dbed",
+                    "surface-container-highest": "#d9e3f5",
+                    "on-primary": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "on-secondary-fixed-variant": "#3c4855",
+                    "primary": "#00427d",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary-container": "#596673",
+                    "tertiary": "#004c32",
+                    "inverse-on-surface": "#eaf1ff",
+                    "surface-container": "#e5eeff",
+                    "secondary-fixed-dim": "#bbc8d7",
+                    "on-secondary-fixed": "#111d28"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sidebar-width": "240px",
+                    "card-padding": "24px",
+                    "unit": "4",
+                    "header-height": "64px",
+                    "mobile-margin": "16px",
+                    "input-height": "40px",
+                    "card-padding-mobile": "16px",
+                    "desktop-margin": "40px"
+            },
+            "fontFamily": {
+                    "label-md": ["Be Vietnam Pro"],
+                    "headline-md": ["Be Vietnam Pro"],
+                    "body-md": ["Be Vietnam Pro"],
+                    "body-lg": ["Be Vietnam Pro"],
+                    "label-lg": ["Be Vietnam Pro"],
+                    "title-lg": ["Be Vietnam Pro"],
+                    "display-lg": ["Be Vietnam Pro"],
+                    "headline-lg": ["Be Vietnam Pro"]
+            },
+            "fontSize": {
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                    "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Table Sticky Header */
+        .price-table-container { height: calc(100vh - 280px); }
+        th { position: sticky; top: 0; z-index: 10; background: #FFFFFF; }
+        
+        /* Standardized Input Styles */
+        .input-standard { height: 40px; border-radius: 8px; border: 1px solid #CCD3DB; }
+        .input-standard:focus { outline: none; border-color: #1E5A9C; box-shadow: 0 0 0 4px #D6E4F4; }
+
+        /* Standardized Badge Styles */
+        .status-badge { 
+            background-color: #F4F6F8; 
+            border: 1px solid #E5E9EE; 
+            color: #2F3947; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            padding: 2px 8px; 
+            border-radius: 9999px; 
+            font-weight: 600;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot-success { background-color: #10B981; }
+        .status-dot-warning { background-color: #F59E0B; }
+        .status-dot-alert { background-color: #EF4444; }
+    </style>
+<style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Table Sticky Header */
+        .price-table-container { height: calc(100vh - 280px); }
+        th { position: sticky; top: 0; z-index: 10; background: #FFFFFF; }
+        
+        /* Standardized Input Styles */
+        .input-standard { height: 40px; border-radius: 8px; border: 1px solid #CCD3DB; }
+        .input-standard:focus { outline: none; border-color: #1E5A9C; box-shadow: 0 0 0 4px #D6E4F4; }
+
+        /* Standardized Badge Styles */
+        .status-badge { 
+            background-color: #F4F6F8; 
+            border: 1px solid #E5E9EE; 
+            color: #2F3947; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            padding: 2px 8px; 
+            border-radius: 9999px; 
+            font-weight: 600;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot-success { background-color: #10B981; }
+        .status-dot-warning { background-color: #F59E0B; }
+        .status-dot-alert { background-color: #EF4444; }
+    </style><style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Table Sticky Header */
+        .price-table-container { height: calc(100vh - 280px); }
+        th { position: sticky; top: 0; z-index: 10; background: #FFFFFF; }
+        
+        /* Standardized Input Styles */
+        .input-standard { height: 40px; border-radius: 8px; border: 1px solid #CCD3DB; }
+        .input-standard:focus { outline: none; border-color: #1E5A9C; box-shadow: 0 0 0 4px #D6E4F4; }
+
+        /* Standardized Badge Styles */
+        .status-badge { 
+            background-color: #F4F6F8; 
+            border: 1px solid #E5E9EE; 
+            color: #2F3947; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            padding: 2px 8px; 
+            border-radius: 9999px; 
+            font-weight: 600;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot-success { background-color: #10B981; }
+        .status-dot-warning { background-color: #F59E0B; }
+        .status-dot-alert { background-color: #EF4444; }
+    </style><style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Table Sticky Header */
+        .price-table-container { height: calc(100vh - 280px); }
+        th { position: sticky; top: 0; z-index: 10; background: #FFFFFF; }
+        
+        /* Standardized Input Styles */
+        .input-standard { height: 40px; border-radius: 8px; border: 1px solid #CCD3DB; }
+        .input-standard:focus { outline: none; border-color: #1E5A9C; box-shadow: 0 0 0 4px #D6E4F4; }
+
+        /* Standardized Badge Styles */
+        .status-badge { 
+            background-color: #F4F6F8; 
+            border: 1px solid #E5E9EE; 
+            color: #2F3947; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            padding: 2px 8px; 
+            border-radius: 9999px; 
+            font-weight: 600;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot-success { background-color: #10B981; }
+        .status-dot-warning { background-color: #F59E0B; }
+        .status-dot-alert { background-color: #EF4444; }
+    </style><style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Table Sticky Header */
+        .price-table-container { height: calc(100vh - 280px); }
+        th { position: sticky; top: 0; z-index: 10; background: #FFFFFF; }
+        
+        /* Standardized Input Styles */
+        .input-standard { height: 40px; border-radius: 8px; border: 1px solid #CCD3DB; }
+        .input-standard:focus { outline: none; border-color: #1E5A9C; box-shadow: 0 0 0 4px #D6E4F4; }
+
+        /* Standardized Badge Styles */
+        .status-badge { 
+            background-color: #F4F6F8; 
+            border: 1px solid #E5E9EE; 
+            color: #2F3947; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            padding: 2px 8px; 
+            border-radius: 9999px; 
+            font-weight: 600;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot-success { background-color: #10B981; }
+        .status-dot-warning { background-color: #F59E0B; }
+        .status-dot-alert { background-color: #EF4444; }
+    </style><style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Table Sticky Header */
+        .price-table-container { height: calc(100vh - 280px); }
+        th { position: sticky; top: 0; z-index: 10; background: #FFFFFF; }
+        
+        /* Standardized Input Styles */
+        .input-standard { height: 40px; border-radius: 8px; border: 1px solid #CCD3DB; }
+        .input-standard:focus { outline: none; border-color: #1E5A9C; box-shadow: 0 0 0 4px #D6E4F4; }
+
+        /* Standardized Badge Styles */
+        .status-badge { 
+            background-color: #F4F6F8; 
+            border: 1px solid #E5E9EE; 
+            color: #2F3947; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            padding: 2px 8px; 
+            border-radius: 9999px; 
+            font-weight: 600;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot-success { background-color: #10B981; }
+        .status-dot-warning { background-color: #F59E0B; }
+        .status-dot-alert { background-color: #EF4444; }
+    </style><style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Table Sticky Header */
+        .price-table-container { height: calc(100vh - 280px); }
+        th { position: sticky; top: 0; z-index: 10; background: #FFFFFF; }
+        
+        /* Standardized Input Styles */
+        .input-standard { height: 40px; border-radius: 8px; border: 1px solid #CCD3DB; }
+        .input-standard:focus { outline: none; border-color: #1E5A9C; box-shadow: 0 0 0 4px #D6E4F4; }
+
+        /* Standardized Badge Styles */
+        .status-badge { 
+            background-color: #F4F6F8; 
+            border: 1px solid #E5E9EE; 
+            color: #2F3947; 
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            padding: 2px 8px; 
+            border-radius: 9999px; 
+            font-weight: 600;
+        }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .status-dot-success { background-color: #10B981; }
+        .status-dot-warning { background-color: #F59E0B; }
+        .status-dot-alert { background-color: #EF4444; }
+    </style></head>
+<body class="flex text-on-surface">
+<!-- Sidebar Navigation (Mandatory) -->
+<aside class="flex flex-col py-6 border-r border-outline-variant h-screen w-[240px] fixed left-0 top-0 bg-surface-container-lowest z-50">
+<div class="px-6 mb-8">
+<h1 class="font-headline-md text-headline-md text-primary font-semibold">Vetco CRM</h1>
+<p class="font-body-md text-body-md text-secondary font-semibold">Hệ thống quản trị</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center px-6 py-3 text-secondary hover:bg-surface-container-low transition-colors font-label-lg text-label-lg font-semibold" href="#">
+<span class="material-symbols-outlined mr-3 font-semibold" data-icon="dashboard">dashboard</span>
+                Tổng quan
+            </a>
+<a class="flex items-center px-6 py-3 text-secondary hover:bg-surface-container-low transition-colors font-label-lg text-label-lg font-semibold" href="#">
+<span class="material-symbols-outlined mr-3 font-semibold" data-icon="group">group</span>
+                Khách hàng
+            </a>
+<a class="flex items-center px-6 py-3 bg-secondary-container text-primary border-l-[3px] border-primary font-label-lg text-label-lg scale-[0.98] transition-transform font-semibold" href="#">
+<span class="material-symbols-outlined mr-3 font-semibold" data-icon="account_balance_wallet">account_balance_wallet</span>
+                Công nợ
+            </a>
+<a class="flex items-center px-6 py-3 text-secondary hover:bg-surface-container-low transition-colors font-label-lg text-label-lg font-semibold" href="#">
+<span class="material-symbols-outlined mr-3 font-semibold" data-icon="pets">pets</span>
+                Đàn nuôi
+            </a>
+<a class="flex items-center px-6 py-3 text-secondary hover:bg-surface-container-low transition-colors font-label-lg text-label-lg font-semibold" href="#">
+<span class="material-symbols-outlined mr-3 font-semibold" data-icon="event_note">event_note</span>
+                Lịch vaccine
+            </a>
+<a class="flex items-center px-6 py-3 text-secondary hover:bg-surface-container-low transition-colors font-label-lg text-label-lg font-semibold" href="#">
+<span class="material-symbols-outlined mr-3 font-semibold" data-icon="analytics">analytics</span>
+                Báo cáo
+            </a>
+</nav>
+<div class="px-6 mt-auto">
+<div class="flex items-center gap-3 p-3 bg-surface-container rounded-lg">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-white text-xs">SL</div>
+<div class="overflow-hidden">
+<p class="text-xs truncate font-semibold">Sanh Long Vetco</p>
+<p class="text-[10px] text-secondary truncate font-semibold">Admin</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Top App Bar (Mandatory) -->
+<header class="fixed top-0 right-0 left-[240px] h-[64px] flex items-center justify-between px-10 z-40 bg-surface-container-lowest border-b border-outline-variant">
+<div class="flex items-center gap-4">
+<h2 class="font-title-lg text-title-lg text-primary font-semibold">Bảng Giá</h2>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline font-semibold" data-icon="search">search</span>
+<input class="pl-10 pr-4 input-standard w-64 bg-surface-container-low font-body-md text-body-md focus:outline-none" placeholder="Tìm sản phẩm..." type="text">
+</div>
+<div class="flex items-center gap-4 text-secondary">
+<button class="hover:bg-surface-container-low p-2 rounded-full transition-colors font-semibold"><span class="material-symbols-outlined font-semibold" data-icon="notifications">notifications</span></button>
+<button class="hover:bg-surface-container-low p-2 rounded-full transition-colors font-semibold"><span class="material-symbols-outlined font-semibold" data-icon="help_outline">help_outline</span></button>
+<button class="hover:bg-surface-container-low p-2 rounded-full transition-colors font-semibold"><span class="material-symbols-outlined font-semibold" data-icon="account_circle">account_circle</span></button>
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="ml-[240px] mt-[64px] flex w-full h-[calc(100vh-64px)] overflow-hidden">
+<!-- Price Tiers Sidebar (Editor Specific) -->
+<div class="w-[280px] border-r border-outline-variant bg-surface-container-lowest flex flex-col">
+<div class="p-6 border-b border-outline-variant flex justify-between items-center">
+<span class="font-label-lg text-label-lg text-secondary uppercase tracking-wider font-semibold">Cấp bậc giá</span>
+<button class="text-primary hover:bg-secondary-container p-1 rounded transition-colors font-semibold">
+<span class="material-symbols-outlined text-[20px] font-semibold" data-icon="add_circle">add_circle</span>
+</button>
+</div>
+<div class="flex-1 overflow-y-auto no-scrollbar py-2">
+<!-- Active State Item -->
+<button class="w-full text-left px-6 py-4 border-l-[3px] border-primary bg-secondary-container flex flex-col gap-1 font-semibold">
+<span class="text-primary font-body-md font-semibold">Đại lý cấp 1</span>
+<span class="text-[11px] text-on-secondary-container font-semibold">245 sản phẩm • Đang áp dụng</span>
+</button>
+<button class="w-full text-left px-6 py-4 border-l-[3px] border-transparent hover:bg-surface-container-low flex flex-col gap-1 transition-all font-semibold">
+<span class="font-medium text-on-surface font-body-md font-semibold">Bán lẻ</span>
+<span class="text-[11px] text-secondary font-semibold">245 sản phẩm • Mặc định</span>
+</button>
+<button class="w-full text-left px-6 py-4 border-l-[3px] border-transparent hover:bg-surface-container-low flex flex-col gap-1 transition-all font-semibold">
+<div class="flex items-center gap-2">
+<span class="font-medium text-on-surface font-body-md font-semibold">VIP TP.HCM</span>
+<span class="bg-[#1E5A9C] text-white px-2 py-0.5 rounded text-[9px] font-semibold">VIP</span>
+</div>
+<span class="text-[11px] text-secondary font-semibold">112 sản phẩm • Miền Nam</span>
+</button>
+<button class="w-full text-left px-6 py-4 border-l-[3px] border-transparent hover:bg-surface-container-low flex flex-col gap-1 transition-all font-semibold">
+<span class="font-medium text-on-surface font-body-md font-semibold">Cửa hàng liên kết</span>
+<span class="text-[11px] text-secondary font-semibold">189 sản phẩm • Dự thảo</span>
+</button>
+</div>
+</div>
+<!-- Editor Canvas -->
+<div class="flex-1 bg-surface-container-lowest flex flex-col overflow-hidden">
+<!-- Canvas Header -->
+<div class="p-8 pb-4 flex flex-col gap-6">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface font-semibold">Đại lý cấp 1</h3>
+<p class="text-secondary font-body-md font-semibold">Thiết lập chính sách giá cho các đối tác cấp chiến lược toàn quốc.</p>
+</div>
+<div class="flex gap-3">
+<button class="px-6 h-10 bg-[#1E5A9C] text-white rounded-lg font-label-lg hover:opacity-90 transition-all flex items-center gap-2 font-semibold">Hủy bỏ</button>
+<button class="px-6 h-10 bg-[#1E5A9C] text-white rounded-lg font-label-lg hover:opacity-90 transition-all flex items-center gap-2 font-semibold">
+<span class="material-symbols-outlined text-[18px] font-semibold" data-icon="save">save</span>
+                            Lưu thay đổi
+                        </button>
+</div>
+</div>
+<!-- Date Range & Filters -->
+<div class="flex items-center gap-8 p-4 bg-surface-container-low rounded-xl border border-outline-variant">
+<div class="flex items-center gap-4">
+<span class="font-label-md text-secondary uppercase font-semibold">Thời hạn áp dụng:</span>
+<div class="flex items-center gap-2">
+<input class="input-standard px-3 bg-white font-body-md w-full" type="date" value="2023-01-01">
+<span class="text-outline font-semibold">đến</span>
+<input class="input-standard px-3 bg-white font-body-md w-full" type="date" value="2024-12-31">
+</div>
+</div>
+<div class="h-6 w-px bg-outline-variant"></div>
+<div class="flex items-center gap-4">
+<span class="font-label-md text-secondary uppercase font-semibold">Nhóm sản phẩm:</span>
+<select class="input-standard px-3 bg-white font-body-md w-full">
+<option>Tất cả sản phẩm</option>
+<option>Thuốc kháng sinh</option>
+<option>Men tiêu hóa</option>
+<option>Dụng cụ thú y</option>
+</select>
+</div>
+</div>
+</div>
+<!-- Price Table -->
+<div class="flex-1 px-8 pb-8">
+<div class="price-table-container overflow-auto border border-outline-variant rounded-xl">
+<table class="w-full text-left border-collapse bg-white">
+<thead class="shadow-sm">
+<tr class="bg-surface-container-low">
+<th class="p-4 font-label-lg text-secondary border-b border-outline-variant w-12 text-center">#</th>
+<th class="p-4 font-label-lg text-secondary border-b border-outline-variant">Sản phẩm / Biến thể</th>
+<th class="p-4 font-label-lg text-secondary border-b border-outline-variant text-center">ĐVT</th>
+<th class="p-4 font-label-lg text-secondary border-b border-outline-variant text-right">Giá vốn (₫)</th>
+<th class="p-4 font-label-lg text-secondary border-b border-outline-variant text-right">Giá hiện tại (₫)</th>
+<th class="p-4 font-label-lg text-primary border-b border-outline-variant text-right bg-secondary-container/30">Giá mới (₫)</th>
+<th class="p-4 font-label-lg text-secondary border-b border-outline-variant text-center">Biên lợi nhuận</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="p-4 font-body-md text-outline text-center font-semibold">01</td>
+<td class="p-4 font-semibold">
+<div class="flex flex-col">
+<span class="text-on-surface font-body-md font-semibold">Amoxicillin 50% Vetco</span>
+<span class="text-xs text-secondary font-semibold">SKU: VTC-AMO-50-1KG</span>
+</div>
+</td>
+<td class="p-4 text-center font-body-md font-semibold">Hũ 1kg</td>
+<td class="p-4 text-right font-body-md font-semibold">1.250.000</td>
+<td class="p-4 text-right font-body-md font-semibold">1.450.000</td>
+<td class="p-4 bg-secondary-container/10 font-semibold">
+<div class="flex justify-end">
+<input class="w-32 h-9 px-3 text-right bg-white border border-[#CCD3DB] rounded focus:border-[#1E5A9C] focus:ring-2 focus:ring-[#D6E4F4] font-semibold text-primary font-body-md" type="text" value="1.420.000">
+</div>
+</td>
+<td class="p-4 text-center font-semibold">
+<span class="status-badge text-[11px]"><span class="status-dot status-dot-success"></span>13.6%</span>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="p-4 font-body-md text-outline text-center font-semibold">02</td>
+<td class="p-4 font-semibold">
+<div class="flex flex-col">
+<span class="text-on-surface font-body-md font-semibold">Enrofloxacin Oral Solution</span>
+<span class="text-xs text-secondary font-semibold">SKU: VTC-ENR-10-500ML</span>
+</div>
+</td>
+<td class="p-4 text-center font-body-md font-semibold">Chai 500ml</td>
+<td class="p-4 text-right font-body-md font-semibold">480.000</td>
+<td class="p-4 text-right font-body-md font-semibold">620.000</td>
+<td class="p-4 bg-secondary-container/10 font-semibold">
+<div class="flex justify-end">
+<input class="w-32 h-9 px-3 text-right bg-white border border-[#CCD3DB] rounded focus:border-[#1E5A9C] focus:ring-2 focus:ring-[#D6E4F4] font-semibold text-primary font-body-md" placeholder="Nhập giá..." type="text">
+</div>
+</td>
+<td class="p-4 text-center font-semibold"><span class="status-badge text-[11px]"><span class="status-dot bg-gray-400"></span>- -</span></td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="p-4 font-body-md text-outline text-center font-semibold">03</td>
+<td class="p-4 font-semibold">
+<div class="flex flex-col">
+<span class="text-on-surface font-body-md font-semibold">Tylosin Tartrate 98%</span>
+<span class="text-xs text-secondary font-semibold">SKU: VTC-TYL-98-500G</span>
+</div>
+</td>
+<td class="p-4 text-center font-body-md font-semibold">Gói 500g</td>
+<td class="p-4 text-right font-body-md font-semibold">2.100.000</td>
+<td class="p-4 text-right font-body-md font-semibold">2.450.000</td>
+<td class="p-4 bg-secondary-container/10 font-semibold">
+<div class="flex justify-end">
+<input class="w-32 h-9 px-3 text-right bg-white border border-[#CCD3DB] rounded focus:border-[#1E5A9C] focus:ring-2 focus:ring-[#D6E4F4] font-semibold text-primary font-body-md" type="text" value="2.380.000">
+</div>
+</td>
+<td class="p-4 text-center font-semibold">
+<span class="status-badge text-[11px]"><span class="status-dot status-dot-success"></span>13.6%</span>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="p-4 font-body-md text-outline text-center font-semibold">04</td>
+<td class="p-4 font-semibold">
+<div class="flex flex-col">
+<span class="text-on-surface font-body-md font-semibold">Vitamin C 25% Premium</span>
+<span class="text-xs text-secondary font-semibold">SKU: VTC-VITC-25-1KG</span>
+</div>
+</td>
+<td class="p-4 text-center font-body-md font-semibold">Túi 1kg</td>
+<td class="p-4 text-right font-body-md font-semibold">120.000</td>
+<td class="p-4 text-right font-body-md font-semibold">185.000</td>
+<td class="p-4 bg-secondary-container/10 font-semibold">
+<div class="flex justify-end">
+<input class="w-32 h-9 px-3 text-right bg-white border border-[#CCD3DB] rounded focus:border-[#1E5A9C] focus:ring-2 focus:ring-[#D6E4F4] font-semibold text-primary font-body-md" type="text" value="175.000">
+</div>
+</td>
+<td class="p-4 text-center font-semibold"><span class="status-badge text-[11px]"><span class="status-dot status-dot-alert"></span>Cảnh báo thấp</span></td>
+</tr>
+<!-- Fill Row -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="p-4 font-body-md text-outline text-center font-semibold">05</td>
+<td class="p-4 font-semibold">
+<div class="flex flex-col">
+<span class="text-on-surface font-body-md font-semibold">Men Probiotic Ultra</span>
+<span class="text-xs text-secondary font-semibold">SKU: VTC-PRO-ULT-1KG</span>
+</div>
+</td>
+<td class="p-4 text-center font-body-md font-semibold">Hũ 1kg</td>
+<td class="p-4 text-right font-body-md font-semibold">340.000</td>
+<td class="p-4 text-right font-body-md font-semibold">450.000</td>
+<td class="p-4 bg-secondary-container/10 font-semibold">
+<div class="flex justify-end">
+<input class="w-32 h-9 px-3 text-right bg-white border border-[#CCD3DB] rounded focus:border-[#1E5A9C] focus:ring-2 focus:ring-[#D6E4F4] font-semibold text-primary font-body-md" type="text" value="440.000">
+</div>
+</td>
+<td class="p-4 text-center font-semibold">
+<span class="status-badge text-[11px]"><span class="status-dot status-dot-success"></span>13.6%</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination / Summary Footer -->
+<div class="flex items-center justify-between mt-6">
+<div class="flex items-center gap-4 text-secondary font-label-md">
+<span class="font-semibold">Đang hiển thị 1-5 của 245 sản phẩm</span>
+<div class="flex gap-1">
+<button class="px-6 h-10 border border-[#CCD3DB] rounded-lg font-label-lg text-on-surface hover:bg-surface-container transition-colors font-semibold"><span class="material-symbols-outlined text-[18px] font-semibold" data-icon="chevron_left">chevron_left</span></button>
+<button class="w-8 h-8 rounded bg-primary text-white flex items-center justify-center font-semibold">1</button>
+<button class="px-6 h-10 border border-[#CCD3DB] rounded-lg font-label-lg text-on-surface hover:bg-surface-container transition-colors font-semibold">2</button>
+<button class="px-6 h-10 border border-[#CCD3DB] rounded-lg font-label-lg text-on-surface hover:bg-surface-container transition-colors font-semibold">3</button>
+<button class="px-6 h-10 border border-[#CCD3DB] rounded-lg font-label-lg text-on-surface hover:bg-surface-container transition-colors font-semibold"><span class="material-symbols-outlined text-[18px] font-semibold" data-icon="chevron_right">chevron_right</span></button>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="text-[11px] text-secondary uppercase tracking-tight font-semibold">Giá trị trung bình điều chỉnh</span>
+<span class="text-primary text-headline-md font-semibold">-3.2%</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating Tooltip/Quick Note (Micro-interaction Example) -->
+<div class="fixed bottom-10 right-10 translate-y-20 opacity-0 bg-inverse-surface text-white px-6 py-4 rounded-xl shadow-lg transition-all duration-300 flex items-center gap-3 z-[60]" id="toast">
+<span class="material-symbols-outlined text-tertiary-fixed font-semibold" data-icon="check_circle">check_circle</span>
+<span class="font-body-md font-semibold">Đã lưu dự thảo bảng giá thành công!</span>
+</div>
+<script>
+        // Micro-interaction: Simulate Save
+        const saveBtn = document.querySelector('button.bg-primary-container');
+        const toast = document.getElementById('toast');
+        
+        saveBtn.addEventListener('click', () => {
+            saveBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" data-icon="sync">sync</span> Đang lưu...';
+            saveBtn.disabled = true;
+            
+            setTimeout(() => {
+                saveBtn.innerHTML = '<span class="material-symbols-outlined text-[18px]" data-icon="save">save</span> Lưu thay đổi';
+                saveBtn.disabled = false;
+                
+                toast.classList.remove('translate-y-20', 'opacity-0');
+                
+                setTimeout(() => {
+                    toast.classList.add('translate-y-20', 'opacity-0');
+                }, 3000);
+            }, 1200);
+        });
+
+        // Numeric masking simulation for price inputs
+        document.querySelectorAll('input[type="text"]').forEach(input => {
+            input.addEventListener('focus', function() {
+                this.parentElement.parentElement.classList.add('bg-secondary-container/30');
+            });
+            input.addEventListener('blur', function() {
+                this.parentElement.parentElement.classList.remove('bg-secondary-container/30');
+            });
+        });
+    </script>
+
+
+</body></html>

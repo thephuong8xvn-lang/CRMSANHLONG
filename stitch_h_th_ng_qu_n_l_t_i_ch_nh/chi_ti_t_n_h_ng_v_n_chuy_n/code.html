@@ -1,0 +1,451 @@
+<!DOCTYPE html><html lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Chi tiết Đơn hàng | Sanh Long Vetco</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAFBFC;
+        }
+        /* Custom scrollbar for minimalist look */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #CCD3DB; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #A8B2BD; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                "tertiary-container": "#0e6646",
+                "on-primary-fixed-variant": "#004785",
+                "tertiary-fixed": "#a4f3ca",
+                "error": "#ba1a1a",
+                "on-secondary": "#ffffff",
+                "tertiary": "#004c32",
+                "outline-variant": "#E5E9EE",
+                "primary-container": "#1e5a9c",
+                "inverse-primary": "#a5c8ff",
+                "on-primary-fixed": "#001c3a",
+                "on-secondary-container": "#596673",
+                "secondary": "#54606d",
+                "primary": "#00427d",
+                "on-error-container": "#93000a",
+                "inverse-surface": "#27313f",
+                "on-surface-variant": "#424750",
+                "surface-container-high": "#dfe9fb",
+                "on-tertiary": "#ffffff",
+                "on-tertiary-fixed": "#002113",
+                "background": "#FAFBFC",
+                "surface-variant": "#d9e3f5",
+                "surface-dim": "#d0dbed",
+                "on-primary-container": "#b6d2ff",
+                "tertiary-fixed-dim": "#88d6af",
+                "on-secondary-fixed-variant": "#3c4855",
+                "primary-fixed": "#d4e3ff",
+                "on-primary": "#ffffff",
+                "secondary-container": "#d7e4f4",
+                "surface-tint": "#265fa2",
+                "outline": "#CCD3DB",
+                "inverse-on-surface": "#eaf1ff",
+                "surface-container-lowest": "#ffffff",
+                "on-tertiary-fixed-variant": "#005236",
+                "on-secondary-fixed": "#111d28",
+                "secondary-fixed-dim": "#bbc8d7",
+                "on-error": "#ffffff",
+                "surface-bright": "#f8f9ff",
+                "secondary-fixed": "#d7e4f4",
+                "primary-fixed-dim": "#a5c8ff",
+                "on-surface": "#121c29",
+                "surface-container-low": "#eff4ff",
+                "error-container": "#ffdad6",
+                "surface-container": "#e5eeff",
+                "on-tertiary-container": "#92e1b8",
+                "surface-container-highest": "#d9e3f5",
+                "surface": "#ffffff",
+                "on-background": "#121c29"
+              },
+              "spacing": {
+                "sidebar-width": "240px",
+                "input-height": "40px",
+                "desktop-margin": "40px",
+                "mobile-margin": "16px",
+                "card-padding": "24px",
+                "unit": "4",
+                "header-height": "64px"
+              }
+            }
+          }
+        }
+    </script>
+</head>
+<body class="text-on-surface">
+<!-- Side Navigation Bar -->
+<aside class="bg-surface w-sidebar-width h-full fixed left-0 top-0 border-r border-outline-variant flex flex-col py-4 z-20" style="background-color: rgb(255, 255, 255); border-right: 1px solid rgb(229, 233, 238); width: 240px;">
+<div class="px-6 mb-8">
+<h1 class="text-title-lg text-primary font-semibold">Sanh Long Vetco</h1>
+<p class="text-[11px] uppercase tracking-wider text-secondary font-semibold">Quản trị viên</p>
+</div>
+<nav class="flex-1 space-y-1 px-3">
+<a class="flex items-center px-3 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 rounded-lg group font-medium" href="#"><span class="material-symbols-outlined mr-3">dashboard</span><span class="text-label-lg">Tổng quan</span></a>
+<a class="flex items-center px-3 py-3 bg-[#EEF4FB] text-[#143C69] font-semibold border-l-[3px] border-[#1E5A9C] rounded-r-lg group" href="#"><span class="material-symbols-outlined mr-3">point_of_sale</span><span class="text-label-lg">Bán hàng</span></a>
+<a class="flex items-center px-3 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 rounded-lg group font-medium" href="#"><span class="material-symbols-outlined mr-3">group</span><span class="text-label-lg">Khách hàng</span></a>
+<a class="flex items-center px-3 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 rounded-lg group font-medium" href="#"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="text-label-lg">Kho hàng</span></a>
+<a class="flex items-center px-3 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 rounded-lg group font-medium" href="#"><span class="material-symbols-outlined mr-3">analytics</span><span class="text-label-lg">Báo cáo</span></a>
+</nav>
+<div class="mt-auto px-3 border-t border-outline-variant pt-4 space-y-1" style="border-top: 1px solid rgb(229, 233, 238);">
+<a class="flex items-center px-3 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200 rounded-lg font-medium" href="#"><span class="material-symbols-outlined mr-3">settings</span><span class="text-label-lg">Cài đặt</span></a>
+<a class="flex items-center px-3 py-3 text-error hover:bg-[#F4F6F8] transition-colors duration-200 rounded-lg font-medium" href="#"><span class="material-symbols-outlined mr-3 text-error">logout</span><span class="text-label-lg">Đăng xuất</span></a>
+</div>
+</aside>
+<!-- Top App Bar -->
+<header class="fixed top-0 right-0 left-[240px] h-16 bg-surface border-b border-outline-variant flex items-center justify-between px-desktop-margin z-10">
+<div class="flex items-center space-x-4">
+<button class="p-2 hover:bg-surface-container-low rounded-full transition-colors">
+<span class="material-symbols-outlined text-secondary">arrow_back</span>
+</button>
+<h2 class="text-headline-md font-bold text-primary">Chi tiết Đơn hàng #ORD-99281</h2>
+</div>
+<div class="flex items-center space-x-6">
+<div class="relative">
+<span class="material-symbols-outlined text-secondary cursor-pointer hover:text-primary transition-colors">notifications</span>
+<div class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"></div>
+</div>
+<span class="material-symbols-outlined text-secondary cursor-pointer hover:text-primary transition-colors">help_outline</span>
+<div class="flex items-center space-x-3 ml-4 border-l border-outline-variant pl-4">
+<div class="text-right">
+<p class="text-label-lg font-bold">Lê Minh Tuấn</p>
+<p class="text-label-md text-secondary">Nhân viên kinh doanh</p>
+</div>
+<img alt="Ảnh đại diện" class="w-10 h-10 rounded-full border border-outline object-cover" data-alt="A professional headshot of a Vietnamese male sales executive in his late 20s. He is wearing a clean, crisp white business shirt against a neutral grey studio background. The lighting is soft and professional, highlighting a confident and trustworthy expression suitable for a high-end corporate financial application environment." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDvm2BLAVsZzElHx516tHSclOBLBfygWHTqcGZnyG5v5V2xDqIbFDQC958IisdZ30DcHuz8R5YxxLdwVcnqQ4vkbXSb0na9gzTanY0xquTez4lvUP8WALv1UKPQcV0s02bou8WfsIZIUetxqAgjzhnwZ4suAG1j-WfUtQPPFENrOrJIJjuNYf_yIBpZo-uNNooD7P-bh73Sw_KKWzW9ABieA_gzZ2QOQsAj_Ydk-esP9iQcwtu5Gg-AYhfA65Tg18VSChJMiMbZoqY">
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-sidebar-width pt-16 min-h-screen">
+<div class="p-desktop-margin max-w-[1600px] mx-auto">
+<!-- Horizontal Stepper Section -->
+<section class="bg-surface rounded-xl border border-outline-variant mb-8 p-6">
+<div class="flex items-center justify-between w-full max-w-4xl mx-auto">
+<!-- Stage 1: Nháp (Done) -->
+<div class="flex flex-col items-center flex-1 relative">
+<div class="w-10 h-10 rounded-full bg-tertiary text-white flex items-center justify-center mb-2 z-10">
+<span class="material-symbols-outlined text-[20px]" data-weight="fill">check_circle</span>
+</div>
+<span class="text-label-lg font-bold text-tertiary">Nháp</span>
+<div class="absolute top-5 left-1/2 w-full h-[2px] bg-tertiary -z-0"></div>
+</div>
+<!-- Stage 2: Xác nhận (Done) -->
+<div class="flex flex-col items-center flex-1 relative">
+<div class="w-10 h-10 rounded-full bg-tertiary text-white flex items-center justify-center mb-2 z-10">
+<span class="material-symbols-outlined text-[20px]" data-weight="fill">check_circle</span>
+</div>
+<span class="text-label-lg font-bold text-tertiary">Xác nhận</span>
+<div class="absolute top-5 left-1/2 w-full h-[2px] bg-primary -z-0"></div>
+</div>
+<!-- Stage 3: Giao hàng (Active) -->
+<div class="flex flex-col items-center flex-1 relative">
+<div class="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center mb-2 z-10 ring-4 ring-secondary-container">
+<span class="material-symbols-outlined text-[20px]">local_shipping</span>
+</div>
+<span class="text-label-lg font-bold text-primary">Giao hàng</span>
+<div class="absolute top-5 left-1/2 w-full h-[2px] bg-outline-variant -z-0"></div>
+</div>
+<!-- Stage 4: Đã giao (Future) -->
+<div class="flex flex-col items-center flex-1 relative">
+<div class="w-10 h-10 rounded-full bg-surface border-2 border-outline-variant text-secondary flex items-center justify-center mb-2 z-10">
+<span class="material-symbols-outlined text-[20px]">inventory</span>
+</div>
+<span class="text-label-lg font-medium text-secondary">Đã giao</span>
+<div class="absolute top-5 left-1/2 w-full h-[2px] bg-outline-variant -z-0"></div>
+</div>
+<!-- Stage 5: Hoàn tất (Future) -->
+<div class="flex flex-col items-center flex-1">
+<div class="w-10 h-10 rounded-full bg-surface border-2 border-outline-variant text-secondary flex items-center justify-center mb-2 z-10">
+<span class="material-symbols-outlined text-[20px]">verified</span>
+</div>
+<span class="text-label-lg font-medium text-secondary">Hoàn tất/Huỷ</span>
+</div>
+</div>
+</section>
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+<!-- Left Section: Details (Columns 1-3 of Grid) -->
+<div class="xl:col-span-8 space-y-8">
+<!-- Top Grid: Client & Summary -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+<!-- Column 1: Client & Logistics -->
+<div class="bg-surface rounded-xl border border-outline-variant p-card-padding">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-title-lg font-bold text-on-surface">Thông tin vận chuyển</h3>
+<span class="material-symbols-outlined text-secondary hover:text-primary cursor-pointer">edit</span>
+</div>
+<div class="space-y-4">
+<div class="flex items-start space-x-3">
+<span class="material-symbols-outlined text-primary mt-0.5">person</span>
+<div>
+<p class="text-label-md text-secondary">Khách hàng</p>
+<p class="text-body-lg font-bold text-on-surface">Trần Thị Minh Khai</p>
+<div class="mt-1 inline-flex items-center px-2 py-0.5 bg-primary text-white text-[10px] font-bold rounded-full">VIP</div>
+</div>
+</div>
+<div class="flex items-start space-x-3">
+<span class="material-symbols-outlined text-primary mt-0.5">call</span>
+<div>
+<p class="text-label-md text-secondary">Điện thoại</p>
+<p class="text-body-md font-medium">0908 123 456</p>
+</div>
+</div>
+<div class="flex items-start space-x-3">
+<span class="material-symbols-outlined text-primary mt-0.5">location_on</span>
+<div>
+<p class="text-label-md text-secondary">Địa chỉ giao hàng</p>
+<p class="text-body-md text-on-surface leading-snug">124 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh</p>
+</div>
+</div>
+<div class="pt-4 border-t border-outline-variant mt-4 space-y-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center">
+<span class="material-symbols-outlined text-primary mr-2">warehouse</span>
+<span class="text-label-md text-secondary">Kho xuất hàng</span>
+</div>
+<span class="text-body-md font-bold">Kho Tổng Miền Nam</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center">
+<span class="material-symbols-outlined text-primary mr-2">badge</span>
+<span class="text-label-md text-secondary">Nhân viên phụ trách</span>
+</div>
+<span class="text-body-md font-bold">Nguyễn Văn A</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 2: Order Summary -->
+<div class="bg-surface rounded-xl border border-outline-variant p-card-padding">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-title-lg font-bold text-on-surface">Danh mục sản phẩm</h3>
+<span class="text-label-md text-primary font-bold">3 sản phẩm</span>
+</div>
+<div class="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+<div class="flex items-center justify-between pb-3 border-b border-outline-variant">
+<div class="flex items-center space-x-3">
+<div class="w-12 h-12 bg-surface-container rounded-lg flex items-center justify-center border border-outline-variant overflow-hidden">
+<img alt="Sản phẩm" class="w-full h-full object-cover" data-alt="Close up high-resolution macro shot of a veterinary medicine bottle with professional pharmaceutical labeling. Clean white packaging with subtle blue accents, studio lighting on a sterile white background, representing medical grade quality in a professional financial UI context." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC91u6E2IeC7eGB064nTXqOL10Av2uSrhOgXtsuK1VFLdF1jzmreTWw0hRoLFI3RmkIcPW_fvISEzvVUP9fGA1x5a997w_impnpwxTRfDgk6bPCegj_HDejb_M85dOE9it23_Dk6JW2nI8Gk-3f9ngXo7AmXkhhwbS50JuQ005gQE2CXNvt6Too9baS09JrLh_dsnC-52xoyuzwGJwpil7ONZqnJYORiC9Y5EpfIUffBODJsep8U8YYo_DSCxFG4GL2qo7zJJ8wQyo">
+</div>
+<div>
+<p class="text-body-md font-bold">Vetco Antibiotic 500ml</p>
+<p class="text-label-md text-secondary">2 x 1,250,000 ₫</p>
+</div>
+</div>
+<p class="text-body-md font-bold">2,500,000 ₫</p>
+</div>
+<div class="flex items-center justify-between pb-3 border-b border-outline-variant">
+<div class="flex items-center space-x-3">
+<div class="w-12 h-12 bg-surface-container rounded-lg flex items-center justify-center border border-outline-variant overflow-hidden">
+<img alt="Sản phẩm" class="w-full h-full object-cover" data-alt="A clean, minimalist white plastic container for veterinary supplements with a professional label. Bright high-key studio lighting with soft shadows, set against a pristine light blue surface that aligns with a modern banking and CRM aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAeFlUP7omS4HKy-rkCRgegNcqNKSfLnBoEZKtt53p1B_fkYHGai-6QgdPMC7jTTZ68WivfZm3uzbQD0DFDvae9ViPF9i_9SUfAsIpOEbqU28B2xrj2OogfcNy9RO6PTS9-pLxTAaNT83odRvHxqXwnHBQaDX-gthAbavO_eLyzRp2LMaHXJFaP8TFLeRX4jjCETpw5MKmCGSyqw9ytzJpj4nKHJQkzKBWQtuQtchRogeZ2fGRE_UgZJAdviOSEBGRNMM6Oa_LnGu8">
+</div>
+<div>
+<p class="text-body-md font-bold">Sanh Long Vitamin B12</p>
+<p class="text-label-md text-secondary">5 x 450,000 ₫</p>
+</div>
+</div>
+<p class="text-body-md font-bold">2,250,000 ₫</p>
+</div>
+<div class="flex items-center justify-between pb-3 border-b border-outline-variant">
+<div class="flex items-center space-x-3">
+<div class="w-12 h-12 bg-surface-container rounded-lg flex items-center justify-center border border-outline-variant overflow-hidden">
+<img alt="Sản phẩm" class="w-full h-full object-cover" data-alt="High quality sterile surgical gloves in professional packaging for animal health use. Clean, minimalist lighting, white and medical blue color scheme, sleek and modern product photography for a specialized veterinary CRM interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC4I7y15xfM85WziVM8TL2SwJWlhgt4kU0Q2U2rbDMFuNXD-pLWlAZ0pWzRuHP85-eCYl0uI2qkc4qsKotYatSg-oiDMvZgrJxwlTL1AzdiuH1gahqxPNVuDEiJSUNPwfk-Dds2dKIDbir6CP5JouS8ThfzHzKlzwkWWaMSvS2CfNxmxyKk4-yDDbrr44UjtjtT6FohA-WeTd7Eb_VUmlgXEXjtPnUkYxCDaqDgIcfs8QcFCHBFVcqFznL55MTv_lHWumrekYkHAoc">
+</div>
+<div>
+<p class="text-body-md font-bold">Găng tay cao su y tế</p>
+<p class="text-label-md text-secondary">10 x 85,000 ₫</p>
+</div>
+</div>
+<p class="text-body-md font-bold">850,000 ₫</p>
+</div>
+</div>
+<div class="mt-6 space-y-2">
+<div class="flex justify-between text-body-md">
+<span class="text-secondary">Tạm tính</span>
+<span class="">5,600,000 ₫</span>
+</div>
+<div class="flex justify-between text-body-md">
+<span class="text-secondary">Thuế (VAT 10%)</span>
+<span class="">560,000 ₫</span>
+</div>
+<div class="flex justify-between text-title-lg font-black text-primary pt-2 border-t border-dashed border-outline">
+<span class="">Tổng cộng</span>
+<span class="">6,160,000 ₫</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Column 3: Payment History (Visualized as Log) -->
+<div class="bg-surface rounded-xl border border-outline-variant p-card-padding">
+<h3 class="text-title-lg font-bold text-on-surface mb-6">Lịch sử thanh toán</h3>
+<div class="relative pl-8 border-l border-outline-variant space-y-8 ml-4">
+<!-- Entry 1 -->
+<div class="relative">
+<div class="absolute -left-[45px] top-0 w-8 h-8 rounded-full bg-secondary-container border-4 border-white flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-[14px]" data-weight="fill">check</span>
+</div>
+<div class="flex items-center justify-between bg-background p-4 rounded-lg border border-outline-variant">
+<div>
+<div class="flex items-center space-x-2">
+<span class="text-body-md font-bold">Cọc đơn hàng</span>
+<span class="px-2 py-0.5 bg-tertiary-fixed text-on-tertiary-fixed-variant text-[10px] font-bold rounded uppercase">Thành công</span>
+</div>
+<p class="text-label-md text-secondary">22/10/2023 - 14:30 | Chuyển khoản ngân hàng</p>
+</div>
+<div class="text-right">
+<p class="text-body-lg font-black text-primary">+ 1,000,000 ₫</p>
+</div>
+</div>
+</div>
+<!-- Entry 2 -->
+<div class="relative">
+<div class="absolute -left-[45px] top-0 w-8 h-8 rounded-full bg-surface border-4 border-white ring-2 ring-primary flex items-center justify-center animate-pulse">
+<span class="material-symbols-outlined text-primary text-[14px]">sync</span>
+</div>
+<div class="flex items-center justify-between bg-background p-4 rounded-lg border border-outline-variant">
+<div>
+<div class="flex items-center space-x-2">
+<span class="text-body-md font-bold">Thanh toán đợt 2</span>
+<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant text-[10px] font-bold rounded uppercase">Đang chờ</span>
+</div>
+<p class="text-label-md text-secondary">Dự kiến: 25/10/2023 | Tiền mặt</p>
+</div>
+<div class="text-right">
+<p class="text-body-lg font-black text-secondary">5,160,000 ₫</p>
+</div>
+</div>
+</div>
+</div>
+<button class="mt-8 w-full py-2.5 rounded-lg border-2 border-dashed border-outline text-primary font-bold text-label-lg hover:bg-secondary-container transition-all flex items-center justify-center space-x-2 active:scale-95">
+<span class="material-symbols-outlined">add</span>
+<span class="">Thêm giao dịch mới</span>
+</button>
+</div>
+</div>
+<!-- Right Section: Print Preview (Column 4 of Grid) -->
+<div class="xl:col-span-4 sticky top-[104px]">
+<div class="bg-surface rounded-xl border border-outline-variant overflow-hidden">
+<div class="bg-surface-container p-4 border-b border-outline-variant flex items-center justify-between">
+<span class="text-label-lg font-bold text-secondary uppercase tracking-widest">Xem trước hoá đơn</span>
+<div class="flex space-x-2">
+<button class="w-8 h-8 rounded bg-white border border-outline flex items-center justify-center hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">print</span>
+</button>
+<button class="w-8 h-8 rounded bg-white border border-outline flex items-center justify-center hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">download</span>
+</button>
+</div>
+</div>
+<!-- Receipt Container -->
+<div class="p-8 bg-white shadow-inner min-h-[500px]">
+<div class="max-w-[300px] mx-auto text-center font-mono">
+<div class="mb-6">
+<h4 class="text-title-lg font-black text-primary">SANH LONG VETCO</h4>
+<p class="text-[10px] text-secondary">789 Veterinary Blvd, HCM City</p>
+<p class="text-[10px] text-secondary">Hotline: 1900 6789</p>
+</div>
+<div class="text-[12px] font-bold border-y border-dashed border-outline-variant py-2 mb-4">
+                                    HOÁ ĐƠN BÁN LẺ
+                                    <div class="text-[10px] font-normal">#ORD-99281 | 24/10/2023</div>
+</div>
+<div class="space-y-2 mb-6">
+<div class="flex justify-between text-[11px]">
+<span class="text-left">Vetco Antibiotic (x2)</span>
+<span class="">2.500.000</span>
+</div>
+<div class="flex justify-between text-[11px]">
+<span class="text-left">B12 Vitamin (x5)</span>
+<span class="">2.250.000</span>
+</div>
+<div class="flex justify-between text-[11px]">
+<span class="text-left">Găng tay y tế (x10)</span>
+<span class="">850.000</span>
+</div>
+</div>
+<div class="border-t border-dashed border-outline-variant pt-2 space-y-1 mb-6">
+<div class="flex justify-between text-[11px]">
+<span class="">Tạm tính:</span>
+<span class="">5.600.000</span>
+</div>
+<div class="flex justify-between text-[11px]">
+<span class="">Thuế:</span>
+<span class="">560.000</span>
+</div>
+<div class="flex justify-between text-[14px] font-black pt-2">
+<span class="">TỔNG CỘNG:</span>
+<span class="">6.160.000</span>
+</div>
+</div>
+<div class="flex flex-col items-center justify-center space-y-2 mt-4">
+<div class="w-32 h-32 bg-background border border-outline-variant p-2 rounded flex items-center justify-center relative">
+<!-- Mock QR Code with Pattern -->
+<div class="w-full h-full opacity-20" style="background-image: radial-gradient(#1e5a9c 1px, transparent 1px); background-size: 4px 4px;"></div>
+<span class="material-symbols-outlined absolute text-primary text-[48px]">qr_code_2</span>
+</div>
+<p class="text-[10px] text-secondary">Quét mã để thanh toán</p>
+</div>
+<div class="mt-8 text-[10px] italic text-secondary border-t border-outline-variant pt-4">
+                                    Cảm ơn quý khách đã tin tưởng Sanh Long Vetco!
+                                </div>
+</div>
+</div>
+<div class="p-card-padding">
+<button class="w-full bg-primary text-white py-3 rounded-lg font-bold text-label-lg hover:opacity-90 transition-opacity active:scale-[0.98] flex items-center justify-center space-x-2">
+<span class="material-symbols-outlined">send</span>
+<span class="">Gửi hoá đơn qua Zalo/SMS</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating Action Button for Order Actions -->
+<div class="fixed bottom-10 right-10 flex flex-col items-end space-y-4">
+<div class="hidden flex-col items-end space-y-2 mb-4" id="fabMenu">
+<button class="bg-surface border border-outline-variant px-4 py-2 rounded-full text-secondary hover:text-primary transition-all flex items-center space-x-2 shadow-sm">
+<span class="text-label-md font-bold">Huỷ đơn</span>
+<span class="material-symbols-outlined text-[20px]">cancel</span>
+</button>
+<button class="bg-surface border border-outline-variant px-4 py-2 rounded-full text-secondary hover:text-primary transition-all flex items-center space-x-2 shadow-sm">
+<span class="text-label-md font-bold">Sao chép</span>
+<span class="material-symbols-outlined text-[20px]">content_copy</span>
+</button>
+</div>
+<button class="w-14 h-14 bg-primary text-white rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform" onclick="toggleFab()">
+<span class="material-symbols-outlined text-[32px]" id="fabIcon">menu</span>
+</button>
+</div>
+<script>
+        function toggleFab() {
+            const menu = document.getElementById('fabMenu');
+            const icon = document.getElementById('fabIcon');
+            if (menu.classList.contains('hidden')) {
+                menu.classList.remove('hidden');
+                menu.classList.add('flex');
+                icon.textContent = 'close';
+            } else {
+                menu.classList.add('hidden');
+                menu.classList.remove('flex');
+                icon.textContent = 'menu';
+            }
+        }
+    </script>
+
+
+</body></html>

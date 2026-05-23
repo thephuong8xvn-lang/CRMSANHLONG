@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sanh Long Vetco CRM - Đăng nhập</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-error": "#ffffff",
+                        "on-primary-fixed": "#001c3a",
+                        "on-primary-fixed-variant": "#004785",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#596673",
+                        "on-tertiary-container": "#92e1b8",
+                        "on-tertiary-fixed": "#002113",
+                        "surface-variant": "#d9e3f5",
+                        "background": "#f8f9ff",
+                        "primary-fixed-dim": "#a5c8ff",
+                        "on-primary": "#ffffff",
+                        "secondary-container": "#d7e4f4",
+                        "on-secondary-fixed-variant": "#3c4855",
+                        "surface-container": "#e5eeff",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed-dim": "#88d6af",
+                        "primary-fixed": "#d4e3ff",
+                        "primary-container": "#1e5a9c",
+                        "secondary": "#54606d",
+                        "on-surface": "#121c29",
+                        "surface-container-high": "#dfe9fb",
+                        "on-secondary": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "outline-variant": "#c2c6d2",
+                        "outline": "#727781",
+                        "on-error-container": "#93000a",
+                        "on-primary-container": "#b6d2ff",
+                        "tertiary-container": "#0e6646",
+                        "surface-container-highest": "#d9e3f5",
+                        "on-background": "#121c29",
+                        "inverse-on-surface": "#eaf1ff",
+                        "secondary-fixed": "#d7e4f4",
+                        "primary": "#00427d",
+                        "surface-dim": "#d0dbed",
+                        "surface-container-low": "#eff4ff",
+                        "on-tertiary": "#ffffff",
+                        "inverse-primary": "#a5c8ff",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-surface-variant": "#424750",
+                        "surface": "#f8f9ff",
+                        "surface-tint": "#265fa2",
+                        "secondary-fixed-dim": "#bbc8d7",
+                        "tertiary-fixed": "#a4f3ca",
+                        "surface-bright": "#f8f9ff",
+                        "tertiary": "#004c32",
+                        "on-secondary-fixed": "#111d28",
+                        "inverse-surface": "#27313f",
+                        "brand-text": "#2F3947",
+                        "brand-primary": "#1E5A9C",
+                        "brand-border": "#E5E9EE",
+                        "brand-input-border": "#CCD3DB"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px",
+                        "card": "10px",
+                        "input": "8px"
+                    },
+                    "spacing": {
+                        "mobile-margin": "16px",
+                        "unit": "4",
+                        "card-padding": "24px",
+                        "input-height": "40px",
+                        "header-height": "64px",
+                        "desktop-margin": "40px",
+                        "card-padding-mobile": "16px",
+                        "sidebar-width": "240px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Be Vietnam Pro"],
+                        "headline-md": ["Be Vietnam Pro"],
+                        "display-lg": ["Be Vietnam Pro"],
+                        "body-md": ["Be Vietnam Pro"],
+                        "body-lg": ["Be Vietnam Pro"],
+                        "title-lg": ["Be Vietnam Pro"],
+                        "headline-lg": ["Be Vietnam Pro"],
+                        "label-lg": ["Be Vietnam Pro"]
+                    },
+                    "fontSize": {
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; color: #2F3947; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; vertical-align: middle; }
+        .strength-bar { height: 4px; transition: all 0.3s ease; border-radius: 2px; }
+    </style>
+</head>
+<body class="h-screen overflow-hidden flex items-center justify-center p-6 md:p-0">
+<main class="w-full max-w-6xl h-full md:h-[800px] bg-white rounded-card overflow-hidden flex flex-col md:flex-row border border-[#E5E9EE] shadow-none">
+<!-- Left Side: Login Panel -->
+<section class="flex-1 p-8 md:p-16 flex flex-col justify-center border-r border-[#E5E9EE]" id="login-section">
+<header class="mb-10">
+<div class="flex items-center gap-3 mb-8">
+<div class="w-12 h-12 bg-brand-primary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-3xl">medical_services</span>
+</div>
+<h1 class="font-headline-md text-headline-md text-brand-primary">Sanh Long Vetco CRM</h1>
+</div>
+<h2 class="font-title-lg text-title-lg mb-2">Chào mừng trở lại</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Vui lòng nhập thông tin để truy cập hệ thống.</p>
+</header>
+<form class="space-y-6">
+<div>
+<label class="block font-label-lg text-label-lg mb-2 text-brand-text">Email</label>
+<input class="w-full h-input-height px-4 border border-brand-input-border rounded-input focus:ring-4 focus:ring-[#D6E4F4] focus:border-brand-primary outline-none transition-all font-body-md" placeholder="name@company.com" type="email"/>
+</div>
+<div>
+<div class="flex justify-between items-center mb-2">
+<label class="block font-label-lg text-label-lg text-brand-text">Mật khẩu</label>
+<button class="text-brand-primary font-label-lg text-label-lg hover:underline" onclick="showReset()" type="button">Quên mật khẩu?</button>
+</div>
+<div class="relative">
+<input class="w-full h-input-height px-4 pr-12 border border-brand-input-border rounded-input focus:ring-4 focus:ring-[#D6E4F4] focus:border-brand-primary outline-none transition-all font-body-md" id="login-password" placeholder="••••••••" type="password"/>
+<button class="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-brand-text transition-colors" onclick="togglePassword('login-password')" type="button">
+<span class="material-symbols-outlined">visibility</span>
+</button>
+</div>
+</div>
+<button class="w-full h-input-height bg-brand-primary text-white font-label-lg text-label-lg rounded-input hover:opacity-90 active:scale-[0.98] transition-all" type="submit">
+                    Đăng nhập
+                </button>
+<div class="relative py-2 flex items-center">
+<div class="flex-grow border-t border-[#E5E9EE]"></div>
+<span class="flex-shrink mx-4 text-outline font-label-md text-label-md">Hoặc tiếp tục với</span>
+<div class="flex-grow border-t border-[#E5E9EE]"></div>
+</div>
+<button class="w-full h-input-height border border-brand-input-border bg-white text-brand-text font-label-lg text-label-lg rounded-input flex items-center justify-center gap-3 hover:bg-surface-container-low active:scale-[0.98] transition-all" type="button">
+<img alt="Google" class="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDt6BaAHOJy7vJ7oaQ8L2GXR3UTUGW648RTuPTUq_8mVDkO-fMUmKYSRkF_5BIWYQhN0JAotnKsM3-jHGpL6-ZpjN6krXWGXcS6KtoTUjcoXj6RX49-0qG77r27XvyQtVrUmc6Q2HzttY_dgnc7-cfdkHRZ9T1BhtL5NjXnDbRpe_n4vHAaz1z4yNeKAqm-FU4kx3LaSrd4rIneJoI-fwP5BUT5tHaWt-aH75OL17Tc_ZoixnIW_BP9UgzWoBBst1QtGo1jol7nRPo"/>
+                    Đăng nhập bằng Google
+                </button>
+</form>
+</section>
+<!-- Right Side: Visual or Reset Password Panel -->
+<section class="hidden md:flex flex-1 relative bg-surface-container-low transition-all duration-500 overflow-hidden" id="right-panel">
+<!-- Default Hero State -->
+<div class="w-full h-full flex flex-col items-center justify-center p-16 text-center" id="hero-state">
+<div class="absolute inset-0 z-0">
+<img class="w-full h-full object-cover opacity-10 mix-blend-multiply" data-alt="A professional, high-end veterinary clinic interior with modern diagnostic equipment and pristine minimalist design. The lighting is bright and clean, emphasizing a healthcare environment of trust and technological advancement. Subtle blue and white tones dominate the scene, reflecting a premium banking-style aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuADB86HRpe7x8FkvohWpUmcbN9GfI4sfpxSV7Nj-Vtibeo5l_TxZGG69FKK6VrhBY7FJwUFSyHAHNamWwacul1M2SXWANgalmzSKx9cAE_kVAFXua563j3jwayIRBXwo5d1rWOswwc_1G2yXMV2vVQU7Dre1G1KJudS6Cl7VEotO2wRoIV_c7-DLgGk-aYu35dIsR3a7QqcpuUOHNww5Q0MQmJCygu3bKpOlwezRC60EZUvwq9GnOR4Nr-KM6q8F6E_F_vKxXWeDPA"/>
+</div>
+<div class="relative z-10">
+<span class="material-symbols-outlined text-brand-primary text-6xl mb-6">shield_with_heart</span>
+<h2 class="font-headline-lg text-headline-lg text-brand-primary mb-4">An tâm quản lý</h2>
+<p class="font-body-lg text-body-lg text-secondary max-w-md mx-auto">Hệ thống CRM chuyên biệt cho thú y với bảo mật đa tầng và giao diện tối ưu cho hiệu suất làm việc.</p>
+</div>
+</div>
+<!-- Reset Password Card (Hidden by default, shown via transition) -->
+<div class="absolute inset-0 bg-white p-8 md:p-16 flex flex-col justify-center translate-x-full transition-transform duration-500 z-20" id="reset-state">
+<header class="mb-10">
+<button class="flex items-center gap-1 text-brand-primary font-label-lg text-label-lg mb-6 hover:gap-2 transition-all" onclick="hideReset()">
+<span class="material-symbols-outlined">arrow_back</span>
+                        Quay lại đăng nhập
+                    </button>
+<h2 class="font-title-lg text-title-lg mb-2">Đặt lại mật khẩu</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Tạo mật khẩu mới mạnh hơn để bảo vệ tài khoản của bạn.</p>
+</header>
+<form class="space-y-6">
+<div>
+<label class="block font-label-lg text-label-lg mb-2 text-brand-text">Mật khẩu mới</label>
+<div class="relative">
+<input class="w-full h-input-height px-4 pr-12 border border-brand-input-border rounded-input focus:ring-4 focus:ring-[#D6E4F4] focus:border-brand-primary outline-none transition-all font-body-md" id="new-password" oninput="checkStrength(this.value)" placeholder="••••••••" type="password"/>
+<button class="absolute right-3 top-1/2 -translate-y-1/2 text-outline" onclick="togglePassword('new-password')" type="button">
+<span class="material-symbols-outlined">visibility</span>
+</button>
+</div>
+<!-- Strength Meter -->
+<div class="mt-3 space-y-2">
+<div class="flex gap-1">
+<div class="strength-bar flex-1 bg-[#E5E9EE]" id="strength-1"></div>
+<div class="strength-bar flex-1 bg-[#E5E9EE]" id="strength-2"></div>
+<div class="strength-bar flex-1 bg-[#E5E9EE]" id="strength-3"></div>
+<div class="strength-bar flex-1 bg-[#E5E9EE]" id="strength-4"></div>
+</div>
+<p class="font-label-md text-label-md text-outline" id="strength-text">Độ bảo mật: Chưa nhập</p>
+</div>
+</div>
+<div>
+<label class="block font-label-lg text-label-lg mb-2 text-brand-text">Xác nhận mật khẩu mới</label>
+<input class="w-full h-input-height px-4 border border-brand-input-border rounded-input focus:ring-4 focus:ring-[#D6E4F4] focus:border-brand-primary outline-none transition-all font-body-md" placeholder="••••••••" type="password"/>
+</div>
+<div class="bg-surface-container-lowest border border-[#E5E9EE] p-4 rounded-input space-y-2">
+<p class="font-label-lg text-label-lg text-brand-text mb-2">Yêu cầu mật khẩu:</p>
+<ul class="space-y-2">
+<li class="flex items-center gap-2 text-label-md text-secondary" id="req-length">
+<span class="material-symbols-outlined text-sm">circle</span> Ít nhất 8 ký tự
+                            </li>
+<li class="flex items-center gap-2 text-label-md text-secondary" id="req-special">
+<span class="material-symbols-outlined text-sm">circle</span> Có ký tự đặc biệt (!@#$)
+                            </li>
+<li class="flex items-center gap-2 text-label-md text-secondary" id="req-number">
+<span class="material-symbols-outlined text-sm">circle</span> Có ít nhất một chữ số
+                            </li>
+</ul>
+</div>
+<button class="w-full h-input-height bg-brand-primary text-white font-label-lg text-label-lg rounded-input hover:opacity-90 active:scale-[0.98] transition-all" type="submit">
+                        Cập nhật mật khẩu
+                    </button>
+</form>
+</div>
+</section>
+</main>
+<script>
+        function togglePassword(id) {
+            const input = document.getElementById(id);
+            const icon = input.nextElementSibling.querySelector('.material-symbols-outlined');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.innerText = 'visibility_off';
+            } else {
+                input.type = 'password';
+                icon.innerText = 'visibility';
+            }
+        }
+
+        function showReset() {
+            const rightPanel = document.getElementById('right-panel');
+            const resetState = document.getElementById('reset-state');
+            const heroState = document.getElementById('hero-state');
+            
+            resetState.classList.remove('translate-x-full');
+            heroState.classList.add('opacity-0');
+        }
+
+        function hideReset() {
+            const rightPanel = document.getElementById('right-panel');
+            const resetState = document.getElementById('reset-state');
+            const heroState = document.getElementById('hero-state');
+            
+            resetState.classList.add('translate-x-full');
+            heroState.classList.remove('opacity-0');
+        }
+
+        function checkStrength(password) {
+            let strength = 0;
+            const bars = [
+                document.getElementById('strength-1'),
+                document.getElementById('strength-2'),
+                document.getElementById('strength-3'),
+                document.getElementById('strength-4')
+            ];
+            const text = document.getElementById('strength-text');
+            const reqLength = document.getElementById('req-length');
+            const reqSpecial = document.getElementById('req-special');
+            const reqNumber = document.getElementById('req-number');
+
+            const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+            const hasNumber = /\d/.test(password);
+            const hasLength = password.length >= 8;
+
+            // Reset UI
+            bars.forEach(b => b.style.backgroundColor = '#E5E9EE');
+            reqLength.className = 'flex items-center gap-2 text-label-md text-secondary';
+            reqSpecial.className = 'flex items-center gap-2 text-label-md text-secondary';
+            reqNumber.className = 'flex items-center gap-2 text-label-md text-secondary';
+
+            if (hasLength) {
+                strength++;
+                reqLength.classList.replace('text-secondary', 'text-tertiary');
+                reqLength.querySelector('span').innerText = 'check_circle';
+            } else {
+                reqLength.querySelector('span').innerText = 'circle';
+            }
+
+            if (hasSpecial) {
+                strength++;
+                reqSpecial.classList.replace('text-secondary', 'text-tertiary');
+                reqSpecial.querySelector('span').innerText = 'check_circle';
+            } else {
+                reqSpecial.querySelector('span').innerText = 'circle';
+            }
+
+            if (hasNumber) {
+                strength++;
+                reqNumber.classList.replace('text-secondary', 'text-tertiary');
+                reqNumber.querySelector('span').innerText = 'check_circle';
+            } else {
+                reqNumber.querySelector('span').innerText = 'circle';
+            }
+
+            if (password.length > 12) strength++;
+
+            const colors = ['#ba1a1a', '#f97316', '#eab308', '#0e6646'];
+            const labels = ['Yếu', 'Trung bình', 'Khá', 'Mạnh'];
+
+            if (password.length > 0) {
+                for (let i = 0; i < strength; i++) {
+                    bars[i].style.backgroundColor = colors[strength - 1];
+                }
+                text.innerText = 'Độ bảo mật: ' + labels[strength - 1];
+                text.style.color = colors[strength - 1];
+            } else {
+                text.innerText = 'Độ bảo mật: Chưa nhập';
+                text.style.color = '#727781';
+            }
+        }
+    </script>
+</body></html>

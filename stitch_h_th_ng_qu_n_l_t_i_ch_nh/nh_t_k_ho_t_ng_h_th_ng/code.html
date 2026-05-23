@@ -1,0 +1,440 @@
+<!DOCTYPE html><html class="light" lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Nhật ký hoạt động | Sanh Long Vetco</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "inverse-surface": "#27313f",
+                "on-secondary": "#ffffff",
+                "surface-container-low": "#eff4ff",
+                "surface": "#f8f9ff",
+                "outline": "#727781",
+                "tertiary-fixed": "#a4f3ca",
+                "on-primary": "#ffffff",
+                "inverse-primary": "#a5c8ff",
+                "on-tertiary-fixed-variant": "#005236",
+                "on-primary-fixed-variant": "#004785",
+                "on-background": "#121c29",
+                "on-error": "#ffffff",
+                "surface-container": "#e5eeff",
+                "on-tertiary": "#ffffff",
+                "secondary-fixed-dim": "#bbc8d7",
+                "error-container": "#ffdad6",
+                "error": "#ba1a1a",
+                "on-primary-fixed": "#001c3a",
+                "inverse-on-surface": "#eaf1ff",
+                "surface-container-lowest": "#ffffff",
+                "surface-bright": "#f8f9ff",
+                "tertiary-fixed-dim": "#88d6af",
+                "primary-container": "#1e5a9c",
+                "background": "#f8f9ff",
+                "tertiary": "#004c32",
+                "primary-fixed-dim": "#a5c8ff",
+                "secondary-fixed": "#d7e4f4",
+                "surface-dim": "#d0dbed",
+                "outline-variant": "#c2c6d2",
+                "on-surface": "#121c29",
+                "on-secondary-container": "#596673",
+                "surface-container-highest": "#d9e3f5",
+                "primary-fixed": "#d4e3ff",
+                "on-surface-variant": "#424750",
+                "secondary-container": "#d7e4f4",
+                "surface-variant": "#d9e3f5",
+                "on-tertiary-fixed": "#002113",
+                "surface-container-high": "#dfe9fb",
+                "on-tertiary-container": "#92e1b8",
+                "secondary": "#54606d",
+                "primary": "#00427d",
+                "on-secondary-fixed": "#111d28",
+                "on-secondary-fixed-variant": "#3c4855",
+                "on-error-container": "#93000a",
+                "surface-tint": "#265fa2",
+                "tertiary-container": "#0e6646",
+                "on-primary-container": "#b6d2ff"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+            },
+            "spacing": {
+                "header-height": "64px",
+                "card-padding-mobile": "16px",
+                "card-padding": "24px",
+                "mobile-margin": "16px",
+                "desktop-margin": "40px",
+                "unit": "4",
+                "sidebar-width": "240px",
+                "input-height": "40px"
+            },
+            "fontFamily": {
+                "headline-md": ["Be Vietnam Pro"],
+                "headline-lg": ["Be Vietnam Pro"],
+                "body-md": ["Be Vietnam Pro"],
+                "title-lg": ["Be Vietnam Pro"],
+                "label-md": ["Be Vietnam Pro"],
+                "display-lg": ["Be Vietnam Pro"],
+                "body-lg": ["Be Vietnam Pro"],
+                "label-lg": ["Be Vietnam Pro"],
+                "mono": ["JetBrains Mono", "monospace"]
+            },
+            "fontSize": {
+                "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+      body { background-color: #FAFBFC; }
+      .audit-row-active { background-color: #F4F6F8 !important; border-left: 3px solid #1E5A9C !important; }
+      .material-symbols-outlined { font-size: 20px; vertical-align: middle; }
+      .json-diff-container { font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; }
+      .diff-removed { background-color: #FFEBE9; color: #BA1A1A; text-decoration: line-through; }
+      .diff-added { background-color: #E6FFEC; color: #004C32; }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #CCD3DB; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #A8B2BD; }
+    </style>
+</head>
+<body class="flex font-body-md text-on-surface">
+<!-- SideNavBar Anchor -->
+<aside class="w-[240px] h-screen sticky left-0 top-0 bg-white border-r border-[#E5E9EE] flex flex-col py-6">
+<div class="px-6 mb-8 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-white" data-icon="pets">pets</span>
+</div>
+<div>
+<h1 class="font-headline-md text-primary font-bold leading-tight">Sanh Long Vetco</h1>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-widest">Hệ thống quản trị doanh nghiệp</p>
+</div>
+</div>
+<nav class="flex-1 px-3 space-y-1"><a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-semibold font-display">Bảng điều khiển</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+<span class="font-semibold font-display">Bán hàng</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-semibold font-display">Khách hàng</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-semibold font-display">Kho hàng</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#4A5663] bg-transparent hover:bg-[#F4F6F8] transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="assessment">assessment</span>
+<span class="font-semibold font-display">Báo cáo</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#EEF4FB] text-[#143C69] font-semibold border-l-[3px] border-[#1E5A9C] font-display" href="#">
+<span class="material-symbols-outlined" data-icon="admin_panel_settings">admin_panel_settings</span>
+<span class="font-semibold">Cấu hình hệ thống</span>
+</a></nav>
+<div class="px-6 mt-auto">
+<div class="p-4 bg-surface-container-low rounded-xl">
+<p class="text-[11px] font-bold text-on-surface-variant uppercase mb-2">Trạng thái máy chủ</p>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-tertiary-container animate-pulse"></div>
+<span class="text-xs font-medium text-tertiary">Hoạt động ổn định</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col h-screen overflow-hidden">
+<!-- TopAppBar Anchor -->
+<header class="h-header-height sticky top-0 z-30 w-full bg-surface-container-lowest border-b border-outline-variant flex items-center justify-between px-desktop-margin">
+<div class="flex items-center gap-6">
+<h2 class="font-title-lg text-primary font-bold">Quản trị hệ thống</h2>
+<div class="h-6 w-px bg-outline-variant"></div>
+<nav class="flex items-center gap-1 text-on-surface-variant text-sm">
+<span class="">Hệ thống</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+<span class="text-primary font-medium">Nhật ký hoạt động</span>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative">
+<input class="w-64 h-10 pl-10 pr-4 bg-white border border-outline-variant rounded-lg text-sm focus:ring-4 focus:ring-secondary-container outline-none transition-all" placeholder="Tìm kiếm nhật ký..." type="text">
+<span class="material-symbols-outlined absolute left-3 top-2.5 text-outline" data-icon="search">search</span>
+</div>
+<button class="hover:bg-surface-container rounded-full p-2 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications">notifications</span>
+</button>
+<button class="hover:bg-surface-container rounded-full p-2 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="help_outline">help_outline</span>
+</button>
+<div class="h-8 w-px bg-outline-variant mx-2"></div>
+<div class="flex items-center gap-3 pl-2">
+<div class="text-right hidden md:block">
+<p class="text-xs font-bold text-on-surface">Nguyễn Văn Quản trị</p>
+<p class="text-[10px] text-on-surface-variant">Admin cấp cao</p>
+</div>
+<img class="w-10 h-10 rounded-full border border-outline-variant object-cover" data-alt="A professional headshot of a middle-aged Vietnamese male executive in a white shirt, set against a clean, minimalist office background. The lighting is bright and even, reinforcing a high-end corporate identity. The aesthetic is modern and focuses on clarity and trust." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDNo_niT9Wx18LPzDMACaiWJAr_ax6AeQ3bH_x88KCGGSMWEbjAvUmb-2LBlBZWvII7VHc8QzdslYleTnBvPdVhhLrYVaie6r-PnICcspFUduNxXjPtRKgGDxwc5Ydg3ia2lGZBwYROWGfJWYebIPW_OX8E7s43pihSOPertcB0zv4Xi6QgYAOGLKVaVrQX4OgCsclJIV47_n46zPCia0tciLmBKiLMxCpTTgeW_NivgKkpRShiI7KBCIesvU-3yG877QDNT5e1sKs">
+</div>
+</div>
+</header>
+<!-- Audit Log View Canvas -->
+<div class="flex-1 flex overflow-hidden">
+<!-- List Section -->
+<section class="flex-1 overflow-y-auto p-10 bg-[#FAFBFC]">
+<div class="flex items-center justify-between mb-8">
+<div>
+<h3 class="font-headline-md text-on-surface mb-1">Nhật ký hoạt động</h3>
+<p class="text-on-surface-variant text-sm">Theo dõi mọi thay đổi cấu hình và giao dịch trong hệ thống.</p>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-4 h-10 bg-white border border-outline-variant rounded-lg text-sm font-medium hover:bg-surface transition-colors">
+<span class="material-symbols-outlined" data-icon="filter_list">filter_list</span>
+                            Bộ lọc nâng cao
+                        </button>
+<button class="flex items-center gap-2 px-4 h-10 bg-primary text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined" data-icon="download">download</span>
+                            Xuất báo cáo
+                        </button>
+</div>
+</div>
+<!-- Bento Style Card for Table -->
+<div class="bg-white border border-outline-variant rounded-xl overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-lowest border-b border-outline-variant">
+<th class="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Thời gian</th>
+<th class="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Người thực hiện</th>
+<th class="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Hành động</th>
+<th class="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Đối tượng</th>
+<th class="px-6 py-4 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">IP Address</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1 (Active) -->
+<tr class="audit-row-active cursor-pointer transition-all hover:bg-surface-container-lowest" onclick="showDetails(1)">
+<td class="px-6 py-4">
+<p class="text-sm font-medium">14:22:45</p>
+<p class="text-[11px] text-outline">Hôm nay, 24/05/2024</p>
+</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center font-bold text-primary text-xs">TN</div>
+<span class="text-sm font-medium">Trần Nhật Minh</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-error-container text-error text-[11px] font-bold uppercase">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+                                        price_override
+                                    </span>
+</td>
+<td class="px-6 py-4">
+<span class="font-mono text-xs px-2 py-1 bg-surface-container-low border border-outline-variant rounded">ORD-99281</span>
+</td>
+<td class="px-6 py-4 text-sm text-outline">192.168.1.105</td>
+</tr>
+<!-- Row 2 -->
+<tr class="cursor-pointer transition-all hover:bg-surface-container-lowest" onclick="showDetails(2)">
+<td class="px-6 py-4">
+<p class="text-sm font-medium">12:10:02</p>
+<p class="text-[11px] text-outline">Hôm nay, 24/05/2024</p>
+</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<img class="w-8 h-8 rounded-full object-cover" data-alt="A portrait of a young Vietnamese female professional in business casual attire, smiling warmly in a bright, modern studio setting. The lighting is soft and flattering, creating an approachable yet highly professional atmosphere. The color palette is composed of soft whites and neutrals." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhZbPHrvYFBPKj_hvs0AkHmHwOTtLqLS5WSY4yF3FJaDTkCzGVJND6FD3EcbaicIqv0g_faOAngRlW7JIvINXnej6wwR9Ja-zWthUHjtTf1C4_3VT2ICT0g5b_ua3pD5nCgc984A9qV8N9Qzh3merlUtj337rbQYs-vwb23HpYUQW56hSPngUQ6b4nOVlKM93SsiBTDWEe-iqiNEathIxguyJEHpwdFsNRvTFrPQ-EUmztvmjGXJo9U3SEoIWGsfSJEG4B84RDe0M">
+<span class="text-sm font-medium">Lê Thị Thuỳ Chi</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high text-on-surface-variant text-[11px] font-bold uppercase border border-outline-variant">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                                        permission_change
+                                    </span>
+</td>
+<td class="px-6 py-4">
+<span class="font-mono text-xs px-2 py-1 bg-surface-container-low border border-outline-variant rounded">USER-005</span>
+</td>
+<td class="px-6 py-4 text-sm text-outline">113.161.45.22</td>
+</tr>
+<!-- Row 3 -->
+<tr class="cursor-pointer transition-all hover:bg-surface-container-lowest" onclick="showDetails(3)">
+<td class="px-6 py-4">
+<p class="text-sm font-medium">09:45:12</p>
+<p class="text-[11px] text-outline">Hôm nay, 24/05/2024</p>
+</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center font-bold text-on-primary-container text-xs">PV</div>
+<span class="text-sm font-medium">Phạm Văn Việt</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary-fixed text-tertiary text-[11px] font-bold uppercase">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                                        login
+                                    </span>
+</td>
+<td class="px-6 py-4">
+<span class="font-mono text-xs px-2 py-1 bg-surface-container-low border border-outline-variant rounded">SYS-AUTH</span>
+</td>
+<td class="px-6 py-4 text-sm text-outline">1.55.234.12</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Detail Sub-panel -->
+<aside class="w-[500px] border-l border-outline-variant bg-white flex flex-col shadow-[-10px_0_20px_rgba(0,0,0,0.02)]" id="detailPanel">
+<div class="p-6 border-b border-outline-variant flex items-center justify-between bg-surface-container-lowest">
+<div>
+<h4 class="font-title-lg text-on-surface">Chi tiết thay đổi</h4>
+<p class="text-[11px] font-mono text-outline uppercase mt-1">LOG_ID: #AX-77291-B</p>
+</div>
+<button class="material-symbols-outlined text-outline hover:text-error transition-colors">close</button>
+</div>
+<div class="flex-1 overflow-y-auto p-6 space-y-6">
+<!-- Context Metadata -->
+<div class="grid grid-cols-2 gap-4">
+<div class="p-4 rounded-lg bg-surface-container-low border border-outline-variant">
+<p class="text-[10px] text-outline uppercase font-bold mb-1">Thực thể</p>
+<p class="text-sm font-bold">ORD-99281 (Đơn hàng)</p>
+</div>
+<div class="p-4 rounded-lg bg-surface-container-low border border-outline-variant">
+<p class="text-[10px] text-outline uppercase font-bold mb-1">Hành động</p>
+<p class="text-sm font-bold text-error">price_override</p>
+</div>
+</div>
+<!-- JSON Comparison -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<h5 class="text-xs font-bold uppercase text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="code">code</span>
+                                So sánh dữ liệu JSON
+                            </h5>
+<button class="text-[11px] font-bold text-primary hover:underline">SAO CHÉP DIFF</button>
+</div>
+<!-- Diff Container -->
+<div class="border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<!-- Headers -->
+<div class="grid grid-cols-2 bg-surface-container-low border-b border-outline-variant">
+<div class="px-4 py-2 text-[10px] font-bold text-outline border-r border-outline-variant">TRƯỚC (BEFORE)</div>
+<div class="px-4 py-2 text-[10px] font-bold text-outline">SAU (AFTER)</div>
+</div>
+<!-- Diff Content -->
+<div class="grid grid-cols-2 json-diff-container bg-white min-h-[400px]">
+<!-- Left side (Before) -->
+<div class="px-4 py-4 border-r border-outline-variant overflow-x-auto">
+<pre class="whitespace-pre">{
+  "id": 99281,
+  "status": "pending",
+  "base_price": 450000,
+<span class="diff-removed">  "discount": 0,</span>
+<span class="diff-removed">  "final_price": 450000,</span>
+  "currency": "VND",
+  "meta": {
+    "source": "web_store",
+    "updated_by": 102
+  }
+}
+                                    </pre>
+</div>
+<!-- Right side (After) -->
+<div class="px-4 py-4 overflow-x-auto">
+<pre class="whitespace-pre">{
+  "id": 99281,
+  "status": "pending",
+  "base_price": 450000,
+<span class="diff-added">  "discount": 50000,</span>
+<span class="diff-added">  "final_price": 400000,</span>
+  "currency": "VND",
+  "meta": {
+    "source": "web_store",
+    "updated_by": 204,
+<span class="diff-added">    "reason": "VIP_DISCOUNT"</span>
+  }
+}
+                                    </pre>
+</div>
+</div>
+</div>
+</div>
+<!-- System Context -->
+<div class="p-4 rounded-xl border border-outline-variant bg-[#F8F9FF]">
+<h6 class="text-xs font-bold text-primary mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">info</span>
+                            Thông tin hệ thống
+                        </h6>
+<div class="space-y-2">
+<div class="flex justify-between text-[12px]">
+<span class="text-on-surface-variant">User Agent</span>
+<span class="font-medium">Chrome 124.0 (Mac OS)</span>
+</div>
+<div class="flex justify-between text-[12px]">
+<span class="text-on-surface-variant">Request ID</span>
+<span class="font-mono">req_281x928sh12</span>
+</div>
+<div class="flex justify-between text-[12px]">
+<span class="text-on-surface-variant">Thao tác qua</span>
+<span class="font-medium">REST API v2</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="p-6 border-t border-outline-variant bg-surface-container-lowest">
+<button class="w-full h-10 border border-primary text-primary font-bold rounded-lg hover:bg-surface-container-low transition-colors text-sm">
+                        HOÀN TÁC THAY ĐỔI (ROLLBACK)
+                    </button>
+<p class="text-[10px] text-center text-outline mt-3">Lưu ý: Hành động hoàn tác sẽ tạo một mục nhật ký mới.</p>
+</div>
+</aside>
+</div>
+</main>
+<script>
+        function showDetails(id) {
+            // Visual row selection logic
+            const rows = document.querySelectorAll('tbody tr');
+            rows.forEach(row => row.classList.remove('audit-row-active'));
+            
+            // Logic to find target row would go here
+            // For demo purposes, the first one is active by default.
+            
+            // Interaction feedback
+            console.log("Loading audit log details for ID: " + id);
+        }
+
+        // Add hover effects and micro-interactions
+        document.querySelectorAll('tbody tr').forEach(row => {
+            row.addEventListener('click', function() {
+                rows = document.querySelectorAll('tbody tr');
+                rows.forEach(r => r.classList.remove('audit-row-active'));
+                this.classList.add('audit-row-active');
+                
+                // Animate panel slightly
+                const panel = document.getElementById('detailPanel');
+                panel.style.opacity = '0.5';
+                setTimeout(() => panel.style.opacity = '1', 50);
+            });
+        });
+    </script>
+
+
+</body></html>

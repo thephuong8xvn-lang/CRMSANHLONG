@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sanh Long Vetco CRM - Thêm khách hàng</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-fixed": "#002113",
+                    "surface-container-low": "#eff4ff",
+                    "on-secondary-fixed-variant": "#3c4855",
+                    "tertiary": "#004c32",
+                    "on-surface-variant": "#424750",
+                    "on-primary-container": "#b6d2ff",
+                    "on-secondary-container": "#596673",
+                    "inverse-on-surface": "#eaf1ff",
+                    "primary-fixed": "#d4e3ff",
+                    "surface-container-highest": "#d9e3f5",
+                    "secondary-fixed": "#d7e4f4",
+                    "on-tertiary-fixed-variant": "#005236",
+                    "on-primary": "#ffffff",
+                    "background": "#f8f9ff",
+                    "surface-container-high": "#dfe9fb",
+                    "surface": "#f8f9ff",
+                    "on-tertiary-container": "#92e1b8",
+                    "on-secondary": "#ffffff",
+                    "on-primary-fixed": "#001c3a",
+                    "on-surface": "#121c29",
+                    "primary-fixed-dim": "#a5c8ff",
+                    "primary-container": "#1e5a9c",
+                    "tertiary-container": "#0e6646",
+                    "surface-bright": "#f8f9ff",
+                    "on-primary-fixed-variant": "#004785",
+                    "secondary-container": "#d7e4f4",
+                    "secondary": "#54606d",
+                    "on-secondary-fixed": "#111d28",
+                    "on-error-container": "#93000a",
+                    "outline-variant": "#c2c6d2",
+                    "tertiary-fixed-dim": "#88d6af",
+                    "on-tertiary": "#ffffff",
+                    "on-background": "#121c29",
+                    "on-error": "#ffffff",
+                    "surface-variant": "#d9e3f5",
+                    "inverse-surface": "#27313f",
+                    "surface-container": "#e5eeff",
+                    "outline": "#727781",
+                    "tertiary-fixed": "#a4f3ca",
+                    "error": "#ba1a1a",
+                    "primary": "#00427d",
+                    "error-container": "#ffdad6",
+                    "surface-tint": "#265fa2",
+                    "inverse-primary": "#a5c8ff",
+                    "surface-dim": "#d0dbed",
+                    "secondary-fixed-dim": "#bbc8d7",
+                    "surface-container-lowest": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "card-padding-mobile": "16px",
+                    "desktop-margin": "40px",
+                    "card-padding": "24px",
+                    "mobile-margin": "16px",
+                    "input-height": "40px",
+                    "unit": "4",
+                    "header-height": "64px",
+                    "sidebar-width": "240px"
+            },
+            "fontFamily": {
+                    "label-md": ["Be Vietnam Pro"],
+                    "display-lg": ["Be Vietnam Pro"],
+                    "body-md": ["Be Vietnam Pro"],
+                    "body-lg": ["Be Vietnam Pro"],
+                    "headline-md": ["Be Vietnam Pro"],
+                    "label-lg": ["Be Vietnam Pro"],
+                    "headline-lg": ["Be Vietnam Pro"],
+                    "title-lg": ["Be Vietnam Pro"]
+            },
+            "fontSize": {
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Be Vietnam Pro', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .bottom-sheet-active { transform: translateY(0); }
+        .bottom-sheet-inactive { transform: translateY(100%); }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen overflow-hidden">
+<!-- Desktop Sidebar (Hidden on Mobile) -->
+<aside class="hidden md:flex flex-col py-6 border-r border-outline-variant h-screen w-[240px] fixed left-0 top-0 bg-surface-container-lowest z-50">
+<div class="px-6 mb-8">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">Vetco CRM</h1>
+<p class="font-body-md text-body-md text-secondary">Hệ thống quản trị</p>
+</div>
+<nav class="flex-1 px-4 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 text-secondary hover:bg-surface-container-low transition-colors rounded-lg font-label-lg text-label-lg" href="#">
+<span class="material-symbols-outlined">dashboard</span> Tổng quan
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 bg-secondary-container text-primary border-l-[3px] border-primary font-bold rounded-lg font-label-lg text-label-lg" href="#">
+<span class="material-symbols-outlined">group</span> Khách hàng
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-secondary hover:bg-surface-container-low transition-colors rounded-lg font-label-lg text-label-lg" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span> Công nợ
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-secondary hover:bg-surface-container-low transition-colors rounded-lg font-label-lg text-label-lg" href="#">
+<span class="material-symbols-outlined">pets</span> Đàn nuôi
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-secondary hover:bg-surface-container-low transition-colors rounded-lg font-label-lg text-label-lg" href="#">
+<span class="material-symbols-outlined">event_note</span> Lịch vaccine
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-secondary hover:bg-surface-container-low transition-colors rounded-lg font-label-lg text-label-lg" href="#">
+<span class="material-symbols-outlined">analytics</span> Báo cáo
+            </a>
+</nav>
+</aside>
+<!-- Top App Bar -->
+<header class="fixed top-0 right-0 left-0 md:left-[240px] h-[64px] flex items-center justify-between px-4 md:px-10 z-40 bg-surface-container-lowest border-b border-outline-variant">
+<div class="flex items-center gap-4">
+<button class="md:hidden p-2 hover:bg-surface-container-low rounded-full transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h2 class="font-title-lg text-title-lg text-primary font-bold">Khách hàng</h2>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 hover:bg-surface-container-low rounded-full transition-colors text-secondary">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 hover:bg-surface-container-low rounded-full transition-colors text-secondary">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<div class="h-8 w-8 rounded-full bg-primary-container flex items-center justify-center text-white ml-2 overflow-hidden">
+<img alt="Admin Avatar" data-alt="A professional headshot of a business executive for a CRM interface. The lighting is soft and studio-quality, reflecting a corporate and trustworthy environment. The background is a clean, neutral grey, ensuring the focus remains on the person. The overall aesthetic is minimalist and modern, matching a high-end financial dashboard." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBYW_JIq5O6zgpfQgIVzfIIiPPLsNdKsp1rE4CqMU5aVnh6jkkfOxluSaWfPPb28qvYs7_hxJjgMaxj2lofpiEkSoBYSksLf58cKxNGxOU9ccJVALLbVIkRGfVzGdjwBPM2JiJZtcMSmd4VCzpkorrFMxffU6vF13f2W78iT8ZP-Ay4C6iNMHK0FQ3XwmjR3BOx2tLUEQFa4FagPWVFPQkz78gCaFS26Q1zWdg3Ri6hW4MOyKjrFvfGXxn91b3U14PxPsjDlj9d4XQ"/>
+</div>
+</div>
+</header>
+<!-- Main Content (Background List) -->
+<main class="pt-[64px] md:pl-[240px] h-screen bg-background">
+<div class="p-4 md:p-10 max-w-7xl mx-auto space-y-6">
+<!-- Search & Actions -->
+<div class="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+<div class="relative w-full md:w-96">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full h-10 pl-10 pr-4 bg-white border border-outline-variant rounded-lg focus:ring-4 focus:ring-secondary-container focus:border-primary transition-all font-body-md text-body-md" placeholder="Tìm kiếm khách hàng..." type="text"/>
+</div>
+<button class="w-full md:w-auto h-10 px-6 bg-primary-container text-white font-label-lg text-label-lg rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-all">
+<span class="material-symbols-outlined text-sm">add</span> Thêm khách hàng
+                </button>
+</div>
+<!-- Customer List (Mockup) -->
+<div class="bg-white border border-outline-variant rounded-xl overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low">
+<tr>
+<th class="p-4 font-label-lg text-label-lg text-secondary uppercase tracking-wider">Khách hàng</th>
+<th class="p-4 font-label-lg text-label-lg text-secondary uppercase tracking-wider hidden md:table-cell">Phân loại</th>
+<th class="p-4 font-label-lg text-label-lg text-secondary uppercase tracking-wider hidden md:table-cell">Khu vực</th>
+<th class="p-4 font-label-lg text-label-lg text-secondary uppercase tracking-wider">Số điện thoại</th>
+<th class="p-4 w-10"></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<tr class="hover:bg-background transition-colors">
+<td class="p-4">
+<div class="flex items-center gap-3">
+<div class="h-10 w-10 rounded-full bg-surface-container-highest flex items-center justify-center text-primary font-bold">NT</div>
+<div>
+<div class="font-label-lg text-label-lg text-on-surface">Nguyễn Văn Thành</div>
+<div class="font-label-md text-label-md text-secondary">ID: KH0024</div>
+</div>
+</div>
+</td>
+<td class="p-4 hidden md:table-cell">
+<span class="px-2 py-1 bg-surface-container-low border border-outline-variant rounded-full font-label-md text-label-md text-secondary">Trại nuôi</span>
+</td>
+<td class="p-4 hidden md:table-cell font-body-md text-body-md">Đồng Nai</td>
+<td class="p-4 font-body-md text-body-md text-on-surface">0912 345 678</td>
+<td class="p-4"><span class="material-symbols-outlined text-outline">chevron_right</span></td>
+</tr>
+<tr class="hover:bg-background transition-colors">
+<td class="p-4">
+<div class="flex items-center gap-3">
+<div class="h-10 w-10 rounded-full bg-surface-container-highest flex items-center justify-center text-primary font-bold">DL</div>
+<div>
+<div class="font-label-lg text-label-lg text-on-surface">Đại lý Minh Phát</div>
+<div class="font-label-md text-label-md text-secondary">ID: KH0025</div>
+</div>
+</div>
+</td>
+<td class="p-4 hidden md:table-cell">
+<span class="px-2 py-1 bg-primary-container text-white rounded-full font-label-md text-label-md">VIP</span>
+</td>
+<td class="p-4 hidden md:table-cell font-body-md text-body-md">Tiền Giang</td>
+<td class="p-4 font-body-md text-body-md text-on-surface">0988 777 999</td>
+<td class="p-4"><span class="material-symbols-outlined text-outline">chevron_right</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+<!-- Bottom Sheet Overlay -->
+<div class="fixed inset-0 bg-on-surface/40 z-50 transition-opacity duration-300 flex items-end justify-center" id="bottomSheetOverlay">
+<!-- Bottom Sheet Content -->
+<div class="w-full max-w-2xl bg-white rounded-t-3xl shadow-2xl transition-transform duration-500 ease-out bottom-sheet-active max-h-[921px] overflow-y-auto flex flex-col" id="bottomSheet">
+<!-- Handle -->
+<div class="w-full flex justify-center py-3">
+<div class="w-10 h-1.5 bg-outline-variant rounded-full"></div>
+</div>
+<!-- Header -->
+<div class="px-6 pb-4 flex justify-between items-center border-b border-outline-variant">
+<h3 class="font-headline-md text-headline-md text-on-surface">Thêm khách hàng mới</h3>
+<button class="p-2 hover:bg-surface-container-low rounded-full transition-colors" onclick="toggleBottomSheet()">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Form -->
+<div class="p-6 space-y-6 flex-1">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Tên khách hàng -->
+<div class="space-y-1.5">
+<label class="font-label-lg text-label-lg text-on-surface-variant ml-1">Tên khách hàng <span class="text-error">*</span></label>
+<input class="w-full h-10 px-4 bg-white border border-outline-variant rounded-lg focus:ring-4 focus:ring-secondary-container focus:border-primary transition-all font-body-md text-body-md" placeholder="Nhập họ và tên" type="text"/>
+</div>
+<!-- Số điện thoại -->
+<div class="space-y-1.5">
+<label class="font-label-lg text-label-lg text-on-surface-variant ml-1">Số điện thoại <span class="text-error">*</span></label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg">call</span>
+<input class="w-full h-10 pl-10 pr-4 bg-white border border-outline-variant rounded-lg focus:ring-4 focus:ring-secondary-container focus:border-primary transition-all font-body-md text-body-md" placeholder="09xx xxx xxx" type="tel"/>
+</div>
+</div>
+<!-- Phân loại (Segmented Control) -->
+<div class="md:col-span-2 space-y-1.5">
+<label class="font-label-lg text-label-lg text-on-surface-variant ml-1">Phân loại</label>
+<div class="flex p-1 bg-surface-container-low rounded-xl border border-outline-variant">
+<button class="segment-btn flex-1 py-2 font-label-lg text-label-lg rounded-lg bg-white shadow-sm text-primary transition-all border border-outline-variant/30" onclick="selectSegment(this)">Trại</button>
+<button class="segment-btn flex-1 py-2 font-label-lg text-label-lg rounded-lg text-secondary hover:text-primary transition-all" onclick="selectSegment(this)">Đại lý</button>
+<button class="segment-btn flex-1 py-2 font-label-lg text-label-lg rounded-lg text-secondary hover:text-primary transition-all" onclick="selectSegment(this)">Khác</button>
+</div>
+</div>
+<!-- Địa chỉ - Tỉnh/Thành -->
+<div class="space-y-1.5">
+<label class="font-label-lg text-label-lg text-on-surface-variant ml-1">Tỉnh / Thành phố</label>
+<div class="relative">
+<select class="w-full h-10 px-4 bg-white border border-outline-variant rounded-lg focus:ring-4 focus:ring-secondary-container focus:border-primary transition-all font-body-md text-body-md appearance-none">
+<option value="">Chọn tỉnh thành</option>
+<option value="1">Đồng Nai</option>
+<option value="2">Tiền Giang</option>
+<option value="3">Bến Tre</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Địa chỉ - Quận/Huyện -->
+<div class="space-y-1.5">
+<label class="font-label-lg text-label-lg text-on-surface-variant ml-1">Quận / Huyện</label>
+<div class="relative">
+<select class="w-full h-10 px-4 bg-white border border-outline-variant rounded-lg focus:ring-4 focus:ring-secondary-container focus:border-primary transition-all font-body-md text-body-md appearance-none">
+<option value="">Chọn quận huyện</option>
+<option value="1">Biên Hòa</option>
+<option value="2">Long Thành</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Nhóm giá -->
+<div class="md:col-span-2 space-y-1.5">
+<label class="font-label-lg text-label-lg text-on-surface-variant ml-1">Nhóm giá áp dụng</label>
+<div class="relative">
+<select class="w-full h-10 px-4 bg-white border border-outline-variant rounded-lg focus:ring-4 focus:ring-secondary-container focus:border-primary transition-all font-body-md text-body-md appearance-none">
+<option value="retail">Bán lẻ (Mặc định)</option>
+<option value="wholesale">Bán sỉ cấp 1</option>
+<option value="loyal">Khách hàng thân thiết</option>
+<option value="vip">Ưu đãi VIP</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Status Switch -->
+<div class="md:col-span-2 flex items-center justify-between p-4 bg-background rounded-xl border border-outline-variant">
+<div>
+<div class="font-label-lg text-label-lg text-on-surface">Kích hoạt tài khoản</div>
+<div class="font-label-md text-label-md text-secondary">Cho phép khách hàng giao dịch ngay</div>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-outline-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container"></div>
+</label>
+</div>
+</div>
+</div>
+<!-- Action Bar -->
+<div class="p-6 bg-surface-container-lowest border-t border-outline-variant flex flex-col md:flex-row gap-3">
+<button class="order-2 md:order-1 flex-1 h-12 px-6 border border-outline-variant text-on-secondary-fixed-variant font-label-lg text-label-lg rounded-xl hover:bg-surface-container-low transition-all" onclick="toggleBottomSheet()">
+                    Hủy bỏ
+                </button>
+<button class="order-1 md:order-2 flex-[2] h-12 px-6 bg-primary-container text-white font-label-lg text-label-lg rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all">
+<span>Lưu &amp; Mở chi tiết</span>
+<span class="material-symbols-outlined text-xl">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Mobile Navigation -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-outline-variant flex items-center justify-around z-40">
+<button class="flex flex-col items-center gap-1 text-secondary">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-[10px] font-medium">Tổng quan</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">group</span>
+<span class="text-[10px] font-bold">Khách hàng</span>
+</button>
+<div class="relative -top-6">
+<button class="h-14 w-14 rounded-full bg-primary-container text-white shadow-lg flex items-center justify-center ring-4 ring-background" onclick="toggleBottomSheet()">
+<span class="material-symbols-outlined text-3xl">add</span>
+</button>
+</div>
+<button class="flex flex-col items-center gap-1 text-secondary">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="text-[10px] font-medium">Công nợ</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-secondary">
+<span class="material-symbols-outlined">analytics</span>
+<span class="text-[10px] font-medium">Báo cáo</span>
+</button>
+</nav>
+<script>
+        function toggleBottomSheet() {
+            const overlay = document.getElementById('bottomSheetOverlay');
+            const sheet = document.getElementById('bottomSheet');
+            
+            if (overlay.classList.contains('opacity-0')) {
+                overlay.classList.remove('opacity-0', 'pointer-events-none');
+                sheet.classList.remove('bottom-sheet-inactive');
+                sheet.classList.add('bottom-sheet-active');
+            } else {
+                overlay.classList.add('opacity-0', 'pointer-events-none');
+                sheet.classList.remove('bottom-sheet-active');
+                sheet.classList.add('bottom-sheet-inactive');
+            }
+        }
+
+        function selectSegment(el) {
+            const btns = el.parentElement.querySelectorAll('.segment-btn');
+            btns.forEach(btn => {
+                btn.classList.remove('bg-white', 'shadow-sm', 'text-primary', 'border', 'border-outline-variant/30');
+                btn.classList.add('text-secondary');
+            });
+            el.classList.add('bg-white', 'shadow-sm', 'text-primary', 'border', 'border-outline-variant/30');
+            el.classList.remove('text-secondary');
+        }
+
+        // Initialize state
+        window.onload = () => {
+            // Uncomment to start with sheet open (as per user request context)
+            // document.getElementById('bottomSheetOverlay').classList.remove('opacity-0', 'pointer-events-none');
+        };
+    </script>
+</body></html>

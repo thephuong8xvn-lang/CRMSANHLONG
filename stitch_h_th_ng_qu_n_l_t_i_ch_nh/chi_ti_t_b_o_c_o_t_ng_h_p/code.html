@@ -1,0 +1,456 @@
+<!DOCTYPE html><html class="light" lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#00427d",
+                        "tertiary-container": "#0e6646",
+                        "surface-dim": "#d0dbed",
+                        "error-container": "#ffdad6",
+                        "on-secondary": "#ffffff",
+                        "surface-container-low": "#eff4ff",
+                        "on-primary-container": "#b6d2ff",
+                        "error": "#ba1a1a",
+                        "tertiary": "#004c32",
+                        "surface-variant": "#d9e3f5",
+                        "outline": "#727781",
+                        "tertiary-fixed": "#a4f3ca",
+                        "on-secondary-fixed-variant": "#3c4855",
+                        "inverse-surface": "#27313f",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed": "#d4e3ff",
+                        "on-surface-variant": "#424750",
+                        "on-error-container": "#93000a",
+                        "primary-fixed-dim": "#a5c8ff",
+                        "outline-variant": "#c2c6d2",
+                        "surface-container-highest": "#d9e3f5",
+                        "on-background": "#121c29",
+                        "on-surface": "#121c29",
+                        "on-tertiary-fixed": "#002113",
+                        "on-tertiary-fixed-variant": "#005236",
+                        "on-tertiary-container": "#92e1b8",
+                        "inverse-on-surface": "#eaf1ff",
+                        "surface-bright": "#f8f9ff",
+                        "on-secondary-container": "#596673",
+                        "secondary-container": "#d7e4f4",
+                        "primary-container": "#1e5a9c",
+                        "secondary-fixed": "#d7e4f4",
+                        "surface": "#f8f9ff",
+                        "background": "#f8f9ff",
+                        "on-secondary-fixed": "#111d28",
+                        "tertiary-fixed-dim": "#88d6af",
+                        "secondary": "#54606d",
+                        "surface-tint": "#265fa2",
+                        "on-primary-fixed-variant": "#004785",
+                        "on-primary": "#ffffff",
+                        "surface-container-high": "#dfe9fb",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#001c3a",
+                        "surface-container": "#e5eeff",
+                        "secondary-fixed-dim": "#bbc8d7",
+                        "on-error": "#ffffff",
+                        "inverse-primary": "#a5c8ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "desktop-margin": "40px",
+                        "card-padding-mobile": "16px",
+                        "input-height": "40px",
+                        "sidebar-width": "240px",
+                        "mobile-margin": "16px",
+                        "card-padding": "24px",
+                        "unit": "4",
+                        "header-height": "64px"
+                    },
+                    "fontFamily": {
+                        "title-lg": ["Be Vietnam Pro"],
+                        "label-lg": ["Be Vietnam Pro"],
+                        "headline-lg": ["Be Vietnam Pro"],
+                        "headline-md": ["Be Vietnam Pro"],
+                        "label-md": ["Be Vietnam Pro"],
+                        "display-lg": ["Be Vietnam Pro"],
+                        "body-md": ["Be Vietnam Pro"],
+                        "body-lg": ["Be Vietnam Pro"]
+                    },
+                    "fontSize": {
+                        "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                        "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #CCD3DB; border-radius: 3px; }
+        .sidebar-active { background-color: #EEF4FB !important; color: #143C69 !important; border-left: 3px solid #1E5A9C !important; font-weight: 600 !important; }
+        .sidebar-item { color: #4A5663; transition: all 0.2s; }
+        .sidebar-item:hover { background-color: #F4F6F8; }
+        .ripple {
+            position: absolute;
+            background: rgba(0, 66, 125, 0.1);
+            border-radius: 50%;
+            transform: scale(0);
+            animation: ripple 0.6s linear;
+            pointer-events: none;
+        }
+        @keyframes ripple {
+            to { transform: scale(4); opacity: 0; }
+        }</style>
+<style>body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #CCD3DB; border-radius: 3px; }
+        .sidebar-active { background-color: #EEF4FB !important; color: #143C69 !important; border-left: 3px solid #1E5A9C !important; font-weight: 600 !important; }
+        .sidebar-item { color: #4A5663; transition: all 0.2s; }
+        .sidebar-item:hover { background-color: #F4F6F8; }
+        .ripple {
+            position: absolute;
+            background: rgba(0, 66, 125, 0.1);
+            border-radius: 50%;
+            transform: scale(0);
+            animation: ripple 0.6s linear;
+            pointer-events: none;
+        }
+        @keyframes ripple {
+            to { transform: scale(4); opacity: 0; }
+        }</style></head>
+<body class="text-on-surface">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 bottom-0 w-[240px] z-50 bg-[#FFFFFF] border-r border-[#E5E9EE] flex flex-col h-full py-6">
+<div class="px-6 mb-10 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary flex items-center justify-center rounded-lg">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">pets</span>
+</div>
+<div>
+<h1 class="font-headline-md text-headline-md font-bold text-primary leading-none">Sanh Long</h1>
+<p class="text-secondary font-label-md">Quản lý thú y</p>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-6 py-3 sidebar-item font-['Be Vietnam_Pro'] font-medium text-sm transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span> Tống quan
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 sidebar-item font-['Be Vietnam_Pro'] font-medium text-sm transition-all" href="#">
+<span class="material-symbols-outlined">payments</span> Bán hàng
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 sidebar-item font-['Be Vietnam_Pro'] font-medium text-sm transition-all" href="#">
+<span class="material-symbols-outlined">group</span> Khách hàng
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 sidebar-item font-['Be Vietnam_Pro'] font-medium text-sm transition-all" href="#">
+<span class="material-symbols-outlined">inventory_2</span> Kho hàng
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 sidebar-active font-['Be Vietnam_Pro'] text-sm transition-all" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">assessment</span> Báo cáo
+            </a>
+</nav>
+<div class="px-6 mt-auto">
+<div class="p-4 bg-surface-container rounded-xl flex items-center gap-3 border border-outline-variant">
+<img alt="User" class="w-8 h-8 rounded-full border border-outline-variant" data-alt="A professional studio portrait of a Vietnamese male business professional in a crisp white shirt, clean lighting, minimalist background, corporate executive style, neutral facial expression, high resolution photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfjwss-6x9cQlxV6JwXnebbanv-nmb66UsHisEWVJDQ9iRy8g72EMSsJbF-llzQAwbdhngD8yUdVN51tM09DRQx7BnxN1d1jBDbqR1ZGZhE3AP6yh6Yqkj33ZEIxjqBGChZLhrZ-2xXKKQ1Gf6Enbnw9Cdqub3C5F6_gRepEL_a1J2IECKxYByacX4aWYxPjlXnb37Cc5yXWI5hWjqeEd2Z7N_pZ1G6kXS4SkW6E107pgy82994-YUSYredjzrUDcYmmlvMOSq7PE">
+<div class="overflow-hidden">
+<p class="font-label-lg text-primary truncate">Quản trị viên</p>
+<p class="text-[10px] text-secondary">Trạm Thú y Quận 1</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-sidebar-width min-h-screen pb-12">
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 left-sidebar-width h-header-height z-40 bg-surface-container-lowest border-b border-outline-variant flex items-center justify-between px-desktop-margin">
+<h2 class="font-title-lg text-title-lg text-primary">Chi tiết Báo cáo Doanh thu</h2>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="h-10 pl-10 pr-4 bg-surface-container-low border-none rounded-full w-64 text-body-md focus:ring-4 focus:ring-primary/10 transition-all" placeholder="Tìm kiếm nhanh..." type="text">
+</div>
+<button class="w-10 h-10 flex items-center justify-center text-secondary hover:bg-surface-container-low rounded-full transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center text-secondary hover:bg-surface-container-low rounded-full transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+</header>
+<div class="pt-24 px-desktop-margin space-y-6">
+<!-- Filter Bar -->
+<section class="bg-white border border-outline-variant rounded-xl p-6 flex flex-wrap items-end gap-4">
+<div class="flex-1 min-w-[200px] space-y-1.5">
+<label class="text-label-md text-secondary uppercase tracking-wider">Khoảng thời gian</label>
+<div class="h-10 border border-outline-variant rounded-lg px-3 flex items-center gap-2 cursor-pointer hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-outline text-lg">calendar_today</span>
+<span class="text-body-md">01/10/2023 - 31/10/2023</span>
+</div>
+</div>
+<div class="flex-1 min-w-[180px] space-y-1.5">
+<label class="text-label-md text-secondary uppercase tracking-wider">Chi nhánh</label>
+<select class="w-full h-10 border-outline-variant rounded-lg text-body-md focus:ring-4 focus:ring-primary/10 border-outline-variant">
+<option>Tất cả chi nhánh</option>
+<option>Chi nhánh Quận 1</option>
+<option>Chi nhánh Quận 3</option>
+</select>
+</div>
+<div class="flex-1 min-w-[180px] space-y-1.5">
+<label class="text-label-md text-secondary uppercase tracking-wider">Danh mục sản phẩm</label>
+<select class="w-full h-10 border-outline-variant rounded-lg text-body-md focus:ring-4 focus:ring-primary/10 border-outline-variant">
+<option>Tất cả sản phẩm</option>
+<option>Thuốc thú y</option>
+<option>Thức ăn &amp; Dinh dưỡng</option>
+<option>Dụng cụ y tế</option>
+</select>
+</div>
+<div class="flex items-center gap-2">
+<button class="h-10 px-6 bg-primary text-white rounded-lg font-label-lg hover:brightness-110 active:opacity-80 transition-all">
+                        Áp dụng
+                    </button>
+<button class="h-10 w-10 flex items-center justify-center border border-outline-variant rounded-lg text-secondary hover:bg-surface-container-low transition-colors" title="Xuất Excel">
+<span class="material-symbols-outlined">description</span>
+</button>
+<button class="h-10 w-10 flex items-center justify-center border border-outline-variant rounded-lg text-secondary hover:bg-surface-container-low transition-colors" title="In báo cáo">
+<span class="material-symbols-outlined">print</span>
+</button>
+</div>
+</section>
+<!-- KPI Summary Strip -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- KPI Card 1 -->
+<div class="bg-white border border-outline-variant rounded-xl p-6">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-surface-container-low rounded-lg text-primary">
+<span class="material-symbols-outlined">monetization_on</span>
+</div>
+<span class="text-tertiary-container text-label-md font-bold flex items-center">
+                            +5.2% <span class="material-symbols-outlined text-sm ml-0.5">trending_up</span>
+</span>
+</div>
+<p class="text-secondary text-label-md mb-1">Tổng doanh thu</p>
+<h3 class="text-headline-md font-bold text-on-surface">1.250.000.000₫</h3>
+</div>
+<!-- KPI Card 2 -->
+<div class="bg-white border border-outline-variant rounded-xl p-6">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-surface-container-low rounded-lg text-primary">
+<span class="material-symbols-outlined">receipt_long</span>
+</div>
+</div>
+<p class="text-secondary text-label-md mb-1">Số lượng hóa đơn</p>
+<h3 class="text-headline-md font-bold text-on-surface">450 <span class="text-body-md font-normal text-secondary">đơn</span></h3>
+</div>
+<!-- KPI Card 3 -->
+<div class="bg-white border border-outline-variant rounded-xl p-6">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-surface-container-low rounded-lg text-primary">
+<span class="material-symbols-outlined">analytics</span>
+</div>
+</div>
+<p class="text-secondary text-label-md mb-1">Giá trị đơn trung bình (AOV)</p>
+<h3 class="text-headline-md font-bold text-on-surface">2.780.000₫</h3>
+</div>
+<!-- KPI Card 4 -->
+<div class="bg-white border border-outline-variant rounded-xl p-6">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 bg-surface-container-low rounded-lg text-primary">
+<span class="material-symbols-outlined">pie_chart</span>
+</div>
+<span class="bg-secondary-container text-primary px-2 py-0.5 rounded text-[10px] font-bold">MỤC TIÊU: 35%</span>
+</div>
+<p class="text-secondary text-label-md mb-1">Biên lợi nhuận gộp</p>
+<h3 class="text-headline-md font-bold text-on-surface">32%</h3>
+</div>
+</section>
+<!-- Main Panel: Chart & Table -->
+<section class="bg-white border border-outline-variant rounded-xl overflow-hidden">
+<div class="p-6 border-b border-outline-variant flex justify-between items-center">
+<h4 class="font-title-lg text-title-lg">Biểu đồ xu hướng doanh thu</h4>
+<div class="flex gap-2">
+<button class="px-3 py-1.5 text-label-md bg-secondary-container text-primary rounded-md font-bold">Ngày</button>
+<button class="px-3 py-1.5 text-label-md text-secondary hover:bg-surface-container-low rounded-md transition-colors">Tuần</button>
+<button class="px-3 py-1.5 text-label-md text-secondary hover:bg-surface-container-low rounded-md transition-colors">Tháng</button>
+</div>
+</div>
+<!-- Visualization Area -->
+<div class="p-6 h-80 relative">
+<!-- Faux Line Chart using CSS Grids and Divs for Minimalism -->
+<div class="absolute inset-x-6 bottom-12 top-6 flex items-end justify-between gap-1 border-l border-b border-outline-variant/30">
+<!-- Chart Grid Lines -->
+<div class="absolute inset-0 flex flex-col justify-between">
+<div class="w-full border-t border-outline-variant/10"></div>
+<div class="w-full border-t border-outline-variant/10"></div>
+<div class="w-full border-t border-outline-variant/10"></div>
+<div class="w-full border-t border-outline-variant/10"></div>
+</div>
+<!-- Visualization Bars/Dots represent Trends -->
+<div class="relative w-full h-full">
+<svg class="w-full h-full overflow-visible" viewBox="0 0 1000 300">
+<path d="M0,250 L100,230 L200,245 L300,180 L400,200 L500,150 L600,165 L700,90 L800,110 L900,40 L1000,55" fill="none" stroke="#00427d" stroke-linecap="round" stroke-width="3"></path>
+<path d="M0,250 L100,230 L200,245 L300,180 L400,200 L500,150 L600,165 L700,90 L800,110 L900,40 L1000,55 L1000,300 L0,300 Z" fill="url(#grad)" opacity="0.1"></path>
+<defs>
+<linearGradient id="grad" x1="0%" x2="0%" y1="0%" y2="100%">
+<stop offset="0%" style="stop-color:#00427d;stop-opacity:1"></stop>
+<stop offset="100%" style="stop-color:#00427d;stop-opacity:0"></stop>
+</linearGradient>
+</defs>
+<!-- Interactive Dot -->
+<circle class="animate-pulse" cx="900" cy="40" fill="#00427d" r="6"></circle>
+</svg>
+<!-- Tooltip Faux -->
+<div class="absolute top-2 right-[10%] bg-primary text-white p-2 rounded text-[10px] shadow-lg pointer-events-none">
+<p class="font-bold">28/10/2023</p>
+<p class="">Doanh thu: 145tr</p>
+</div>
+</div>
+</div>
+<!-- Chart X-Axis Labels -->
+<div class="absolute bottom-4 inset-x-6 flex justify-between text-[10px] text-secondary font-medium uppercase tracking-tight">
+<span class="">01 Th10</span>
+<span class="">05 Th10</span>
+<span class="">10 Th10</span>
+<span class="">15 Th10</span>
+<span class="">20 Th10</span>
+<span class="">25 Th10</span>
+<span class="">31 Th10</span>
+</div>
+</div>
+<!-- Drill-down Table -->
+<div class="overflow-x-auto border-t border-outline-variant">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low">
+<th class="px-6 py-4 font-label-lg text-primary border-r border-outline-variant/30 cursor-pointer hover:bg-surface-container transition-colors">
+                                    Ngày <span class="material-symbols-outlined text-xs align-middle">unfold_more</span>
+</th>
+<th class="px-6 py-4 font-label-lg text-primary border-r border-outline-variant/30 cursor-pointer hover:bg-surface-container transition-colors">
+                                    Số hóa đơn <span class="material-symbols-outlined text-xs align-middle">unfold_more</span>
+</th>
+<th class="px-6 py-4 font-label-lg text-primary border-r border-outline-variant/30 text-right cursor-pointer hover:bg-surface-container transition-colors">
+                                    Doanh thu <span class="material-symbols-outlined text-xs align-middle">unfold_more</span>
+</th>
+<th class="px-6 py-4 font-label-lg text-primary border-r border-outline-variant/30 text-right">Chi phí</th>
+<th class="px-6 py-4 font-label-lg text-primary border-r border-outline-variant/30 text-right">Lợi nhuận</th>
+<th class="px-6 py-4 font-label-lg text-primary text-center">Tăng trưởng</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/30">
+<tr class="hover:bg-surface-container-lowest transition-colors group">
+<td class="px-6 py-4 font-body-md text-on-surface">31/10/2023</td>
+<td class="px-6 py-4 font-body-md text-on-surface">18 đơn</td>
+<td class="px-6 py-4 font-body-md text-on-surface text-right font-bold">45.200.000₫</td>
+<td class="px-6 py-4 font-body-md text-secondary text-right">32.000.000₫</td>
+<td class="px-6 py-4 font-body-md text-primary text-right font-bold">13.200.000₫</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed">
+                                        +12%
+                                    </span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest transition-colors group">
+<td class="px-6 py-4 font-body-md text-on-surface">30/10/2023</td>
+<td class="px-6 py-4 font-body-md text-on-surface">22 đơn</td>
+<td class="px-6 py-4 font-body-md text-on-surface text-right font-bold">58.900.000₫</td>
+<td class="px-6 py-4 font-body-md text-secondary text-right">41.000.000₫</td>
+<td class="px-6 py-4 font-body-md text-primary text-right font-bold">17.900.000₫</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed">
+                                        +8.5%
+                                    </span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest transition-colors group">
+<td class="px-6 py-4 font-body-md text-on-surface">29/10/2023</td>
+<td class="px-6 py-4 font-body-md text-on-surface">15 đơn</td>
+<td class="px-6 py-4 font-body-md text-on-surface text-right font-bold">39.150.000₫</td>
+<td class="px-6 py-4 font-body-md text-secondary text-right">28.500.000₫</td>
+<td class="px-6 py-4 font-body-md text-primary text-right font-bold">10.650.000₫</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-error-container text-error">
+                                        -2.1%
+                                    </span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container-lowest transition-colors group">
+<td class="px-6 py-4 font-body-md text-on-surface">28/10/2023</td>
+<td class="px-6 py-4 font-body-md text-on-surface">25 đơn</td>
+<td class="px-6 py-4 font-body-md text-on-surface text-right font-bold">145.000.000₫</td>
+<td class="px-6 py-4 font-body-md text-secondary text-right">98.000.000₫</td>
+<td class="px-6 py-4 font-body-md text-primary text-right font-bold">47.000.000₫</td>
+<td class="px-6 py-4 text-center">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-tertiary-fixed text-on-tertiary-fixed">
+                                        +45%
+                                    </span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-4 bg-surface-container-lowest border-t border-outline-variant flex justify-between items-center">
+<p class="text-label-md text-secondary">Hiển thị 10 trên 31 ngày</p>
+<div class="flex gap-2">
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded hover:bg-surface-container-low disabled:opacity-30" disabled="">
+<span class="material-symbols-outlined text-sm">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center bg-primary text-white rounded text-label-md font-bold">1</button>
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded hover:bg-surface-container-low text-label-md">2</button>
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded hover:bg-surface-container-low text-label-md">3</button>
+<button class="w-8 h-8 flex items-center justify-center border border-outline-variant rounded hover:bg-surface-container-low">
+<span class="material-symbols-outlined text-sm">chevron_right</span>
+</button>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Micro-interaction effects -->
+<script>
+        document.querySelectorAll('button, a, tr').forEach(el => {
+            el.addEventListener('click', function(e) {
+                const ripple = document.createElement('div');
+                ripple.className = 'ripple';
+                this.appendChild(ripple);
+                setTimeout(() => ripple.remove(), 600);
+            });
+        });
+    </script>
+<style>body { font-family: 'Be Vietnam Pro', sans-serif; background-color: #FAFBFC; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #CCD3DB; border-radius: 3px; }
+        .sidebar-active { background-color: #EEF4FB !important; color: #143C69 !important; border-left: 3px solid #1E5A9C !important; font-weight: 600 !important; }
+        .sidebar-item { color: #4A5663; transition: all 0.2s; }
+        .sidebar-item:hover { background-color: #F4F6F8; }
+        .ripple {
+            position: absolute;
+            background: rgba(0, 66, 125, 0.1);
+            border-radius: 50%;
+            transform: scale(0);
+            animation: ripple 0.6s linear;
+            pointer-events: none;
+        }
+        @keyframes ripple {
+            to { transform: scale(4); opacity: 0; }
+        }</style>
+
+
+</body></html>

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quản lý người dùng - Sanh Long Vetco</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#27313f",
+                    "on-secondary": "#ffffff",
+                    "surface-container-low": "#eff4ff",
+                    "surface": "#f8f9ff",
+                    "outline": "#727781",
+                    "tertiary-fixed": "#a4f3ca",
+                    "on-primary": "#ffffff",
+                    "inverse-primary": "#a5c8ff",
+                    "on-tertiary-fixed-variant": "#005236",
+                    "on-primary-fixed-variant": "#004785",
+                    "on-background": "#121c29",
+                    "on-error": "#ffffff",
+                    "surface-container": "#e5eeff",
+                    "on-tertiary": "#ffffff",
+                    "secondary-fixed-dim": "#bbc8d7",
+                    "error-container": "#ffdad6",
+                    "error": "#ba1a1a",
+                    "on-primary-fixed": "#001c3a",
+                    "inverse-on-surface": "#eaf1ff",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-bright": "#f8f9ff",
+                    "tertiary-fixed-dim": "#88d6af",
+                    "primary-container": "#1e5a9c",
+                    "background": "#f8f9ff",
+                    "tertiary": "#004c32",
+                    "primary-fixed-dim": "#a5c8ff",
+                    "secondary-fixed": "#d7e4f4",
+                    "surface-dim": "#d0dbed",
+                    "outline-variant": "#c2c6d2",
+                    "on-surface": "#121c29",
+                    "on-secondary-container": "#596673",
+                    "surface-container-highest": "#d9e3f5",
+                    "primary-fixed": "#d4e3ff",
+                    "on-surface-variant": "#424750",
+                    "secondary-container": "#d7e4f4",
+                    "surface-variant": "#d9e3f5",
+                    "on-tertiary-fixed": "#002113",
+                    "surface-container-high": "#dfe9fb",
+                    "on-tertiary-container": "#92e1b8",
+                    "secondary": "#54606d",
+                    "primary": "#00427d",
+                    "on-secondary-fixed": "#111d28",
+                    "on-secondary-fixed-variant": "#3c4855",
+                    "on-error-container": "#93000a",
+                    "surface-tint": "#265fa2",
+                    "tertiary-container": "#0e6646",
+                    "on-primary-container": "#b6d2ff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "header-height": "64px",
+                    "card-padding-mobile": "16px",
+                    "card-padding": "24px",
+                    "mobile-margin": "16px",
+                    "desktop-margin": "40px",
+                    "unit": "4",
+                    "sidebar-width": "240px",
+                    "input-height": "40px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Be Vietnam Pro"],
+                    "headline-lg": ["Be Vietnam Pro"],
+                    "body-md": ["Be Vietnam Pro"],
+                    "title-lg": ["Be Vietnam Pro"],
+                    "label-md": ["Be Vietnam Pro"],
+                    "display-lg": ["Be Vietnam Pro"],
+                    "body-lg": ["Be Vietnam Pro"],
+                    "label-lg": ["Be Vietnam Pro"]
+            },
+            "fontSize": {
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAFBFC;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        /* Minimalist Finance UI Overrides */
+        .tabular-nums {
+            font-variant-numeric: tabular-nums;
+        }
+        .focus-ring-finance:focus-within, .focus-ring-finance:focus {
+            outline: none;
+            border-color: #1E5A9C !important;
+            box-shadow: 0 0 0 4px #D6E4F4 !important;
+        }
+        .custom-border {
+            border-color: #E5E9EE;
+        }
+    </style>
+</head>
+<body class="flex min-h-screen text-on-surface">
+<!-- Sidebar: Width 240px, bg-white, border-right #E5E9EE -->
+<aside class="w-[240px] h-screen sticky left-0 top-0 flex flex-col py-6 bg-white border-r border-[#E5E9EE] transition-all">
+<div class="px-6 mb-8">
+<h1 class="text-[24px] font-semibold text-primary">Sanh Long Vetco</h1>
+<p class="font-['Be_Vietnam_Pro'] text-[14px] text-[#4A5663] opacity-70">Hệ thống quản trị doanh nghiệp</p>
+</div>
+<nav class="flex-1 space-y-1">
+<!-- Inactive: text #4A5663, hover bg #F4F6F8 -->
+<a class="flex items-center px-6 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3">dashboard</span>
+<span class="font-['Be_Vietnam_Pro'] text-[14px]">Bảng điều khiển</span>
+</a>
+<a class="flex items-center px-6 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3">payments</span>
+<span class="font-['Be_Vietnam_Pro'] text-[14px]">Bán hàng</span>
+</a>
+<a class="flex items-center px-6 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3">group</span>
+<span class="font-['Be_Vietnam_Pro'] text-[14px]">Khách hàng</span>
+</a>
+<a class="flex items-center px-6 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3">inventory_2</span>
+<span class="font-['Be_Vietnam_Pro'] text-[14px]">Kho hàng</span>
+</a>
+<a class="flex items-center px-6 py-3 text-[#4A5663] hover:bg-[#F4F6F8] transition-colors duration-200" href="#">
+<span class="material-symbols-outlined mr-3">assessment</span>
+<span class="font-['Be_Vietnam_Pro'] text-[14px]">Báo cáo</span>
+</a>
+<!-- Active item: bg #EEF4FB, text #143C69, font-semibold, 3px left border #1E5A9C -->
+<a class="flex items-center px-6 py-3 bg-[#EEF4FB] text-[#143C69] font-semibold border-l-[3px] border-[#1E5A9C] transition-all" href="#">
+<span class="material-symbols-outlined mr-3">admin_panel_settings</span>
+<span class="font-['Be_Vietnam_Pro'] text-[14px]">Cấu hình hệ thống</span>
+</a>
+</nav>
+<div class="px-6 mt-auto">
+<div class="flex items-center p-3 rounded-lg hover:bg-[#F4F6F8] transition-colors cursor-pointer">
+<img alt="Logo Sanh Long Vetco" class="w-10 h-10 rounded-full border border-[#E5E9EE]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8RCzVrLs4OtrMrGwvu6HRReSHIR2emlZm9O8d2ZFvdugdglZI1hKgq8wy7ORsKeVBHTtjRqVe36ZtzcuVkrD9cmrhXm186s2gE5lMy8kWNld8fXLzqwMX4yw7Y2LuUY96sLXaRHQV3OGgSPMnrQ9uXgtjf429RDn58_FpEoeuW-YZ-YST2iazyidp5y1evW-mTvMrGckVkXAP8nnkrof0YzC4ILy1xc1-jh3gNwsIG1DMCGs23fGjdEh8q_U_2a3FGZt__rXX5ns"/>
+<div class="ml-3 overflow-hidden">
+<p class="font-label-lg text-label-lg font-semibold truncate">Nguyễn Admin</p>
+<p class="font-label-md text-label-md text-[#4A5663] truncate">Quản trị viên</p>
+</div>
+</div>
+</div>
+</aside>
+<div class="flex-1 flex flex-col">
+<!-- TopAppBar -->
+<header class="h-header-height sticky top-0 z-30 w-full bg-white border-b border-[#E5E9EE] flex items-center justify-between px-desktop-margin">
+<div class="flex items-center flex-1 max-w-xl">
+<div class="relative w-full rounded-lg">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#4A5663]">search</span>
+<input class="w-full h-10 pl-10 pr-4 bg-white border border-[#CCD3DB] rounded-lg font-body-md text-body-md focus-ring-finance transition-all" placeholder="Tìm kiếm người dùng, mã nhân viên..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="hover:bg-[#F4F6F8] rounded-full p-2 transition-colors">
+<span class="material-symbols-outlined text-[#4A5663]">help_outline</span>
+</button>
+<button class="relative hover:bg-[#F4F6F8] rounded-full p-2 transition-colors">
+<span class="material-symbols-outlined text-[#4A5663]">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<div class="h-8 w-[1px] bg-[#E5E9EE] mx-2"></div>
+<h2 class="font-title-lg text-title-lg text-[#143C69]">Quản trị hệ thống</h2>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 p-desktop-margin overflow-y-auto">
+<!-- Breadcrumb & Page Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+<div>
+<nav class="flex items-center gap-2 text-[#4A5663] mb-2">
+<span class="font-label-md text-label-md">Hệ thống</span>
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+<span class="font-label-md text-label-md text-[#143C69] font-semibold">Quản lý người dùng</span>
+</nav>
+<h2 class="font-headline-lg text-headline-lg text-[#121C29]">Danh sách người dùng</h2>
+</div>
+<button class="inline-flex items-center justify-center gap-2 h-10 px-6 bg-[#1E5A9C] text-white font-label-lg text-label-lg font-semibold rounded-lg hover:opacity-90 active:scale-[0.98] transition-all shadow-none">
+<span class="material-symbols-outlined">add</span>
+                    Thêm người dùng
+                </button>
+</div>
+<!-- Table Container -->
+<div class="bg-white border border-[#E5E9EE] rounded-xl overflow-hidden">
+<!-- Filters/Toolbar -->
+<div class="p-6 border-b border-[#E5E9EE] flex flex-wrap items-center justify-between gap-4">
+<div class="flex items-center gap-4">
+<select class="h-10 px-4 border border-[#CCD3DB] rounded-lg font-body-md text-body-md bg-white focus-ring-finance outline-none transition-all">
+<option>Tất cả vai trò</option>
+<option>Kinh doanh</option>
+<option>Kế toán</option>
+<option>Admin</option>
+</select>
+<select class="h-10 px-4 border border-[#CCD3DB] rounded-lg font-body-md text-body-md bg-white focus-ring-finance outline-none transition-all">
+<option>Trạng thái</option>
+<option>Hoạt động</option>
+<option>Tạm khóa</option>
+</select>
+</div>
+<p class="font-label-md text-label-md text-[#4A5663]">Hiển thị 1 - 5 trong số 24 người dùng</p>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full border-collapse text-left">
+<thead>
+<tr class="bg-[#FAFBFC]">
+<th class="px-6 py-4 font-label-lg text-label-lg text-[#4A5663] uppercase tracking-wider border-b border-[#E5E9EE]">Người dùng</th>
+<th class="px-6 py-4 font-label-lg text-label-lg text-[#4A5663] uppercase tracking-wider border-b border-[#E5E9EE]">Mã NV</th>
+<th class="px-6 py-4 font-label-lg text-label-lg text-[#4A5663] uppercase tracking-wider border-b border-[#E5E9EE]">Chức danh</th>
+<th class="px-6 py-4 font-label-lg text-label-lg text-[#4A5663] uppercase tracking-wider border-b border-[#E5E9EE]">Vai trò</th>
+<th class="px-6 py-4 font-label-lg text-label-lg text-[#4A5663] uppercase tracking-wider border-b border-[#E5E9EE]">Trạng thái</th>
+<th class="px-6 py-4 font-label-lg text-label-lg text-[#4A5663] uppercase tracking-wider border-b border-[#E5E9EE]">Hành động</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#E5E9EE]">
+<!-- Row 1 -->
+<tr class="hover:bg-[#FAFBFC] transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<img alt="Avatar user" class="w-10 h-10 rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJ94zhPYq7m6Uikx87MNVLoWz0vsRuxCRWJhy6SkszZ0e-5VQWWHI4boxJZ7Uc_KpAsfzWdYW17OtWChyNJDf_y4TxlfM8_2bBlpiIlw3oFh_HPmiBRIPMSqKAT4xm-fZYmLqy1YBDML1d_nMTeZ_8j4auyCfNvINpwrG1mCTrdZBPtELBA1PUV8pLnADUz0iEMyX5mUA1icYRnayqen4tyzd8aPPmgjk06iWTtjKUnm0MLwR-XRvUq-1HnqMU5MM9qJhZa4piNns"/>
+<div>
+<p class="font-body-md text-body-md font-semibold text-[#121C29]">Trần Văn An</p>
+<p class="font-label-md text-label-md text-[#4A5663]">an.tv@sanhlong.com</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#4A5663] tabular-nums">SL-001</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#121C29]">Giám đốc Kinh doanh</td>
+<td class="px-6 py-4">
+<!-- Badges: Bg #F4F6F8, border #E5E9EE, text #2F3947 with colored dot -->
+<span class="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium bg-[#F4F6F8] text-[#2F3947] border border-[#E5E9EE]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#1E5A9C] mr-2"></span>
+Kinh doanh
+</span>
+</td>
+<td class="px-6 py-4">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-[#A8B2BD] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1E5A9C]"></div>
+</label>
+</td>
+<td class="px-6 py-4">
+<button class="text-[#727781] hover:text-[#1E5A9C] transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-[#FAFBFC] transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<img alt="Avatar user" class="w-10 h-10 rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDcsnzXwQVxiAZ_HqrnZLanZFK8UWrkvlGvohWt9l9TOFF6XaFuEUVnN2186nXw6WgNEK72wohlLPSwEdRkizLgTMVPG3_FiMb8JBru1SkVZCtXPxA0gFdBanld7ekyEqNlib6YgqLzCCU7I3nn4i9X7BcLIzL0UBMkH6QzDkOfIbU3o7kcLJSaC-HjyaLNqc6o3rLWys3hsYKi9w-w_K6BvYZ_3KqhPl-DFVgKwmwVd7yrAfJ7OboKb6PaQ7ZnJWdCYSfb5txQZqQ"/>
+<div>
+<p class="font-body-md text-body-md font-semibold text-[#121C29]">Lê Thị Mai</p>
+<p class="font-label-md text-label-md text-[#4A5663]">mai.lt@sanhlong.com</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#4A5663] tabular-nums">SL-002</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#121C29]">Kế toán trưởng</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium bg-[#F4F6F8] text-[#2F3947] border border-[#E5E9EE]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#004C32] mr-2"></span>
+Kế toán
+</span>
+</td>
+<td class="px-6 py-4">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-[#A8B2BD] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1E5A9C]"></div>
+</label>
+</td>
+<td class="px-6 py-4">
+<button class="text-[#727781] hover:text-[#1E5A9C] transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-[#FAFBFC] transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-[#1E5A9C] flex items-center justify-center text-white font-semibold">PT</div>
+<div>
+<p class="font-body-md text-body-md font-semibold text-[#121C29]">Phạm Thành Tâm</p>
+<p class="font-label-md text-label-md text-[#4A5663]">tam.pt@sanhlong.com</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#4A5663] tabular-nums">SL-005</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#121C29]">Quản trị hệ thống</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium bg-[#F4F6F8] text-[#2F3947] border border-[#E5E9EE]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#1E5A9C] mr-2"></span>
+Admin
+</span>
+</td>
+<td class="px-6 py-4">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-[#A8B2BD] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1E5A9C]"></div>
+</label>
+</td>
+<td class="px-6 py-4">
+<button class="text-[#727781] hover:text-[#1E5A9C] transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-[#FAFBFC] transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<img alt="Avatar user" class="w-10 h-10 rounded-full grayscale opacity-60" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-RM46SczXs-ox20qoFZFeSB7TFUJv4_50UN6OY7y70cHSmZLBh2Uv2T4imLTCLPFoK5ebY6uHRhbUOogYBnJRgbxVq6-KZDTxp9xyrT4VU_y-LUEcKQZLLGxMliajdhTVYjsoTyk02KmVs-wqMA_kYkjLUaJjRz1iDzMV-3EfFflLRv3EJvYek0trMCcDnlSgCbBMx73dwOfuTMCUuxHPx_W-gBqHcBvJdIGzVXZdYoxIA7rl1ESayMy2BkVQW-pQR-nuoQuyLQU"/>
+<div>
+<p class="font-body-md text-body-md font-semibold text-[#4A5663]">Hoàng Minh Đức</p>
+<p class="font-label-md text-label-md text-[#4A5663]">duc.hm@sanhlong.com</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#4A5663] tabular-nums">SL-009</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#4A5663]">Nhân viên kho</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium bg-[#F4F6F8] text-[#2F3947] border border-[#E5E9EE]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#727781] mr-2"></span>
+Kinh doanh
+</span>
+</td>
+<td class="px-6 py-4">
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-[#A8B2BD] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1E5A9C]"></div>
+</label>
+</td>
+<td class="px-6 py-4">
+<button class="text-[#727781] hover:text-[#1E5A9C] transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+<!-- Row 5 -->
+<tr class="hover:bg-[#FAFBFC] transition-colors group">
+<td class="px-6 py-4">
+<div class="flex items-center gap-3">
+<img alt="Avatar user" class="w-10 h-10 rounded-full" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD_fsNVASI-dHBMuyV7ZuKZAC9lBZHy7J1lvcOmHPGUYbbUu3nXgeDdvMTHo7uBEIePT4tAoxqphqi6PGOwPor2BZJHGOoHlj_ber7OMRn9J9Ugsq36s2l9Taen8hmD-4atquPlnGf9HXiTw9hlhqIQc9MX79VBFYxJwPryyK1NBOI0ZexX8d9K22OMEm0JXFEeJMo0BNLAZP_c-nk8tNmGekvhdgrKnkupiSTRLKJE0us-ORxbD18tM93yBI7IM7Fl3zgz8kaswSI"/>
+<div>
+<p class="font-body-md text-body-md font-semibold text-[#121C29]">Nguyễn Thu Hà</p>
+<p class="font-label-md text-label-md text-[#4A5663]">ha.nt@sanhlong.com</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#4A5663] tabular-nums">SL-012</td>
+<td class="px-6 py-4 font-body-md text-body-md text-[#121C29]">Chuyên viên Nhân sự</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-1">
+<span class="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium bg-[#F4F6F8] text-[#2F3947] border border-[#E5E9EE]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#004C32] mr-2"></span>
+Kế toán
+</span>
+<span class="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium bg-[#F4F6F8] text-[#2F3947] border border-[#E5E9EE]">
+<span class="w-1.5 h-1.5 rounded-full bg-[#54606D] mr-2"></span>
+Nhân sự
+</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-[#A8B2BD] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1E5A9C]"></div>
+</label>
+</td>
+<td class="px-6 py-4">
+<button class="text-[#727781] hover:text-[#1E5A9C] transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="px-6 py-4 border-t border-[#E5E9EE] flex items-center justify-between">
+<div class="flex items-center gap-1">
+<button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F4F6F8] transition-colors text-[#4A5663] disabled:opacity-30" disabled="">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg bg-[#1E5A9C] text-white font-label-md text-label-md font-semibold">1</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F4F6F8] text-[#4A5663] font-label-md text-label-md transition-colors">2</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F4F6F8] text-[#4A5663] font-label-md text-label-md transition-colors">3</button>
+<span class="px-2 text-[#4A5663]">...</span>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F4F6F8] text-[#4A5663] font-label-md text-label-md transition-colors">5</button>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F4F6F8] transition-colors text-[#4A5663]">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-md text-label-md text-[#4A5663]">Hiển thị mỗi trang</span>
+<select class="border border-[#CCD3DB] rounded-lg px-2 py-1 font-label-md text-label-md outline-none bg-white focus-ring-finance transition-all">
+<option>10</option>
+<option selected="">20</option>
+<option>50</option>
+</select>
+</div>
+</div>
+</div>
+</main>
+</div>
+<script>
+        document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const row = this.closest('tr');
+                if (!this.checked) {
+                    row.querySelectorAll('p, td:not(:last-child)').forEach(el => {
+                        el.classList.add('opacity-60');
+                    });
+                } else {
+                    row.querySelectorAll('p, td:not(:last-child)').forEach(el => {
+                        el.classList.remove('opacity-60');
+                    });
+                }
+            });
+        });
+    </script>
+</body></html>

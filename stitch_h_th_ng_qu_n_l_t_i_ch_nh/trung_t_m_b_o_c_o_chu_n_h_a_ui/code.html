@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+
+<html class="light" lang="vi"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Trung tâm Báo cáo | Sanh Long Vetco</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary": "#1E5A9C",
+                    "primary-dark": "#143C69",
+                    "tertiary-container": "#0e6646",
+                    "surface-dim": "#d0dbed",
+                    "error-container": "#ffdad6",
+                    "on-secondary": "#ffffff",
+                    "surface-container-low": "#F4F6F8",
+                    "on-primary-container": "#b6d2ff",
+                    "error": "#ba1a1a",
+                    "tertiary": "#004c32",
+                    "surface-variant": "#d9e3f5",
+                    "outline": "#CCD3DB",
+                    "tertiary-fixed": "#a4f3ca",
+                    "on-secondary-fixed-variant": "#3c4855",
+                    "inverse-surface": "#27313f",
+                    "on-tertiary": "#ffffff",
+                    "primary-fixed": "#EEF4FB",
+                    "on-surface-variant": "#4A5663",
+                    "on-error-container": "#93000a",
+                    "primary-fixed-dim": "#a5c8ff",
+                    "outline-variant": "#E5E9EE",
+                    "surface-container-highest": "#d9e3f5",
+                    "on-background": "#121c29",
+                    "on-surface": "#2F3947",
+                    "on-tertiary-fixed": "#002113",
+                    "on-tertiary-fixed-variant": "#005236",
+                    "on-tertiary-container": "#92e1b8",
+                    "inverse-on-surface": "#eaf1ff",
+                    "surface-bright": "#ffffff",
+                    "on-secondary-container": "#596673",
+                    "secondary-container": "#EEF4FB",
+                    "primary-container": "#EEF4FB",
+                    "secondary-fixed": "#d7e4f4",
+                    "surface": "#FAFBFC",
+                    "background": "#FAFBFC",
+                    "on-secondary-fixed": "#111d28",
+                    "tertiary-fixed-dim": "#88d6af",
+                    "secondary": "#4A5663",
+                    "surface-tint": "#1E5A9C",
+                    "on-primary-fixed-variant": "#143C69",
+                    "on-primary": "#ffffff",
+                    "surface-container-high": "#dfe9fb",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary-fixed": "#001c3a",
+                    "surface-container": "#e5eeff",
+                    "secondary-fixed-dim": "#bbc8d7",
+                    "on-error": "#ffffff",
+                    "inverse-primary": "#a5c8ff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "8px",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "desktop-margin": "40px",
+                    "card-padding-mobile": "16px",
+                    "input-height": "40px",
+                    "sidebar-width": "240px",
+                    "mobile-margin": "16px",
+                    "card-padding": "24px",
+                    "unit": "4",
+                    "header-height": "64px"
+            },
+            "fontFamily": {
+                    "title-lg": ["Be Vietnam Pro"],
+                    "label-lg": ["Be Vietnam Pro"],
+                    "headline-lg": ["Be Vietnam Pro"],
+                    "headline-md": ["Be Vietnam Pro"],
+                    "label-md": ["Be Vietnam Pro"],
+                    "display-lg": ["Be Vietnam Pro"],
+                    "body-md": ["Be Vietnam Pro"],
+                    "body-lg": ["Be Vietnam Pro"]
+            },
+            "fontSize": {
+                    "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                    "label-lg": ["13px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "60px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Be Vietnam Pro', sans-serif;
+            background-color: #FAFBFC;
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .report-card:hover {
+            border-color: #1E5A9C;
+        }
+        .custom-focus:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px #D6E4F4;
+            border-color: #1E5A9C;
+        }
+        .tabular-nums {
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body class="text-on-surface">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 bottom-0 w-sidebar-width z-50 bg-white border-r border-outline-variant flex flex-col h-full py-6">
+<div class="px-6 mb-10 flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-white font-bold text-xl">SL</div>
+<div>
+<h1 class="font-headline-md text-primary-dark font-bold text-lg leading-tight">Sanh Long Vetco</h1>
+<p class="text-secondary text-label-md">Quản lý thú y</p>
+</div>
+</div>
+<nav class="flex-1 px-3 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-secondary hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-lg text-label-lg">Tổng quan</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-secondary hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+<span class="font-label-lg text-label-lg">Bán hàng</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-secondary hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-label-lg text-label-lg">Khách hàng</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-secondary hover:bg-surface-container-low transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-label-lg text-label-lg">Kho hàng</span>
+</a>
+<!-- ACTIVE TAB: Báo cáo -->
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg bg-secondary-container text-primary-dark font-semibold border-l-[3px] border-primary transition-all duration-200" href="#">
+<span class="material-symbols-outlined text-primary" data-icon="assessment" style="font-variation-settings: 'FILL' 1;">assessment</span>
+<span class="font-label-lg text-label-lg">Báo cáo</span>
+</a>
+</nav>
+<div class="px-6 pt-6 border-t border-outline-variant">
+<div class="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors">
+<img alt="Ảnh đại diện người dùng" class="w-8 h-8 rounded-full bg-surface-container-high" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCu18lobfxWrc-OP4Bnmk5tlGvXtdfoe6U1Qf90IccR4vLuuKAjid2ilPeZi9g-QDcYEQrPyQlqGn19_mZjg2o_mSvEh3K46WX8LFrKWupH0H90TZIzhY3voEX7ZUISkJMJ8SiCdcafFiegymPlhphYNP7KJ5JA5cIDOiYLs0XmdW7yz_xyrU8UHtfbnfv0sCgdHOgGz-X6Bevx8EnMkCVNS6r5NOGKfODUaAXaoe9qBN4eJiw5CiRyTuuW6qwxxkYIZAp-CW-CtQM"/>
+<div class="overflow-hidden">
+<p class="text-label-lg font-semibold truncate text-on-surface">Quản trị viên</p>
+<p class="text-[10px] text-secondary truncate">admin@sanhlong.vn</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 left-0 h-header-height z-40 bg-white border-b border-outline-variant flex items-center justify-between px-desktop-margin ml-sidebar-width">
+<div class="flex items-center gap-4 flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-[20px]" data-icon="search">search</span>
+<input class="w-full h-input-height pl-10 pr-4 bg-white border border-outline rounded-lg font-body-md focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all placeholder:text-secondary" placeholder="Tìm kiếm báo cáo hoặc dữ liệu..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low text-secondary transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-low text-secondary transition-colors">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-sidebar-width mt-header-height p-desktop-margin min-h-screen">
+<!-- Page Header -->
+<div class="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<nav class="flex items-center gap-2 text-secondary text-label-md mb-2">
+<span>Hệ thống</span>
+<span class="material-symbols-outlined text-[14px]" data-icon="chevron_right">chevron_right</span>
+<span class="text-primary font-semibold">Trung tâm Báo cáo</span>
+</nav>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Trung tâm Báo cáo</h2>
+<p class="text-secondary font-body-md mt-1">Phân tích dữ liệu vận hành và dự báo kinh doanh thông minh.</p>
+</div>
+<div class="flex gap-3">
+<button class="h-input-height px-4 bg-white border border-outline rounded-lg text-secondary font-label-lg flex items-center gap-2 hover:bg-surface-container-low focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="calendar_today">calendar_today</span>
+                Tháng này
+            </button>
+<button class="h-input-height px-4 bg-primary text-white rounded-lg font-label-lg flex items-center gap-2 hover:opacity-90 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="file_export">file_export</span>
+                Xuất tất cả
+            </button>
+</div>
+</div>
+<!-- Bento Grid of Report Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Card 1: Doanh thu -->
+<div class="bg-white border border-outline-variant rounded-xl p-card-padding flex flex-col h-full hover:border-primary transition-all report-card">
+<div class="mb-6 flex justify-between items-start">
+<div class="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="trending_up">trending_up</span>
+</div>
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-green-500"></span>
+                    Tài chính
+                </span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-4 text-on-surface">Doanh thu theo thời gian</h3>
+<ul class="space-y-3 flex-1 mb-8">
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Doanh thu theo ngày/tháng/quý
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    So sánh cùng kỳ
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Tăng trưởng doanh số
+                </li>
+</ul>
+<button class="h-input-height w-full bg-primary text-white rounded-lg font-label-lg hover:opacity-90 transition-all">Xem báo cáo</button>
+</div>
+<!-- Card 2: Công nợ -->
+<div class="bg-white border border-outline-variant rounded-xl p-card-padding flex flex-col h-full hover:border-primary transition-all report-card">
+<div class="mb-6 flex justify-between items-start">
+<div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="account_balance_wallet">account_balance_wallet</span>
+</div>
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                    Kế toán
+                </span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-4 text-on-surface">Công nợ phải thu</h3>
+<ul class="space-y-3 flex-1 mb-8">
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Phân tích tuổi nợ
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Nợ quá hạn theo khách hàng
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Dự báo thu hồi nợ
+                </li>
+</ul>
+<button class="h-input-height w-full bg-primary text-white rounded-lg font-label-lg hover:opacity-90 transition-all">Xem báo cáo</button>
+</div>
+<!-- Card 3: Kho hàng -->
+<div class="bg-white border border-outline-variant rounded-xl p-card-padding flex flex-col h-full hover:border-primary transition-all report-card">
+<div class="mb-6 flex justify-between items-start">
+<div class="w-12 h-12 bg-tertiary-fixed rounded-lg flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[28px]" data-icon="inventory_2">inventory_2</span>
+</div>
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-red-500"></span>
+                    Kho hàng
+                </span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-4 text-on-surface">Nhập xuất tồn kho</h3>
+<ul class="space-y-3 flex-1 mb-8">
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Giá trị kho hiện tại
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Tỷ lệ quay vòng kho
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-error"></div>
+                    Cảnh báo hàng sắp hết hạn
+                </li>
+</ul>
+<button class="h-input-height w-full bg-primary text-white rounded-lg font-label-lg hover:opacity-90 transition-all">Xem báo cáo</button>
+</div>
+<!-- Card 4: Marketing -->
+<div class="bg-white border border-outline-variant rounded-xl p-card-padding flex flex-col h-full hover:border-primary transition-all report-card">
+<div class="mb-6 flex justify-between items-start">
+<div class="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="local_offer">local_offer</span>
+</div>
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-green-500"></span>
+                    Marketing
+                </span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-4 text-on-surface">ROI khuyến mãi</h3>
+<ul class="space-y-3 flex-1 mb-8">
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Hiệu quả chương trình ưu đãi
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Chi phí marketing trên đơn hàng
+                </li>
+</ul>
+<button class="h-input-height w-full bg-primary text-white rounded-lg font-label-lg hover:opacity-90 transition-all">Xem báo cáo</button>
+</div>
+<!-- Card 5: Churn Rate -->
+<div class="bg-white border border-outline-variant rounded-xl p-card-padding flex flex-col h-full hover:border-primary transition-all report-card">
+<div class="mb-6 flex justify-between items-start">
+<div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="group_remove">group_remove</span>
+</div>
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                    Khách hàng
+                </span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-4 text-on-surface">Churn Rate khách hàng</h3>
+<ul class="space-y-3 flex-1 mb-8">
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Tỷ lệ khách hàng rời bỏ
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-error"></div>
+                    Nhóm khách hàng nguy cơ cao
+                </li>
+</ul>
+<button class="h-input-height w-full bg-primary text-white rounded-lg font-label-lg hover:opacity-90 transition-all">Xem báo cáo</button>
+</div>
+<!-- Card 6: Nhân sự -->
+<div class="bg-white border border-outline-variant rounded-xl p-card-padding flex flex-col h-full hover:border-primary transition-all report-card">
+<div class="mb-6 flex justify-between items-start">
+<div class="w-12 h-12 bg-primary-fixed rounded-lg flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[28px]" data-icon="badge">badge</span>
+</div>
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-green-500"></span>
+                    Nhân sự
+                </span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-4 text-on-surface">Hiệu suất nhân viên</h3>
+<ul class="space-y-3 flex-1 mb-8">
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    Doanh số theo nhân viên
+                </li>
+<li class="flex items-center gap-3 text-body-md text-secondary">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+                    KPI chăm sóc khách hàng
+                </li>
+</ul>
+<button class="h-input-height w-full bg-primary text-white rounded-lg font-label-lg hover:opacity-90 transition-all">Xem báo cáo</button>
+</div>
+</div>
+<!-- Summary Section with Currency formatting -->
+<div class="mt-12 overflow-x-auto bg-white rounded-xl border border-outline-variant">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant">
+<th class="px-6 py-4 font-semibold text-label-lg text-secondary">Tên Báo Cáo</th>
+<th class="px-6 py-4 font-semibold text-label-lg text-secondary text-right">Giá Trị Tổng</th>
+<th class="px-6 py-4 font-semibold text-label-lg text-secondary">Trạng Thái</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<tr>
+<td class="px-6 py-4 text-body-md font-semibold text-on-surface">Doanh thu tháng này</td>
+<td class="px-6 py-4 text-body-md text-right tabular-nums font-semibold text-primary-dark">1.250.000 ₫</td>
+<td class="px-6 py-4">
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2 w-fit">
+<span class="w-2 h-2 rounded-full bg-green-500"></span>
+                            Đã hoàn thành
+                        </span>
+</td>
+</tr>
+<tr>
+<td class="px-6 py-4 text-body-md font-semibold text-on-surface">Công nợ tồn đọng</td>
+<td class="px-6 py-4 text-body-md text-right tabular-nums font-semibold text-primary-dark">450.000 ₫</td>
+<td class="px-6 py-4">
+<span class="bg-surface-container-low text-on-surface py-1 px-3 rounded-full text-label-md border border-outline-variant flex items-center gap-2 w-fit">
+<span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                            Đang chờ duyệt
+                        </span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- System Status Banner -->
+<div class="mt-12 bg-secondary-container p-6 rounded-xl border border-outline-variant flex items-center justify-between">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" data-icon="info">info</span>
+<p class="text-body-md text-secondary">Dữ liệu báo cáo được cập nhật lần cuối vào <span class="font-semibold text-on-surface">10:45 AM, Hôm nay</span>. Hệ thống đồng bộ hóa tự động mỗi 15 phút.</p>
+</div>
+<button class="text-primary font-semibold font-label-lg hover:underline transition-all">Cập nhật ngay</button>
+</div>
+</main>
+<script>
+    document.querySelectorAll('button').forEach(button => {
+        button.addEventListener('mousedown', function() {
+            this.classList.add('opacity-80');
+        });
+        button.addEventListener('mouseup', function() {
+            this.classList.remove('opacity-80');
+        });
+        button.addEventListener('mouseleave', function() {
+            this.classList.remove('opacity-80');
+        });
+    });
+</script>
+</body></html>
