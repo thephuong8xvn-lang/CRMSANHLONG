@@ -262,9 +262,9 @@ export default function SystemSettingsPage() {
         .from('profiles')
         .select(`
           id, email, full_name, phone, employee_code, job_title, is_active, avatar_url, branch_id, team_id,
-          branch:branches(id, name),
-          team:teams(id, name),
-          user_roles:user_roles(
+          branch:branches!profiles_branch_id_fkey(id, name),
+          team:teams!profiles_team_id_fkey(id, name),
+          user_roles:user_roles!user_roles_user_id_fkey(
             role:roles(id, code, name)
           )
         `)

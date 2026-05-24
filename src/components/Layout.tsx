@@ -12,8 +12,6 @@ import {
   Wallet,
   BarChart2,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
   Menu,
   Search,
   Bell,
@@ -22,7 +20,8 @@ import {
   ArrowUpRight,
   X,
   PawPrint,
-  Settings
+  Settings,
+  ChevronDown
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -39,9 +38,6 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
   const navigate = useNavigate()
   const location = useLocation()
   
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    return localStorage.getItem('sidebar-collapsed') === 'true'
-  })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickActionOpen, setQuickActionOpen] = useState(false)
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
@@ -49,21 +45,29 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
     code: 'admin',
     name: 'Quản trị viên'
   })
+  const [userPermissions, setUserPermissions] = useState<string[]>([])
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
 
-  // Handle Sidebar collapse toggle
-  const toggleSidebar = () => {
-    setIsCollapsed(prev => {
-      const next = !prev
-      localStorage.setItem('sidebar-collapsed', String(next))
-      return next
-    })
-  }
-
-  // Fetch User Role
+  // Handle dropdown outside click
   useEffect(() => {
-    const fetchUserRole = async () => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.menu-dropdown-container')) {
+        setActiveDropdown(null)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [])
+
+  // Fetch User Role & Permissions
+  useEffect(() => {
+    const fetchUserRoleAndPermissions = async () => {
       if (!profile?.id) return
       try {
+        // Fetch Role
         const { data: roleData, error: roleError } = await supabase
           .from('user_roles')
           .select('role:roles(code, name)')
@@ -75,43 +79,108 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
             setUserRole(roleObj)
           }
         }
+
+        // Fetch Permissions
+        const { data: permData, error: permError } = await supabase
+          .from('user_roles')
+          .select(`
+            role:roles(
+              code,
+              name,
+              role_permissions!role_permissions_role_id_fkey(
+                permission:permissions!role_permissions_permission_id_fkey(
+                  code
+                )
+              )
+            )
+          `)
+          .eq('user_id', profile.id)
+
+        if (!permError && permData) {
+          const perms = new Set<string>()
+          permData.forEach((ur: any) => {
+            if (ur.role && ur.role.role_permissions) {
+              ur.role.role_permissions.forEach((rp: any) => {
+                if (rp.permission && rp.permission.code) {
+                  perms.add(rp.permission.code)
+                }
+              })
+            }
+          })
+          setUserPermissions(Array.from(perms))
+        }
       } catch (err) {
-        console.error('Error fetching user role in Layout:', err)
+        console.error('Error fetching user role & permissions in Layout:', err)
       }
     }
-    fetchUserRole()
+    fetchUserRoleAndPermissions()
   }, [profile])
 
   // Navigation Items according to spec
-  const menuItems = [
-    { label: 'Bảng điều khiển', icon: LayoutDashboard, path: '/dashboard' },
-    { label: 'Khách hàng', icon: Users, path: '/customers' },
-    { label: 'Chăn nuôi', icon: PawPrint, path: '/herd-projects' },
-    { label: 'Pipeline', icon: Stethoscope, path: '/pipeline' },
-    { label: 'Đơn hàng', icon: Receipt, path: '/orders' },
-    { label: 'Sản phẩm', icon: Package, path: '/products' },
-    { label: 'Kho hàng', icon: Warehouse, path: '/inventory' },
-    { label: 'Nhà cung cấp', icon: Truck, path: '/suppliers' },
-    { label: 'Hoạt động', icon: Activity, path: '#' },
-    { label: 'Sổ quỹ', icon: Wallet, path: '/cashbook', restricted: true }, // Restricted to Accountant/Admin
-    { label: 'Báo cáo', icon: BarChart2, path: '/reports' }, // All roles can view report hub
-    { label: 'Cấu hình', icon: Settings, path: '/system-settings', adminOnly: true }
+  const menuGroups = [
+    {
+      label: 'Tổng quan',
+      items: [
+        { label: 'Bảng điều khiển', icon: LayoutDashboard, path: '/dashboard', perms: [] },
+        { label: 'Hoạt động', icon: Activity, path: '#', perms: [] }
+      ]
+    },
+    {
+      label: 'Kinh doanh',
+      items: [
+        { label: 'Khách hàng', icon: Users, path: '/customers', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
+        { label: 'Chăn nuôi', icon: PawPrint, path: '/herd-projects', perms: ['herd_projects.view_all', 'herd_projects.create'] },
+        { label: 'Pipeline', icon: Stethoscope, path: '/pipeline', perms: ['opportunities.view_all', 'opportunities.create'] },
+        { label: 'Đơn hàng', icon: Receipt, path: '/orders', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create'] }
+      ]
+    },
+    {
+      label: 'Kho & Hàng hóa',
+      items: [
+        { label: 'Sản phẩm', icon: Package, path: '/products', perms: ['products.view', 'products.manage', 'pricing.manage', 'promotions.manage'] },
+        { label: 'Kho hàng', icon: Warehouse, path: '/inventory', perms: ['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer'] },
+        { label: 'Nhà cung cấp', icon: Truck, path: '/suppliers', perms: ['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive'] }
+      ]
+    },
+    {
+      label: 'Tài chính & Báo cáo',
+      items: [
+        { label: 'Sổ quỹ', icon: Wallet, path: '/cashbook', perms: ['cashbook.view', 'cashbook.create', 'cashbook.approve'] },
+        { label: 'Báo cáo', icon: BarChart2, path: '/reports', perms: ['reports.sales', 'reports.cashflow', 'reports.inventory', 'reports.debt', 'reports.team_kpi'] }
+      ]
+    },
+    {
+      label: 'Hệ thống',
+      items: [
+        { label: 'Cấu hình', icon: Settings, path: '/system-settings', perms: ['users.manage', 'users.assign_role', 'audit.view'] }
+      ]
+    }
   ]
 
+  // Filter groups based on role (Admin has full access) and specific module permissions
+  const visibleMenuGroups = menuGroups.map(group => {
+    const filteredItems = group.items.filter(item => {
+      if (userRole.code === 'admin') {
+        return true
+      }
+      if (!item.perms || item.perms.length === 0) {
+        return true
+      }
+      return item.perms.some(perm => userPermissions.includes(perm))
+    })
+    return {
+      ...group,
+      items: filteredItems
+    }
+  }).filter(group => group.items.length > 0)
 
-  // Filter items based on role (Accountant sees cashbook, etc.)
-  const visibleMenuItems = menuItems.filter(item => {
-    if (item.restricted && userRole.code === 'sales') {
-      return false
-    }
-    if (item.adminOnly && userRole.code !== 'admin') {
-      return false
-    }
-    return true
-  })
+  // Flattened visible items for mobile drawer/bottom bar reuse
+  const visibleMenuItems = visibleMenuGroups.reduce((acc, group) => {
+    return [...acc, ...group.items]
+  }, [] as { label: string; icon: React.ComponentType<any>; path: string; perms: string[] }[])
 
   // Check if current path or matching activeMenu is active
-  const isItemActive = (item: typeof menuItems[0]) => {
+  const isItemActive = (item: { label: string; path: string }) => {
     if (activeMenu) {
       return item.label.toLowerCase() === activeMenu.toLowerCase()
     }
@@ -127,167 +196,224 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
     return location.pathname === item.path
   }
 
+  // Check if any item inside a group is active
+  const isGroupActive = (group: typeof menuGroups[0]) => {
+    return group.items.some(item => isItemActive(item))
+  }
+
+  const handleGroupClick = (groupLabel: string) => {
+    setActiveDropdown(prev => prev === groupLabel ? null : groupLabel)
+  }
+
+  const handleItemClick = (path: string) => {
+    setActiveDropdown(null)
+    if (path !== '#') {
+      navigate(path)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-25 text-gray-600 font-sans">
-      
-      {/* ── Desktop/Tablet Sidebar ── */}
-      <aside
-        className={`hidden md:flex flex-col fixed left-0 top-0 h-full bg-gray-0 border-r border-gray-100 py-6 z-50 transition-all duration-300 ${
-          isCollapsed ? 'w-[78px]' : 'w-[240px]'
-        }`}
-      >
-        {/* Brand Header */}
-        <div className="px-6 mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 bg-blue-500 flex items-center justify-center rounded-lg flex-shrink-0">
-              <Stethoscope className="text-gray-0" size={20} strokeWidth={1.5} />
-            </div>
-            {!isCollapsed && (
-              <div className="transition-opacity duration-300">
-                <h1 className="text-body-lg font-semibold text-blue-500 leading-tight">Sanh Long Vetco</h1>
-                <p className="text-tiny text-gray-400">Hệ thống CRM</p>
-              </div>
-            )}
-          </div>
-        </div>
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
 
-        {/* Navigation Menu */}
-        <nav className="flex-1 space-y-1">
-          {visibleMenuItems.map((item, idx) => {
-            const Icon = item.icon
-            const active = isItemActive(item)
-            return (
-              <a
-                key={idx}
-                href={item.path}
-                onClick={(e) => {
-                  if (item.path !== '#') {
-                    e.preventDefault()
-                    navigate(item.path)
-                  }
-                }}
-                className={`flex items-center gap-3 px-6 py-3 transition-colors duration-200 ${
-                  active
-                    ? 'bg-blue-50 text-blue-700 font-semibold border-l-[3px] border-blue-500'
-                    : 'text-gray-500 hover:bg-gray-50'
-                }`}
-                title={item.label}
-              >
-                <Icon size={20} strokeWidth={active ? 2 : 1.5} className="flex-shrink-0" />
-                {!isCollapsed && <span className="text-body-md">{item.label}</span>}
-              </a>
-            )
-          })}
-        </nav>
-
-        {/* Sidebar Toggle Button at bottom */}
-        <div className="px-6 mb-4">
-          <button
-            onClick={toggleSidebar}
-            className="w-full py-2 flex items-center justify-center text-gray-400 hover:bg-gray-50 border border-gray-100 rounded-md transition-colors"
-          >
-            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        </div>
-
-        {/* Profile Block inside Sidebar */}
-        <div className="px-6 pt-6 border-t border-gray-100">
-          <div 
-            className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors relative"
-            onClick={() => setProfileDropdownOpen(prev => !prev)}
-          >
-            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-gray-0 text-tiny font-semibold flex-shrink-0">
-              {profile?.full_name?.charAt(0).toUpperCase() || 'A'}
-            </div>
-            {!isCollapsed && (
-              <div className="overflow-hidden flex-1 text-left">
-                <p className="text-body-md font-semibold truncate">{profile?.full_name || 'Quản trị viên'}</p>
-                <p className="text-tiny text-gray-400 truncate">{userRole.name}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </aside>
-
-      {/* ── Main Layout Wrapper ── */}
-      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${
-        isCollapsed ? 'md:ml-[78px]' : 'md:ml-[240px]'
-      }`}>
+      {/* ── Main Layout Wrapper (No desktop sidebar margin) ── */}
+      <div className="flex-1 flex flex-col min-h-screen">
         
-        {/* ── Top App Bar ── */}
-        <header className="sticky top-0 bg-gray-0 border-b border-gray-100 h-16 flex justify-between items-center px-4 md:px-10 z-40">
-          <div className="flex items-center gap-3">
-            {/* Hamburger menu for mobile/tablet */}
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden p-2 text-gray-500 hover:bg-gray-50 rounded-lg"
-            >
-              <Menu size={20} />
-            </button>
+        {/* ── Top App Bar (Contains Brand, Menu and User Controls) ── */}
+        <header className="sticky top-0 bg-gray-0 border-b border-gray-100 min-h-16 md:h-16 flex flex-col md:flex-row justify-between items-center px-4 md:px-6 z-40 gap-3 py-3 md:py-0">
+          <div className="flex items-center justify-between w-full md:w-auto gap-4">
+            <div className="flex items-center gap-3">
+              {/* Logo & Brand Name */}
+              <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/dashboard')}>
+                <div className="w-9 h-9 bg-blue-500 flex items-center justify-center rounded-lg">
+                  <PawPrint className="text-gray-0" size={18} />
+                </div>
+                <span className="text-body-lg font-bold text-blue-500 leading-tight">Sanh Long</span>
+              </div>
+            </div>
+            {/* Mobile actions */}
+            <div className="flex items-center md:hidden gap-2">
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="p-2 text-gray-500 hover:bg-gray-50 rounded-lg"
+              >
+                <Menu size={20} />
+              </button>
+            </div>
+          </div>
 
-            {/* Global Search */}
+          {/* Grouped Horizontal Navigation Menu for Desktop */}
+          <nav className="hidden md:flex items-center gap-1.5 no-scrollbar px-2 py-1">
+            {visibleMenuGroups.map((group, groupIdx) => {
+              if (group.items.length === 1) {
+                const item = group.items[0]
+                const Icon = item.icon
+                const active = isItemActive(item)
+                return (
+                  <a
+                    key={groupIdx}
+                    href={item.path}
+                    onClick={(e) => {
+                      if (item.path !== '#') {
+                        e.preventDefault()
+                        navigate(item.path)
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-body-md transition-all font-medium ${
+                      active
+                        ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm'
+                        : 'text-gray-500 hover:text-blue-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Icon size={16} strokeWidth={active ? 2 : 1.5} className="flex-shrink-0" />
+                    <span className="whitespace-nowrap">{item.label}</span>
+                  </a>
+                )
+              }
+
+              // Group with dropdown
+              const groupActive = isGroupActive(group)
+              const isOpen = activeDropdown === group.label
+              return (
+                <div key={groupIdx} className="relative menu-dropdown-container">
+                  <button
+                    onClick={() => handleGroupClick(group.label)}
+                    className={`flex items-center gap-1 px-3 py-2 rounded-lg text-body-md transition-all font-medium focus:outline-none ${
+                      groupActive
+                        ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm'
+                        : 'text-gray-500 hover:text-blue-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="whitespace-nowrap">{group.label}</span>
+                    <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isOpen && (
+                    <div className="absolute left-0 mt-2 w-48 bg-gray-0 border border-gray-100 rounded-lg shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                      {group.items.map((item, idx) => {
+                        const Icon = item.icon
+                        const active = isItemActive(item)
+                        return (
+                          <a
+                            key={idx}
+                            href={item.path}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              handleItemClick(item.path)
+                            }}
+                            className={`flex items-center gap-2 px-4 py-2.5 text-body-md transition-colors ${
+                              active
+                                ? 'bg-blue-50 text-blue-700 font-semibold'
+                                : 'text-gray-500 hover:bg-gray-50 hover:text-blue-500'
+                            }`}
+                          >
+                            <Icon size={16} strokeWidth={active ? 2 : 1.5} className="flex-shrink-0" />
+                            <span>{item.label}</span>
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </nav>
+
+          {/* Desktop Search & Actions */}
+          <div className="hidden md:flex items-center gap-3">
             {searchElement ? (
               searchElement
             ) : (
-              <div className="hidden sm:flex items-center bg-gray-25 rounded-lg px-3 h-10 w-80 md:w-96 border border-gray-100 focus-within:border-blue-500 focus-within:ring-[4px] focus-within:ring-blue-100 transition-all">
-                <Search className="text-gray-400 mr-2" size={16} strokeWidth={1.5} />
+              <div className="flex items-center bg-gray-25 rounded-lg px-3 h-9 w-48 lg:w-64 border border-gray-100 focus-within:border-blue-500 focus-within:ring-[3px] focus-within:ring-blue-100 transition-all">
+                <Search className="text-gray-400 mr-2" size={14} strokeWidth={1.5} />
                 <input
-                  className="bg-transparent border-none focus:ring-0 text-body-md w-full placeholder-gray-400 p-0 focus:outline-none"
-                  placeholder="Tìm kiếm nhanh..."
+                  className="bg-transparent border-none focus:ring-0 text-body-sm w-full placeholder-gray-400 p-0 focus:outline-none"
+                  placeholder="Tìm nhanh..."
                   type="text"
                   onChange={(e) => onSearch && onSearch(e.target.value)}
                 />
               </div>
             )}
-          </div>
-
-          {/* Right Actions */}
-          <div className="flex items-center gap-2">
-            <button className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-25 rounded-lg transition-all relative">
-              <Bell size={20} strokeWidth={1.5} />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-blue-500"></span>
-            </button>
-            <button className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-25 rounded-lg transition-all">
-              <HelpCircle size={20} strokeWidth={1.5} />
-            </button>
-            <div className="h-6 w-[1px] bg-gray-100 mx-2"></div>
             
-            {/* Profile Dropdown for quick logout/settings */}
+            <div className="flex items-center gap-1">
+              <button className="w-9 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-25 rounded-lg transition-all relative">
+                <Bell size={18} strokeWidth={1.5} />
+                <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+              </button>
+              <button className="w-9 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-25 rounded-lg transition-all">
+                <HelpCircle size={18} strokeWidth={1.5} />
+              </button>
+            </div>
+
+            <div className="h-5 w-[1px] bg-gray-100"></div>
+
+            {/* Profile Menu Dropdown */}
             <div className="relative">
               <button
                 onClick={() => setProfileDropdownOpen(prev => !prev)}
-                className="flex items-center gap-2 hover:bg-gray-25 p-1 rounded-lg transition-all focus:outline-none"
+                className="flex items-center gap-1.5 hover:bg-gray-25 p-1 rounded-lg transition-all focus:outline-none"
               >
-                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-gray-0 text-tiny font-semibold">
+                <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-gray-0 text-tiny font-semibold">
                   {profile?.full_name?.charAt(0).toUpperCase() || 'A'}
                 </div>
-                <span className="hidden lg:inline text-body-md font-semibold">{profile?.full_name || 'Admin'}</span>
+                <span className="hidden lg:inline text-body-sm font-semibold truncate max-w-[80px]">{profile?.full_name || 'Admin'}</span>
               </button>
 
               {profileDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-gray-0 border border-gray-100 rounded-lg shadow-lg py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="text-body-md font-semibold text-gray-700">{profile?.full_name}</p>
+                    <p className="text-body-sm font-semibold text-gray-700">{profile?.full_name}</p>
                     <p className="text-tiny text-gray-400 truncate">{profile?.email}</p>
+                    <p className="text-tiny text-blue-500 font-bold mt-0.5">{userRole.name}</p>
                   </div>
                   <button
                     onClick={signOut}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-body-md text-danger-500 hover:bg-gray-50 text-left transition-colors font-semibold"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-body-sm text-danger-500 hover:bg-gray-50 text-left transition-colors font-semibold"
                   >
-                    <LogOut size={16} strokeWidth={1.5} />
+                    <LogOut size={14} strokeWidth={1.5} />
                     Đăng xuất
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Quick Create Action Button */}
             <button
               onClick={() => setQuickActionOpen(true)}
-              className="bg-blue-500 text-gray-0 px-4 h-10 rounded-lg font-semibold text-body-md hover:bg-blue-600 active:scale-95 transition-all flex items-center gap-2 shadow-sm"
+              className="bg-blue-500 text-gray-0 px-3 h-9 rounded-lg font-semibold text-body-sm hover:bg-blue-600 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm"
             >
-              <Plus size={18} strokeWidth={2} />
-              <span className="hidden sm:inline">Tạo mới</span>
+              <Plus size={16} strokeWidth={2} />
+              <span>Tạo mới</span>
+            </button>
+          </div>
+
+          {/* Search & Actions for Mobile Device Collapse */}
+          <div className="flex md:hidden items-center justify-between w-full gap-2 mt-1">
+            {searchElement ? (
+              searchElement
+            ) : (
+              <div className="flex flex-1 items-center bg-gray-25 rounded-lg px-3 h-9 border border-gray-100 focus-within:border-blue-500 transition-all">
+                <Search className="text-gray-400 mr-2" size={14} strokeWidth={1.5} />
+                <input
+                  className="bg-transparent border-none focus:ring-0 text-body-sm w-full placeholder-gray-400 p-0 focus:outline-none"
+                  placeholder="Tìm kiếm nhanh..."
+                  type="text"
+                  onChange={(e) => onSearch && onSearch(e.target.value)}
+                />
+              </div>
+            )}
+            <button
+              onClick={() => setQuickActionOpen(true)}
+              className="bg-blue-500 text-gray-0 p-2 h-9 w-9 rounded-lg flex items-center justify-center shadow-sm"
+            >
+              <Plus size={16} />
             </button>
           </div>
         </header>

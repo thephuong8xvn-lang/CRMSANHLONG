@@ -82,53 +82,8 @@ export default function ImportCustomersModal({
 
   // Function to download CSV Template
   const handleDownloadTemplate = () => {
-    const headers = [
-      'Tên trang trại/Doanh nghiệp (Bắt buộc)',
-      'Số điện thoại (Bắt buộc)',
-      'Người đại diện/liên hệ',
-      'Phân loại (Mã hoặc Tên)',
-      'Hạng khách hàng (Mã hoặc Tên)',
-      'Tỉnh/Thành phố',
-      'Quận/Huyện',
-      'Địa chỉ',
-      'Hạn mức công nợ'
-    ]
-
-    const samples = [
-      [
-        'Trang trại heo Bình Minh',
-        '0912345678',
-        'Nguyễn Văn A',
-        'farm_household',
-        'normal',
-        'Đồng Nai',
-        'Trảng Bom',
-        'Ấp 3 xã Sông Trầu',
-        '50000000'
-      ],
-      [
-        'Đại lý thuốc thú y Kim Anh',
-        '0987654321',
-        'Trần Thị Kim Anh',
-        'Đại lý',
-        'VIP',
-        'Tiền Giang',
-        'Cai Lậy',
-        '12 Hùng Vương',
-        '100000000'
-      ]
-    ]
-
-    // Create CSV content with UTF-8 BOM
-    const csvContent = '\uFEFF' + [
-      headers.join(','),
-      ...samples.map(row => row.map(v => `"${v}"`).join(','))
-    ].join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.setAttribute('href', url)
+    link.setAttribute('href', '/template_import_khach_hang.csv')
     link.setAttribute('download', 'template_import_khach_hang.csv')
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
@@ -170,7 +125,7 @@ export default function ImportCustomersModal({
               return matchedKey ? String(row[matchedKey]).trim() : ''
             }
 
-            const farmName = findValue(['ten trang trai', 'ten doanh nghiep', 'ten khach hang', 'farm', 'name', 'tên'])
+            const farmName = findValue(['ten khach hang', 'ten trang trai', 'ten doanh nghiep', 'farm', 'name', 'tên'])
             const phone = findValue(['so dien thoai', 'sdt', 'phone', 'điện thoại'])
             const contactName = findValue(['nguoi dai dien', 'nguoi lien he', 'contact', 'đại diện', 'liên hệ'])
             const rawType = findValue(['phan loai', 'type', 'loại'])
@@ -180,16 +135,13 @@ export default function ImportCustomersModal({
             const address = findValue(['dia chi', 'address'])
             const rawLimit = findValue(['han muc', 'credit', 'nợ'])
 
-            // 1. Validation
+            // 1. Validation: Only require customer name, phone is optional
             if (!farmName) {
-              errors.push(`Dòng ${index + 1}: Thiếu Tên trang trại/Doanh nghiệp.`)
-            }
-            if (!phone) {
-              errors.push(`Dòng ${index + 1}: Thiếu Số điện thoại liên hệ chính.`)
+              errors.push(`Dòng ${index + 1}: Thiếu Tên khách hàng.`)
             }
 
-            // 2. Resolve Classification
-            let type = 'farm_household' // Default fallback
+            // 2. Resolve Classification (Default fallback to 'farm_household')
+            let type = 'farm_household'
             if (rawType) {
               const matchedClass = classifications.find(c => 
                 c.code.toLowerCase() === rawType.toLowerCase() || 
@@ -200,8 +152,8 @@ export default function ImportCustomersModal({
               }
             }
 
-            // 3. Resolve Tier
-            let tier = 'normal' // Default fallback
+            // 3. Resolve Tier (Default fallback to 'normal')
+            let tier = 'normal'
             if (rawTier) {
               const matchedTier = tiers.find(t => 
                 t.code.toLowerCase() === rawTier.toLowerCase() || 

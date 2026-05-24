@@ -19,6 +19,7 @@ import { supabase } from '../../lib/supabase'
 import AddProductModal from './AddProductModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
 import ManageBrandsModal from './ManageBrandsModal'
+import ImportProductsModal from './ImportProductsModal'
 
 interface ProductCategory {
   id: string
@@ -85,6 +86,7 @@ export default function ProductListPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isManageCatsOpen, setIsManageCatsOpen] = useState(false)
   const [isManageBrandsOpen, setIsManageBrandsOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState('')
@@ -260,6 +262,67 @@ export default function ProductListPage() {
   // Header Sums for currently filtered product list
   const totalStockSum = filteredProducts.reduce((sum, p) => sum + getStockQty(p), 0)
   const totalOrderedSum = filteredProducts.reduce((sum, p) => sum + getOrderedQty(p), 0)
+
+  // Export products to CSV
+  const handleExportCSV = () => {
+    const headers = [
+      'Mã SKU',
+      'Tên sản phẩm',
+      'Đơn vị tính',
+      'Nhóm sản phẩm',
+      'Thương hiệu',
+      'Quy cách',
+      'Giá bán lẻ',
+      'Giá vốn',
+      'Tồn kho',
+      'Khách đặt',
+      'Trạng thái kinh doanh',
+      'Thời gian tạo'
+    ]
+
+    const rows = filteredProducts.map(prod => {
+      const retailPrice = getRetailPrice(prod)
+      const costPrice = getCostPrice(prod)
+      const stock = getStockQty(prod)
+      const ordered = getOrderedQty(prod)
+      
+      return [
+        prod.sku || '',
+        prod.name,
+        prod.unit || 'lọ',
+        prod.product_categories?.name || '-',
+        prod.brands?.name || '-',
+        prod.package_specs || '-',
+        retailPrice,
+        costPrice,
+        stock,
+        ordered,
+        prod.is_active ? 'Đang kinh doanh' : 'Ngừng kinh doanh',
+        prod.created_at ? new Date(prod.created_at).toLocaleDateString('vi-VN') : ''
+      ]
+    })
+
+    const csvContent = '\uFEFF' + [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(val => {
+          const text = String(val ?? '').replace(/"/g, '""')
+          return text.includes(',') || text.includes('\n') || text.includes('"') ? `"${text}"` : text
+        }).join(',')
+      )
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const today = new Date().toISOString().split('T')[0]
+    link.setAttribute('href', url)
+    link.setAttribute('download', `danh_sach_hang_hoa_${today}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   // Map to displayed list
   const displayList = currentProducts.map(p => ({
@@ -451,14 +514,14 @@ export default function ProductListPage() {
               {/* Action Buttons: Import / Export / View settings */}
               <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
                 <button
-                  onClick={() => alert('Chức năng Nhập Excel đang phát triển.')}
+                  onClick={() => setIsImportModalOpen(true)}
                   className="h-9 px-3 border border-gray-250 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
                 >
                   <Upload size={14} className="text-gray-400" />
                   Import file
                 </button>
                 <button
-                  onClick={() => alert('Chức năng Xuất Excel đang phát triển.')}
+                  onClick={handleExportCSV}
                   className="h-9 px-3 border border-gray-250 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
                 >
                   <Download size={14} className="text-gray-400" />
@@ -659,6 +722,13 @@ export default function ProductListPage() {
       <ManageBrandsModal
         isOpen={isManageBrandsOpen}
         onClose={() => setIsManageBrandsOpen(false)}
+        onSuccess={loadMetadataAndProducts}
+      />
+
+      {/* Import Products Modal */}
+      <ImportProductsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
         onSuccess={loadMetadataAndProducts}
       />
 

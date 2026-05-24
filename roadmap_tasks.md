@@ -21,7 +21,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] Xây dựng trang Danh sách khách hàng hỗ trợ tìm kiếm nhanh, lọc theo phân loại (hộ chăn nuôi, trang trại, đại lý...).
 - [x] Thiết kế form Thêm mới / Cập nhật thông tin khách hàng (mã định danh tự động `KH-2026-xxxxx`).
 - [x] Tích hợp quản lý **Nhóm giá áp dụng** (Price Lists) và **Hạn mức công nợ** (Credit Limit) bắt buộc.
-- [x] Gán nhân viên phụ trách chính (primary sales) hỗ trợ cơ chế phân quyền xem dữ liệu theo nhóm/cá nhân (RLS).
+- [x] Gán nhân viên phụ trách chính (primary sales) và chuyển đổi Khách hàng thành tài nguyên chung hiển thị cho tất cả chi nhánh và nhân viên (mở chính sách SELECT RLS cho `customers` và các thực thể phụ thuộc: liên hệ, trang trại, đàn vật nuôi, lịch sử bệnh). Các cấu trúc giao dịch trả hàng (`sales_returns`) và hóa đơn (`invoices`) vẫn tuân thủ logic phân quyền hạn chi nhánh/nhân viên.
 
 ---
 
@@ -38,6 +38,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Tích hợp hàng Tổng cộng ở đầu bảng tính toán tự động tổng số lượng Tồn kho và Khách đặt của toàn bộ danh sách hiển thị.
   - Tích hợp tính năng Dự kiến hết hàng tự động tính số ngày sắp cạn kho dựa trên lịch sử xuất bán thực tế.
   - Xây dựng hai modal CRUD động quản lý Nhóm sản phẩm ([ManageCategoriesModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ManageCategoriesModal.tsx)) và Thương hiệu ([ManageBrandsModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ManageBrandsModal.tsx)) cho phép thêm/sửa/xóa và bật/tắt trạng thái hoạt động độc lập của từng thực thể trực tiếp từ màn hình chính.
+  - [x] Tích hợp tính năng **Import & Export hàng hóa**: Xuất danh sách sản phẩm sang CSV (UTF-8 BOM), nhập danh sách sản phẩm hàng loạt từ CSV chỉ với cột Tên sản phẩm, tự động sinh mã SKU và tạo các dòng bảng giá khởi tạo tự động.
 
 ---
 
@@ -152,13 +153,17 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 ---
 
 ### 10. Phân Hệ Cấu Hình & Tổ Chức (Branch, Warehouse, Employee & Role) - `[HOÀN THÀNH]`
-- [x] **Sidebar Navigation & Access Guard**:
-  - Tích hợp menu "Cấu hình" với icon `Settings` trong `Layout.tsx`, chỉ hiển thị cho tài khoản có vai trò `admin`.
+- [x] **Header Navigation & Permission-based Guard**:
+  - Di chuyển toàn bộ menu từ thanh Sidebar dọc sang thanh Header ngang trên Desktop giúp tối đa hóa không gian làm việc rộng rãi.
+  - Gom nhóm các mục menu thành các nhóm dropdown logic: **Tổng quan** (Bảng điều khiển, Hoạt động), **Kinh doanh** (Khách hàng, Chăn nuôi, Pipeline, Đơn hàng), **Kho & Hàng hóa** (Sản phẩm, Kho hàng, Nhà cung cấp), **Tài chính & Báo cáo** (Sổ quỹ, Báo cáo) và **Hệ thống** (Cấu hình) giúp giao diện Header gọn gàng và khoa học.
+  - Tích hợp cơ chế tải động và kiểm tra danh sách quyền (permissions) thực tế từ cơ sở dữ liệu (`user_roles` -> `roles` -> `role_permissions` -> `permissions`).
+  - Lọc động các mục menu hiển thị trên cả thanh Header Desktop, mobile drawer và bottom bar, chỉ hiển thị những module/menu được phân quyền cụ thể cho nhân viên đó.
   - Phân quyền bảo vệ route `/system-settings` trong `App.tsx` chỉ cho các phiên làm việc hợp lệ.
 - [x] **Trang Cấu hình Hệ thống & Tổ chức** (`/system-settings`):
   - Thiết kế giao diện Tab ngang hiện đại (Quản lý Nhân viên, Chi nhánh, Kho hàng, Nhóm Sales).
 - [x] **Quản lý Nhân viên (Employees)**:
   - Hiển thị danh sách nhân sự với đầy đủ thông tin (Họ tên, Email, Mã NV, Chức danh, Chi nhánh, Nhóm Sales, Vai trò RBAC).
+  - Khắc phục lỗi tải danh sách nhân sự trống do PostgREST trả về lỗi quan hệ mập mờ (PGRST201) đối với `branches`, `teams`, `user_roles` và lỗi thiếu cột `job_title` (42703). Đã khắc phục bằng cách chỉ định rõ constraint liên kết và tạo file migration bổ sung.
   - Bộ lọc tìm kiếm nhanh không dấu theo tên/mã/chức danh và bộ lọc theo chi nhánh/vai trò.
   - Form thêm mới nhân viên sử dụng phương thức đăng ký tài khoản Supabase gián tiếp (`persistSession: false`) giúp admin tạo tài khoản cho cấp dưới mà không bị log out khỏi session hiện tại.
   - Phân quyền vai trò trực tiếp thông qua gán các bản ghi tương ứng trong bảng `user_roles` và đồng bộ tức thì.
@@ -217,4 +222,12 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Đảm bảo các bộ lọc và form lựa chọn chỉ hiển thị các cấu hình đang hoạt động (`is_active = true`), nhưng hiển thị nhãn cũ đầy đủ cho các bản ghi khách hàng lịch sử.
 - [x] **Tính Năng Import & Export Khách Hàng**:
   - Tích hợp tính năng **Export CSV** danh sách khách hàng hiện tại theo bộ lọc, hỗ trợ encoding UTF-8 BOM hiển thị tiếng Việt chuẩn trên Excel.
-  - Xây dựng tính năng **Import CSV** hàng loạt từ tệp cấu hình có giao diện xem trước (preview), báo lỗi dòng không hợp lệ và cho phép chọn nhân viên/chi nhánh mặc định.
+  - Tối giản hóa quy trình **Import CSV** khách hàng: Chỉ yêu cầu 2 trường Tên khách hàng (bắt buộc) và Số điện thoại (tùy chọn, có thể để trống). Hỗ trợ tải tệp tin mẫu (.csv) trực tiếp từ thư mục tĩnh của máy chủ.
+
+---
+
+### 13. Phân Hệ Quản Lý Kho Nâng Cao & Trả Hàng (Advanced Warehouse & Returns) - `[HOÀN THÀNH]`
+- [x] **Chuyển hàng giữa các kho & chi nhánh (Stock Transfers)**: Thiết lập giao diện điều chuyển và quản lý các trạng thái `draft`, `in_transit`, `received`, `cancelled` trong tab Chuyển kho của màn hình quản lý kho.
+- [x] **Trả hàng nhập (Purchase Returns)**: Xây dựng bảng và trigger tự động xuất kho đối với phiếu trả hàng nhà cung cấp trong tab Trả hàng NCC của màn hình quản lý kho.
+- [x] **Hàng trả theo hóa đơn đã bán (Sales Returns)**: Tích hợp nút Trả hàng tại trang Chi tiết đơn hàng, tự động nhập lại kho và cập nhật trạng thái đơn hàng thông qua trigger database.
+

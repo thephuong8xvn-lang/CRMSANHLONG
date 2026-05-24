@@ -101,6 +101,158 @@ export default function OrderDetailPage() {
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Sales Return states
+  const [showReturnModal, setShowReturnModal] = useState(false)
+  const [returnWarehouseId, setReturnWarehouseId] = useState('')
+  const [returnReasonCode, setReturnReasonCode] = useState<'damage' | 'wrong_product' | 'near_expiry' | 'quality_fail' | 'recall' | 'other'>('other')
+  const [returnReasonDetail, setReturnReasonDetail] = useState('')
+  const [returnRefundMethod, setReturnRefundMethod] = useState<'cash' | 'bank_transfer' | 'credit_note'>('credit_note')
+  const [returnLines, setReturnLines] = useState<Array<{
+    lineId: string;
+    productId: string;
+    productName: string;
+    sku: string;
+    orderedQty: number;
+    returnedQty: number;
+    currentReturnQty: number;
+    unitPrice: number;
+    lotId: string | null;
+  }>>([])
+  const [warehouses, setWarehouses] = useState<any[]>([])
+
+  const openReturnModal = async () => {
+    if (!order) return
+    setLoading(true)
+    try {
+      const { data: whData } = await supabase.from('warehouses').select('id, name')
+      setWarehouses(whData || [])
+      setReturnWarehouseId(order.warehouse_id || (whData && whData[0]?.id) || '')
+
+      const { data: retData } = await supabase
+        .from('sales_returns')
+        .select(`
+          id,
+          sales_return_lines (
+            product_id,
+            quantity
+          )
+        `)
+        .eq('order_id', order.id)
+        .in('status', ['approved', 'completed', 'received'])
+
+      const returnMap: Record<string, number> = {}
+      if (retData) {
+        retData.forEach((r: any) => {
+          if (r.sales_return_lines) {
+            r.sales_return_lines.forEach((line: any) => {
+              returnMap[line.product_id] = (returnMap[line.product_id] || 0) + line.quantity
+            })
+          }
+        })
+      }
+
+      const { data: allocData } = await supabase
+        .from('order_line_allocations')
+        .select('order_line_id, lot_id, quantity')
+        .in('order_line_id', lines.map(line => line.id))
+
+      const allocMap: Record<string, string> = {}
+      if (allocData) {
+        allocData.forEach((a: any) => {
+          allocMap[a.order_line_id] = a.lot_id
+        })
+      }
+
+      const initialReturnLines = lines.map(line => ({
+        lineId: line.id,
+        productId: line.product_id,
+        productName: line.product_snapshot?.name || 'Sản phẩm',
+        sku: line.product_snapshot?.sku || '',
+        orderedQty: line.quantity,
+        returnedQty: returnMap[line.product_id] || 0,
+        currentReturnQty: 0,
+        unitPrice: line.unit_price,
+        lotId: allocMap[line.id] || null
+      }))
+
+      setReturnLines(initialReturnLines)
+      setReturnReasonCode('other')
+      setReturnReasonDetail('')
+      setReturnRefundMethod('credit_note')
+      setShowReturnModal(true)
+    } catch (err: any) {
+      console.error(err)
+      setAlertMsg({ type: 'error', text: 'Lỗi chuẩn bị phiếu trả hàng: ' + err.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateReturn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!order) return
+    const activeLines = returnLines.filter(line => line.currentReturnQty > 0)
+    if (activeLines.length === 0) {
+      setAlertMsg({ type: 'error', text: 'Vui lòng nhập ít nhất một sản phẩm cần trả với số lượng lớn hơn 0.' })
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const totalAmount = activeLines.reduce((sum, line) => sum + (line.currentReturnQty * line.unitPrice), 0)
+
+      // 1. Insert as pending
+      const { data: returnData, error: insertError } = await supabase
+        .from('sales_returns')
+        .insert([{
+          order_id: order.id,
+          reason: `[${returnReasonCode}] ${returnReasonDetail}`,
+          refund_method: returnRefundMethod,
+          total_amount: totalAmount,
+          created_by: profile?.id,
+          status: 'pending'
+        }])
+        .select()
+        .single()
+
+      if (insertError) throw insertError
+
+      // 2. Insert return lines
+      const linesToInsert = activeLines.map(line => ({
+        return_id: returnData.id,
+        order_line_id: line.lineId,
+        product_id: line.productId,
+        quantity: line.currentReturnQty,
+        unit_price: line.unit_price,
+        lot_id: line.lotId,
+        return_to_warehouse_id: returnWarehouseId || null
+      }))
+
+      const { error: linesError } = await supabase
+        .from('sales_return_lines')
+        .insert(linesToInsert)
+
+      if (linesError) throw linesError
+
+      // 3. Confirm return (status change to completed triggers DB stock function)
+      const { error: statusError } = await supabase
+        .from('sales_returns')
+        .update({ status: 'completed' })
+        .eq('id', returnData.id)
+
+      if (statusError) throw statusError
+
+      setAlertMsg({ type: 'success', text: 'Khách hàng trả hàng thành công!' })
+      setShowReturnModal(false)
+      loadOrderDetails()
+    } catch (err: any) {
+      console.error(err)
+      setAlertMsg({ type: 'error', text: 'Lỗi ghi nhận hàng trả: ' + err.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   // Load order data
   const loadOrderDetails = useCallback(async () => {
     if (!id) return
@@ -439,6 +591,16 @@ export default function OrderDetailPage() {
                 Hoàn tất đơn hàng
               </button>
             )}
+
+            {(order.status === 'delivered' || order.status === 'paid' || order.status === 'completed' || order.status === 'returned_partial') && (
+              <button
+                disabled={submitting}
+                onClick={openReturnModal}
+                className="h-10 px-4 border border-blue-200 text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+              >
+                Trả hàng
+              </button>
+            )}
           </div>
         </div>
 
@@ -775,6 +937,172 @@ export default function OrderDetailPage() {
                 Xác nhận thanh toán
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Return Modal */}
+      {showReturnModal && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-xl">
+              <div>
+                <h3 className="text-body-lg font-bold text-gray-800">Khách hàng trả hàng</h3>
+                <p className="text-tiny text-gray-400">Trả sản phẩm về kho, hoàn tiền hoặc ghi giảm công nợ</p>
+              </div>
+              <button
+                onClick={() => setShowReturnModal(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <form onSubmit={handleCreateReturn} className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Kho nhận hàng trả <span className="text-red-500">*</span></label>
+                  <select
+                    value={returnWarehouseId}
+                    onChange={(e) => setReturnWarehouseId(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    required
+                  >
+                    <option value="">-- Chọn kho nhận --</option>
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Phương thức hoàn tiền <span className="text-red-500">*</span></label>
+                  <select
+                    value={returnRefundMethod}
+                    onChange={(e) => setReturnRefundMethod(e.target.value as any)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    required
+                  >
+                    <option value="cash">Hoàn tiền mặt</option>
+                    <option value="bank_transfer">Chuyển khoản</option>
+                    <option value="credit_note">Trừ vào công nợ</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Lý do trả hàng <span className="text-red-500">*</span></label>
+                  <select
+                    value={returnReasonCode}
+                    onChange={(e) => setReturnReasonCode(e.target.value as any)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    required
+                  >
+                    <option value="damage">Hàng hỏng / Lỗi</option>
+                    <option value="wrong_product">Sai sản phẩm</option>
+                    <option value="near_expiry">Cận / Hết hạn</option>
+                    <option value="quality_fail">Lỗi chất lượng</option>
+                    <option value="recall">Thu hồi</option>
+                    <option value="other">Khác</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Chi tiết lý do</label>
+                  <input
+                    type="text"
+                    value={returnReasonDetail}
+                    onChange={(e) => setReturnReasonDetail(e.target.value)}
+                    placeholder="Nhập chi tiết lý do..."
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="space-y-2">
+                <h4 className="text-body-md font-bold text-gray-700">Chi tiết sản phẩm nhận lại</h4>
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-500 font-bold text-tiny uppercase">
+                        <th className="px-4 py-2">Sản phẩm / SKU</th>
+                        <th className="px-4 py-2 text-center">Đã mua</th>
+                        <th className="px-4 py-2 text-center">Đã trả trước</th>
+                        <th className="px-4 py-2 text-center w-28">Số lượng trả</th>
+                        <th className="px-4 py-2 text-right">Đơn giá hoàn</th>
+                        <th className="px-4 py-2 text-right">Thành tiền</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
+                      {returnLines.map((line, idx) => {
+                        const maxAvail = line.orderedQty - line.returnedQty;
+                        return (
+                          <tr key={line.lineId} className="hover:bg-gray-25/30">
+                            <td className="px-4 py-3">
+                              <p className="font-bold text-gray-700">{line.productName}</p>
+                              <span className="text-tiny text-gray-400 font-mono">SKU: {line.sku}</span>
+                            </td>
+                            <td className="px-4 py-3 text-center text-gray-600 font-medium">{line.orderedQty}</td>
+                            <td className="px-4 py-3 text-center text-gray-400">{line.returnedQty}</td>
+                            <td className="px-4 py-3 text-center">
+                              <input
+                                type="number"
+                                min="0"
+                                max={maxAvail}
+                                value={line.currentReturnQty === 0 ? '' : line.currentReturnQty}
+                                onChange={(e) => {
+                                  const val = Math.min(maxAvail, Math.max(0, parseInt(e.target.value) || 0));
+                                  const updated = [...returnLines];
+                                  updated[idx].currentReturnQty = val;
+                                  setReturnLines(updated);
+                                }}
+                                disabled={maxAvail <= 0}
+                                placeholder={maxAvail > 0 ? `Tối đa: ${maxAvail}` : 'Hết'}
+                                className="w-full text-center h-8 border border-gray-150 rounded focus:outline-none focus:border-blue-500 font-semibold"
+                              />
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-700 font-medium">
+                              {line.unitPrice.toLocaleString('vi-VN')} ₫
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-800 font-bold">
+                              {(line.currentReturnQty * line.unitPrice).toLocaleString('vi-VN')} ₫
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end p-2">
+                  <span className="text-body-md text-gray-500">Tổng tiền hoàn trả khách: <strong className="text-body-lg text-gray-800 font-extrabold">
+                    {returnLines.reduce((sum, line) => sum + (line.currentReturnQty * line.unitPrice), 0).toLocaleString('vi-VN')} ₫
+                  </strong></span>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="pt-4 border-t border-gray-100 flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => setShowReturnModal(false)}
+                  className="flex-1 h-10 border border-gray-100 rounded-lg text-body-md font-semibold hover:bg-gray-50 text-gray-600 transition-colors"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center disabled:opacity-50"
+                >
+                  {submitting ? 'Đang xử lý...' : 'Xác nhận nhận hàng trả'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
