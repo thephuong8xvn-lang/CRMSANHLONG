@@ -19,7 +19,9 @@ import {
   ShieldAlert,
   Sparkles,
   Stethoscope,
-  Check
+  Check,
+  Layers,
+  RefreshCw
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -327,7 +329,7 @@ export default function POSPage() {
           .eq('is_active', true)
         if (plData) {
           setPriceLists(plData)
-          const def = plData.find(pl => pl.is_default) || plData.find(pl => pl.code === 'GIA-LE') || plData[0]
+          const def = plData.find((pl: any) => pl.is_default) || plData.find((pl: any) => pl.code === 'GIA-LE') || plData[0]
           if (def) {
             setTabs(prev => prev.map(t => t.id === '1' ? { ...t, selectedPriceListId: def.id } : t))
           }
@@ -393,7 +395,7 @@ export default function POSPage() {
           .eq('is_settled', false)
 
         if (!error && data) {
-          const totalDebt = data.reduce((sum, item) => sum + Number(item.amount), 0)
+          const totalDebt = data.reduce((sum: number, item: any) => sum + Number(item.amount), 0)
           setCustomerDebt(totalDebt)
         }
       } catch (err) {
@@ -1881,10 +1883,10 @@ export default function POSPage() {
                                       setSelectedDiseaseId(diagSelectedDiseaseId)
                                       const disObj = diseases.find(d => d.id === diagSelectedDiseaseId)
                                       setTreatmentPurpose(`Điều trị ${disObj?.name || ''} (Line 1)`)
-                                      showToast('success', `Đã tự động thêm ${addedCount} sản phẩm phác đồ Line 1 vào giỏ hàng!`)
+                                      setAlertMsg({ type: 'success', text: `Đã tự động thêm ${addedCount} sản phẩm phác đồ Line 1 vào giỏ hàng!` })
                                       setShowDiagModal(false)
                                     } else {
-                                      showToast('error', 'Không tìm thấy sản phẩm thương mại nào chứa các hoạt chất phác đồ này trong kho.')
+                                      setAlertMsg({ type: 'error', text: 'Không tìm thấy sản phẩm thương mại nào chứa các hoạt chất phác đồ này trong kho.' })
                                     }
                                   }}
                                   className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-tiny font-bold flex items-center gap-1 active:scale-95 transition-all shadow-sm"
@@ -1937,10 +1939,10 @@ export default function POSPage() {
                                       setSelectedDiseaseId(diagSelectedDiseaseId)
                                       const disObj = diseases.find(d => d.id === diagSelectedDiseaseId)
                                       setTreatmentPurpose(`Điều trị ${disObj?.name || ''} (Line 2)`)
-                                      showToast('success', `Đã tự động thêm ${addedCount} sản phẩm phác đồ Line 2 vào giỏ hàng!`)
+                                      setAlertMsg({ type: 'success', text: `Đã tự động thêm ${addedCount} sản phẩm phác đồ Line 2 vào giỏ hàng!` })
                                       setShowDiagModal(false)
                                     } else {
-                                      showToast('error', 'Không tìm thấy sản phẩm thương mại nào chứa các hoạt chất phác đồ này trong kho.')
+                                      setAlertMsg({ type: 'error', text: 'Không tìm thấy sản phẩm thương mại nào chứa các hoạt chất phác đồ này trong kho.' })
                                     }
                                   }}
                                   className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-tiny font-bold flex items-center gap-1 active:scale-95 transition-all shadow-sm"
