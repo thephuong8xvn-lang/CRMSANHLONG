@@ -22,6 +22,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] Thiết kế form Thêm mới / Cập nhật thông tin khách hàng (mã định danh tự động `KH-2026-xxxxx`).
 - [x] Tích hợp quản lý **Nhóm giá áp dụng** (Price Lists) và **Hạn mức công nợ** (Credit Limit) bắt buộc.
 - [x] Gán nhân viên phụ trách chính (primary sales) và chuyển đổi Khách hàng thành tài nguyên chung hiển thị cho tất cả chi nhánh và nhân viên (mở chính sách SELECT RLS cho `customers` và các thực thể phụ thuộc: liên hệ, trang trại, đàn vật nuôi, lịch sử bệnh). Các cấu trúc giao dịch trả hàng (`sales_returns`) và hóa đơn (`invoices`) vẫn tuân thủ logic phân quyền hạn chi nhánh/nhân viên.
+- [x] **Sổ chi tiết giao dịch (Customer Transaction Ledger)**: Bổ sung tab Sổ chi tiết giao dịch trong màn hình Chi tiết khách hàng, cho dõi chi tiết các giao dịch mua hàng (Hóa đơn), thanh toán (Tiền mặt/Chuyển khoản), trả hàng, và điều chỉnh công nợ theo trình tự thời gian với tính năng tính Dư nợ cuối (running balance) tự động sau mỗi giao dịch.
 
 ---
 
@@ -44,6 +45,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Tích hợp **Thành phần hoạt chất** (`active_ingredients`) liên kết đa-đa với sản phẩm kèm theo nồng độ/hàm lượng tương ứng.
   - Xây dựng trang quản lý danh mục **Hoạt chất** chuyên biệt ([ActiveIngredientsPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ActiveIngredientsPage.tsx)) độc lập và đưa lên Menu chính **Kho & Hàng hóa** giúp tối ưu hóa luồng nghiệp vụ chẩn đoán & điều trị.
   - Tích hợp các trường thông tin và liên kết hoạt chất này vào luồng Thêm mới (`AddProductModal`), Cập nhật (`EditProductModal`) và hiển thị trực quan thông tin chi tiết trên trang Chi tiết sản phẩm (`ProductDetailPage`).
+- [x] **Thẻ kho (Lịch sử biến động)**: Tích hợp tab Thẻ kho tại trang Chi tiết sản phẩm hiển thị chi tiết lịch sử các lần nhập kho, xuất kho, trả hàng, điều chỉnh chênh lệch hoặc hủy hỏng kèm thông tin số lô, kho hàng, đơn giá vốn và nhân viên thực hiện.
 
 ---
 

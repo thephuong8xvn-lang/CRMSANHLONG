@@ -86,6 +86,27 @@ interface StockLot {
   warehouses?: WarehouseData | null
 }
 
+interface StockMovement {
+  id: string
+  created_at: string
+  movement_type: string
+  quantity: number
+  unit_cost: number | null
+  reference_id: string | null
+  reference_type: string | null
+  notes: string | null
+  stock_lots?: {
+    lot_number: string
+  } | null
+  warehouses?: {
+    code: string
+    name: string
+  } | null
+  profiles?: {
+    full_name: string
+  } | null
+}
+
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -97,7 +118,8 @@ export default function ProductDetailPage() {
   const [lots, setLots] = useState<StockLot[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'instructions' | 'inventory'>('instructions')
+  const [activeTab, setActiveTab] = useState<'instructions' | 'inventory' | 'ledger'>('instructions')
+  const [movements, setMovements] = useState<StockMovement[]>([])
 
   interface LinkedActiveIngredient {
     percentage_or_dosage: string
@@ -233,6 +255,29 @@ export default function ProductDetailPage() {
 
       if (pliData) {
         setPriceListItems(pliData)
+      }
+
+      // 6. Fetch stock movements (Thẻ kho)
+      const { data: moveData } = await supabase
+        .from('stock_movements')
+        .select(`
+          id,
+          created_at,
+          movement_type,
+          quantity,
+          unit_cost,
+          reference_id,
+          reference_type,
+          notes,
+          stock_lots:lot_id(lot_number),
+          warehouses:warehouse_id(code, name),
+          profiles:performed_by(full_name)
+        `)
+        .eq('product_id', id)
+        .order('created_at', { ascending: false })
+
+      if (moveData) {
+        setMovements(moveData as unknown as StockMovement[])
       }
     } catch (err) {
       console.error('Error loading product details:', err)
@@ -603,6 +648,17 @@ export default function ProductDetailPage() {
                   <Layers size={16} />
                   Phiên bản & Lô hàng
                 </button>
+                <button
+                  onClick={() => setActiveTab('ledger')}
+                  className={`flex-1 py-4 px-6 font-semibold text-body-md border-b-2 transition-all flex items-center justify-center gap-2 ${
+                    activeTab === 'ledger'
+                      ? 'border-blue-500 text-blue-600 bg-gray-0'
+                      : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-100/50'
+                  }`}
+                >
+                  <Warehouse size={16} />
+                  Thẻ kho (Lịch sử biến động)
+                </button>
               </div>
 
               {/* Tab Content Canvas */}
@@ -861,9 +917,103 @@ export default function ProductDetailPage() {
                         </div>
                       </div>
                     )}
+ 
+                   </div>
+                 )}
+ 
+                 {/* ────────────────── Tab 3: Thẻ kho (Lịch sử biến động) ────────────────── */}
+                 {activeTab === 'ledger' && (() => {
+                   const getMovementTypeLabel = (type: string) => {
+                     const labels: Record<string, string> = {
+                       receipt: 'Nhập hàng NCC',
+                       sale: 'Xuất bán POS',
+                       return_from_customer: 'Nhập trả hàng',
+                       return_to_supplier: 'Xuất trả NCC',
+                       transfer_out: 'Xuất chuyển kho',
+                       transfer_in: 'Nhập chuyển kho',
+                       adjustment_increase: 'Điều chỉnh (+)',
+                       adjustment_decrease: 'Điều chỉnh (-)',
+                       expiry_writeoff: 'Hủy hết hạn',
+                       damage_writeoff: 'Hủy hỏng hóc'
+                     }
+                     return labels[type] || 'Biến động khác'
+                   }
 
-                  </div>
-                )}
+                   return (
+                     <div className="space-y-6 animate-in fade-in duration-200">
+                       <div className="flex justify-between items-center">
+                         <h4 className="font-bold text-body-lg text-gray-700">Thẻ kho / Lịch sử biến động tồn kho</h4>
+                         <span className="text-tiny bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-bold">
+                           Tổng cộng {movements.length} giao dịch
+                         </span>
+                       </div>
+
+                       {movements.length === 0 ? (
+                         <div className="py-12 border border-dashed border-gray-100 rounded-xl text-center text-gray-400 text-body-md">
+                           Chưa có giao dịch xuất nhập kho nào được ghi nhận cho sản phẩm này.
+                         </div>
+                       ) : (
+                         <div className="overflow-x-auto border border-gray-100 rounded-xl shadow-sm">
+                           <table className="w-full text-left border-collapse bg-gray-0 text-body-md">
+                             <thead>
+                               <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold">
+                                 <th className="p-4">Thời gian</th>
+                                 <th className="p-4">Loại giao dịch</th>
+                                 <th className="p-4">Kho hàng</th>
+                                 <th className="p-4">Số lô</th>
+                                 <th className="p-4 text-right">Biến động</th>
+                                 <th className="p-4 text-right">Giá vốn</th>
+                                 <th className="p-4">Thực hiện</th>
+                                 <th className="p-4">Mô tả / Ghi chú</th>
+                               </tr>
+                             </thead>
+                             <tbody className="divide-y divide-gray-100 text-gray-600">
+                               {movements.map((move) => {
+                                 const isPositive = move.quantity > 0
+                                 return (
+                                   <tr key={move.id} className="hover:bg-gray-50/50 transition-colors">
+                                     <td className="p-4 whitespace-nowrap tabular-nums text-tiny text-gray-500">
+                                       {new Date(move.created_at).toLocaleString('vi-VN')}
+                                     </td>
+                                     <td className="p-4 whitespace-nowrap">
+                                       <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold ${
+                                         isPositive
+                                           ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                           : 'bg-red-50 text-red-700 border-red-100'
+                                       }`}>
+                                         {getMovementTypeLabel(move.movement_type)}
+                                       </span>
+                                     </td>
+                                     <td className="p-4 font-semibold text-gray-700">
+                                       {move.warehouses?.name || 'Kho mặc định'}
+                                     </td>
+                                     <td className="p-4 font-mono font-bold text-tiny text-gray-500">
+                                       {move.stock_lots?.lot_number || '---'}
+                                     </td>
+                                     <td className={`p-4 text-right font-bold tabular-nums text-body-md ${
+                                       isPositive ? 'text-emerald-600' : 'text-red-600'
+                                     }`}>
+                                       {isPositive ? '+' : ''}{move.quantity} {product.unit}
+                                     </td>
+                                     <td className="p-4 text-right font-semibold text-gray-700 tabular-nums">
+                                       {move.unit_cost ? formatCurrency(move.unit_cost) : '---'}
+                                     </td>
+                                     <td className="p-4 text-body-sm font-medium text-gray-500">
+                                       {move.profiles?.full_name || 'Hệ thống'}
+                                     </td>
+                                     <td className="p-4 text-tiny text-gray-400 max-w-xs truncate" title={move.notes || ''}>
+                                       {move.notes || 'Không có ghi chú'}
+                                     </td>
+                                   </tr>
+                                 )
+                               })}
+                             </tbody>
+                           </table>
+                         </div>
+                       )}
+                     </div>
+                   )
+                 })()}
 
               </div>
             </div>

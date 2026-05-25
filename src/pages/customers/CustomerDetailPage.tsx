@@ -192,6 +192,19 @@ interface Customer {
   orders?: Order[]
 }
 
+interface LedgerItem {
+  id: string
+  date: string
+  code: string
+  type: 'invoice' | 'payment' | 'return' | 'debt_adjustment'
+  typeLabel: string
+  value: number
+  actualPaid: number
+  debtImpact: number
+  runningBalance: number
+  notes: string
+}
+
 // ─────────────────────────────────────────────────────────────
 // Labels and Colors
 // ─────────────────────────────────────────────────────────────
@@ -231,6 +244,8 @@ export default function CustomerDetailPage() {
   const [diseaseDict, setDiseaseDict] = useState<{ id: string; name: string; code: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'tong-quan' | 'trai-dan' | 'don-hang' | 'chan-dung' | 'benh-an'>('tong-quan')
+  const [subTab, setSubTab] = useState<'orders' | 'ledger'>('orders')
+  const [ledgerItems, setLedgerItems] = useState<LedgerItem[]>([])
 
   // Drug resistance alerts state
   const [resistanceWarnings, setResistanceWarnings] = useState<ResistanceWarning[]>([])
@@ -568,6 +583,149 @@ export default function CustomerDetailPage() {
         setTopProducts([])
         setResistanceWarnings([])
       }
+
+      // 11. Fetch detailed ledger data (sales returns, order payments, debt payments)
+      const orderIds = custData.orders?.map((o: any) => o.id) || []
+      let returnsData: any[] = []
+      let orderPaymentsData: any[] = []
+      let debtPaymentsData: any[] = []
+
+      if (orderIds.length > 0) {
+        const { data: rData } = await supabase
+          .from('sales_returns')
+          .select('*')
+          .in('order_id', orderIds)
+        if (rData) returnsData = rData
+
+        const { data: opData } = await supabase
+          .from('order_payments')
+          .select('*')
+          .in('order_id', orderIds)
+        if (opData) orderPaymentsData = opData
+      }
+
+      const { data: dpData } = await supabase
+        .from('debt_payments')
+        .select('*')
+        .eq('customer_id', id)
+      if (dpData) debtPaymentsData = dpData
+
+      const orderCodeMap = new Map<string, string>()
+      custData.orders?.forEach((o: any) => {
+        orderCodeMap.set(o.id, o.order_code)
+      })
+
+      const items: LedgerItem[] = []
+
+      // 1. Orders
+      if (custData.orders) {
+        custData.orders.forEach((o: any) => {
+          if (o.status !== 'draft' && o.status !== 'cancelled') {
+            items.push({
+              id: o.id,
+              date: o.created_at,
+              code: o.order_code,
+              type: 'invoice',
+              typeLabel: 'Hóa đơn lẻ',
+              value: Number(o.grand_total || 0),
+              actualPaid: 0,
+              debtImpact: Number(o.grand_total || 0),
+              notes: o.notes || 'Hóa đơn mua hàng',
+              runningBalance: 0
+            })
+          }
+        })
+      }
+
+      // 2. Order Payments
+      orderPaymentsData.forEach((op: any) => {
+        const oCode = orderCodeMap.get(op.order_id) || 'Đơn hàng'
+        items.push({
+          id: op.id,
+          date: op.payment_date || op.created_at,
+          code: op.reference_no || `PT-${oCode}`,
+          type: 'payment',
+          typeLabel: op.payment_method === 'cash' ? 'Thu tiền mặt' : 'Thu chuyển khoản',
+          value: 0,
+          actualPaid: Number(op.amount || 0),
+          debtImpact: -Number(op.amount || 0),
+          notes: op.notes || `Thanh toán cho đơn hàng ${oCode}`,
+          runningBalance: 0
+        })
+      })
+
+      // 3. Debt Payments
+      debtPaymentsData.forEach((dp: any) => {
+        items.push({
+          id: dp.id,
+          date: dp.payment_date || dp.created_at,
+          code: dp.reference_no || 'PT-KH',
+          type: 'payment',
+          typeLabel: dp.payment_method === 'cash' ? 'Thu nợ mặt' : 'Thu nợ chuyển khoản',
+          value: 0,
+          actualPaid: Number(dp.amount || 0),
+          debtImpact: -Number(dp.amount || 0),
+          notes: dp.notes || 'Khách hàng thanh toán nợ',
+          runningBalance: 0
+        })
+      })
+
+      // 4. Sales Returns
+      returnsData.forEach((r: any) => {
+        const oCode = orderCodeMap.get(r.order_id) || 'Đơn hàng'
+        const isCreditNote = r.refund_method === 'credit_note'
+        items.push({
+          id: r.id,
+          date: r.created_at,
+          code: r.return_code,
+          type: 'return',
+          typeLabel: 'Trả hàng',
+          value: -Number(r.total_amount || 0),
+          actualPaid: isCreditNote ? 0 : Number(r.total_amount || 0),
+          debtImpact: isCreditNote ? -Number(r.total_amount || 0) : 0,
+          notes: r.reason || `Khách trả hàng cho đơn ${oCode}`,
+          runningBalance: 0
+        })
+      })
+
+      // 5. Customer Debts (adjustments only)
+      if (custData.customer_debts) {
+        custData.customer_debts.forEach((cd: any) => {
+          if (!cd.order_id || cd.debt_type !== 'order_debt') {
+            let label = 'Điều chỉnh nợ'
+            if (cd.debt_type === 'advance_from_customer') label = 'Khách trả trước'
+            else if (cd.debt_type === 'refund_due') label = 'Phải hoàn trả'
+
+            items.push({
+              id: cd.id,
+              date: cd.created_at,
+              code: `DC-${cd.id.substring(0, 8).toUpperCase()}`,
+              type: 'debt_adjustment',
+              typeLabel: label,
+              value: Number(cd.amount || 0),
+              actualPaid: 0,
+              debtImpact: Number(cd.amount || 0),
+              notes: cd.notes || 'Điều chỉnh số dư nợ',
+              runningBalance: 0
+            })
+          }
+        })
+      }
+
+      // Sort earliest first to compute running balance
+      items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      let runningSum = 0
+      const itemsWithBalance = items.map(item => {
+        runningSum += item.debtImpact
+        return {
+          ...item,
+          runningBalance: runningSum
+        }
+      })
+
+      // Sort latest first for display
+      itemsWithBalance.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      setLedgerItems(itemsWithBalance)
 
     } catch (err) {
       console.error('Error loading customer details:', err)
@@ -1657,97 +1815,210 @@ export default function CustomerDetailPage() {
                   </div>
                 </div>
 
-                {/* Orders List */}
-                <div>
-                  <h4 className="text-body-lg font-bold text-gray-700 mb-4 flex items-center gap-1.5">
-                    <FileText className="text-blue-500" size={18} />
-                    Lịch sử mua hàng ({customer.orders?.length || 0})
-                  </h4>
+                {/* Orders and Ledger sub-tabs */}
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+                      <button
+                        onClick={() => setSubTab('orders')}
+                        className={`px-4 py-2 font-semibold text-body-md rounded-md transition-all ${
+                          subTab === 'orders'
+                            ? 'bg-white text-blue-700 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-750'
+                        }`}
+                      >
+                        Đơn hàng bán lẻ ({customer.orders?.length || 0})
+                      </button>
+                      <button
+                        onClick={() => setSubTab('ledger')}
+                        className={`px-4 py-2 font-semibold text-body-md rounded-md transition-all ${
+                          subTab === 'ledger'
+                            ? 'bg-white text-blue-700 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-750'
+                        }`}
+                      >
+                        Sổ chi tiết giao dịch ({ledgerItems.length})
+                      </button>
+                    </div>
 
-                  <div className="bg-gray-0 border border-gray-100 rounded-xl overflow-hidden">
-                    {!customer.orders || customer.orders.length === 0 ? (
-                      /* Render mock orders if none exist */
-                      <div className="overflow-x-auto relative">
-                        <div className="absolute top-3 right-4 bg-gray-50 border border-gray-100 px-2 py-0.5 text-[9px] text-gray-400 font-bold uppercase rounded z-10">Dữ liệu mẫu</div>
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-gray-25 border-b border-gray-100">
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Mã đơn hàng</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Ngày đặt</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Sản phẩm tiêu biểu</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider text-right">Tổng tiền</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Trạng thái</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
-                            {mockOrders.map((o, idx) => (
-                              <tr key={idx} className="hover:bg-gray-25/50 transition-colors">
-                                <td className="px-6 py-4 font-bold text-blue-500">{o.code}</td>
-                                <td className="px-6 py-4">{o.date}</td>
-                                <td className="px-6 py-4 font-medium">{o.items}</td>
-                                <td className="px-6 py-4 text-right font-bold tabular-nums text-gray-700">{formatVND(o.total)}</td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${o.statusColor}`}>
-                                    {o.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      /* Actual orders table */
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-gray-25 border-b border-gray-100">
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Mã đơn hàng</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Ngày đặt</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider text-right">Tổng tiền</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Trạng thái GD</th>
-                              <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Thanh toán</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
-                            {customer.orders.map(o => (
-                              <tr key={o.id} className="hover:bg-gray-25/50 transition-colors">
-                                <td className="px-6 py-4 font-bold text-blue-500">{o.order_code}</td>
-                                <td className="px-6 py-4">
-                                  {o.created_at ? new Date(o.created_at).toLocaleDateString('vi-VN') : 'N/A'}
-                                </td>
-                                <td className="px-6 py-4 text-right font-bold tabular-nums text-gray-700">
-                                  {formatVND(o.grand_total)}
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${
-                                    o.status === 'completed' 
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                      : o.status === 'draft'
-                                      ? 'bg-gray-50 text-gray-500 border-gray-100'
-                                      : 'bg-blue-50 text-blue-700 border-blue-100'
-                                  }`}>
-                                    {o.status === 'draft' ? 'Bản nháp' : o.status === 'completed' ? 'Hoàn thành' : o.status}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${
-                                    o.payment_status === 'paid'
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                                      : o.payment_status === 'partially_paid'
-                                      ? 'bg-amber-50 text-amber-700 border-amber-100'
-                                      : 'bg-red-50 text-danger-500 border-red-100'
-                                  }`}>
-                                    {o.payment_status === 'paid' ? 'Đã thu' : o.payment_status === 'partially_paid' ? 'Thu một phần' : 'Chưa trả'}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                    {subTab === 'ledger' && (
+                      <div className="flex gap-4 text-body-md font-semibold bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
+                        <div className="text-gray-600">
+                          Tổng nợ phát sinh: <span className="text-danger-500 font-bold">{formatVND(ledgerItems.reduce((s, i) => s + (i.debtImpact > 0 ? i.debtImpact : 0), 0))}</span>
+                        </div>
+                        <div className="text-gray-600 border-l border-blue-200 pl-4">
+                          Tổng thu/trả: <span className="text-emerald-700 font-bold">{formatVND(Math.abs(ledgerItems.reduce((s, i) => s + (i.debtImpact < 0 ? i.debtImpact : 0), 0)))}</span>
+                        </div>
                       </div>
                     )}
                   </div>
+
+                  {subTab === 'orders' ? (
+                    <div>
+                      <div className="bg-gray-0 border border-gray-100 rounded-xl overflow-hidden">
+                        {!customer.orders || customer.orders.length === 0 ? (
+                          /* Render mock orders if none exist */
+                          <div className="overflow-x-auto relative">
+                            <div className="absolute top-3 right-4 bg-gray-50 border border-gray-100 px-2 py-0.5 text-[9px] text-gray-400 font-bold uppercase rounded z-10">Dữ liệu mẫu</div>
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-gray-25 border-b border-gray-100">
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Mã đơn hàng</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Ngày đặt</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Sản phẩm tiêu biểu</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider text-right">Tổng tiền</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Trạng thái</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
+                                {mockOrders.map((o, idx) => (
+                                  <tr key={idx} className="hover:bg-gray-25/50 transition-colors">
+                                    <td className="px-6 py-4 font-bold text-blue-500">{o.code}</td>
+                                    <td className="px-6 py-4">{o.date}</td>
+                                    <td className="px-6 py-4 font-medium">{o.items}</td>
+                                    <td className="px-6 py-4 text-right font-bold tabular-nums text-gray-700">{formatVND(o.total)}</td>
+                                    <td className="px-6 py-4">
+                                      <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${o.statusColor}`}>
+                                        {o.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          /* Actual orders table */
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-gray-25 border-b border-gray-100">
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Mã đơn hàng</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Ngày đặt</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider text-right">Tổng tiền</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Trạng thái GD</th>
+                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Thanh toán</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
+                                {customer.orders.map(o => (
+                                  <tr key={o.id} className="hover:bg-gray-25/50 transition-colors">
+                                    <td className="px-6 py-4 font-bold text-blue-500">{o.order_code}</td>
+                                    <td className="px-6 py-4">
+                                      {o.created_at ? new Date(o.created_at).toLocaleDateString('vi-VN') : 'N/A'}
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-bold tabular-nums text-gray-700">
+                                      {formatVND(o.grand_total)}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${
+                                        o.status === 'completed' 
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                          : o.status === 'draft'
+                                          ? 'bg-gray-50 text-gray-500 border-gray-100'
+                                          : 'bg-blue-50 text-blue-700 border-blue-100'
+                                      }`}>
+                                        {o.status === 'draft' ? 'Bản nháp' : o.status === 'completed' ? 'Hoàn thành' : o.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${
+                                        o.payment_status === 'paid'
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                          : o.payment_status === 'partially_paid'
+                                          ? 'bg-amber-50 text-amber-700 border-amber-100'
+                                          : 'bg-red-50 text-danger-500 border-red-100'
+                                      }`}>
+                                        {o.payment_status === 'paid' ? 'Đã thu' : o.payment_status === 'partially_paid' ? 'Thu một phần' : 'Chưa trả'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="bg-gray-0 border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+                        {ledgerItems.length === 0 ? (
+                          <div className="py-16 text-center text-gray-400 italic text-body-md">
+                            Chưa phát sinh giao dịch nào trong sổ chi tiết của khách hàng này.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-gray-25 border-b border-gray-100 text-gray-500 font-semibold text-body-md">
+                                  <th className="px-6 py-4">Thời gian</th>
+                                  <th className="px-6 py-4">Mã chứng từ</th>
+                                  <th className="px-6 py-4">Loại giao dịch</th>
+                                  <th className="px-6 py-4 text-right">Giá trị phát sinh</th>
+                                  <th className="px-6 py-4 text-right">Thực thu/trả</th>
+                                  <th className="px-6 py-4 text-right">Ảnh hưởng nợ</th>
+                                  <th className="px-6 py-4 text-right">Dư nợ cuối</th>
+                                  <th className="px-6 py-4">Ghi chú</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
+                                {ledgerItems.map((item) => {
+                                  const isDebtIncrease = item.debtImpact > 0
+                                  const isDebtDecrease = item.debtImpact < 0
+
+                                  return (
+                                    <tr key={item.id} className="hover:bg-gray-25/50 transition-colors">
+                                      <td className="px-6 py-4 whitespace-nowrap text-tiny text-gray-500 tabular-nums">
+                                        {new Date(item.date).toLocaleString('vi-VN')}
+                                      </td>
+                                      <td className="px-6 py-4 font-mono font-bold text-tiny text-blue-600">
+                                        {item.code}
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold ${
+                                          item.type === 'invoice'
+                                            ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                            : item.type === 'payment'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                                            : item.type === 'return'
+                                            ? 'bg-purple-50 text-purple-700 border-purple-100'
+                                            : 'bg-amber-50 text-amber-700 border-amber-100'
+                                        }`}>
+                                          {item.typeLabel}
+                                        </span>
+                                      </td>
+                                      <td className="px-6 py-4 text-right font-semibold text-gray-700 tabular-nums">
+                                        {item.value !== 0 ? formatVND(item.value) : '---'}
+                                      </td>
+                                      <td className="px-6 py-4 text-right font-semibold text-emerald-600 tabular-nums">
+                                        {item.actualPaid !== 0 ? formatVND(item.actualPaid) : '---'}
+                                      </td>
+                                      <td className={`px-6 py-4 text-right font-bold tabular-nums ${
+                                        isDebtIncrease
+                                          ? 'text-red-600'
+                                          : isDebtDecrease
+                                          ? 'text-emerald-600'
+                                          : 'text-gray-500'
+                                      }`}>
+                                        {isDebtIncrease ? '+' : ''}{item.debtImpact !== 0 ? formatVND(item.debtImpact) : '0 ₫'}
+                                      </td>
+                                      <td className="px-6 py-4 text-right font-black text-gray-800 tabular-nums">
+                                        {formatVND(item.runningBalance)}
+                                      </td>
+                                      <td className="px-6 py-4 text-tiny text-gray-400 max-w-xs truncate" title={item.notes}>
+                                        {item.notes}
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>
