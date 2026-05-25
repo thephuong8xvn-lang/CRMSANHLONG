@@ -242,7 +242,7 @@ INSERT INTO public.disease_species (disease_id, species_id)
 SELECT d.id, s.id
 FROM public.disease_dictionary d, public.species s
 WHERE d.code IN ('ASF', 'CSF', 'PRRS', 'FMD', 'PED', 'APP', 'SAL_HEO')
-  AND s.code IN ('KH-HEO-THIT', 'KH-HEO-NAI', 'KH-HEO-DUC') -- Check existing codes, or use sub-string matching
+  AND s.name IN ('Heo', 'Heo thịt', 'Heo nái', 'Heo đực giống') -- Match species by name since species table does not have a code column
 ON CONFLICT DO NOTHING;
 
 -- Fallback to match species by name if code structure is different
