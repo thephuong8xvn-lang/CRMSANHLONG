@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Upload, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react'
+import { X, Upload, CheckCircle, AlertTriangle, Download, RefreshCw, FileText } from 'lucide-react'
 import Papa from 'papaparse'
 import { supabase } from '../../lib/supabase'
 
@@ -14,6 +14,26 @@ interface ParsedProductRow {
   isValid: boolean
   errors: string[]
 }
+
+// Normalize Vietnamese text to plain lowercase ASCII for flexible column matching
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Wide set of aliases covering KiotViet, sanh long exports, and generic CSV
+const PRODUCT_NAME_KEYS = [
+  'ten san pham', 'ten hang hoa', 'ten hang', 'ten', 'name', 'productname', 'product name',
+  'ten thuoc', 'ten vaccine', 'ten vat tu', 'ma hang', 'ten sp', 'ten mat hang',
+  'tên sản phẩm', 'tên hàng hóa', 'tên hàng', 'tên thuốc', 'tên',
+  'mo ta', 'description', 'label', 'item name', 'itemname', 'hang hoa', 'san pham'
+]
 
 export default function ImportProductsModal({
   isOpen,
@@ -37,20 +57,36 @@ export default function ImportProductsModal({
 
   if (!isOpen) return null
 
+  // Generate and download template as Blob – no static file needed
   const handleDownloadTemplate = () => {
+    const rows = [
+      ['Tên sản phẩm (Bắt buộc)'],
+      ['Vaccine dịch tả heo Châu Phi'],
+      ['Thuốc hạ sốt Para-C'],
+      ['Dung dịch sát trùng chuồng trại'],
+      ['Thuốc kháng sinh Tylosin 20%'],
+    ]
+    const csvContent = '\uFEFF' + rows.map(r => r.join(',')).join('\r\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.setAttribute('href', '/template_import_hang_hoa.csv')
-    link.setAttribute('download', 'template_import_hang_hoa.csv')
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
+    link.href = url
+    link.download = 'template_import_hang_hoa.csv'
     link.click()
-    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const findValue = (row: Record<string, string>, keys: string[]): string => {
+    const rowKeys = Object.keys(row)
+    const matched = rowKeys.find(k =>
+      keys.some(key => normalize(k).includes(key) || key.includes(normalize(k)))
+    )
+    return matched ? String(row[matched] ?? '').trim() : ''
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
-
     setFile(selectedFile)
     setParsedRows([])
     setImportSummary(null)
@@ -63,7 +99,7 @@ export default function ImportProductsModal({
       complete: (results) => {
         setLoading(false)
         try {
-          const rawData = results.data as any[]
+          const rawData = results.data as Record<string, string>[]
           if (rawData.length === 0) {
             setErrorMsg('Tệp CSV trống hoặc không đúng định dạng.')
             return
@@ -71,15 +107,7 @@ export default function ImportProductsModal({
 
           const processed: ParsedProductRow[] = rawData.map((row, index) => {
             const errors: string[] = []
-
-            const findValue = (keys: string[]) => {
-              const matchedKey = Object.keys(row).find(k => 
-                keys.some(key => k.trim().toLowerCase().includes(key))
-              )
-              return matchedKey ? String(row[matchedKey]).trim() : ''
-            }
-
-            const name = findValue(['ten san pham', 'ten hang', 'product', 'name', 'tên'])
+            const name = findValue(row, PRODUCT_NAME_KEYS)
 
             if (!name) {
               errors.push(`Dòng ${index + 1}: Thiếu Tên sản phẩm.`)
@@ -93,9 +121,9 @@ export default function ImportProductsModal({
           })
 
           setParsedRows(processed)
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(err)
-          setErrorMsg('Lỗi xử lý file CSV: ' + err.message)
+          setErrorMsg('Lỗi xử lý file CSV: ' + (err instanceof Error ? err.message : String(err)))
         }
       },
       error: (error) => {
@@ -116,26 +144,12 @@ export default function ImportProductsModal({
     setErrorMsg('')
 
     try {
-      // 1. Fetch active price lists to associate default price rows
-      const { data: priceLists, error: plErr } = await supabase
-        .from('price_lists')
-        .select('id, code')
-        .eq('is_active', true)
-      
-      if (plErr) throw plErr
-
-      // 2. Fetch active categories and brands to set defaults if available
-      const { data: categories } = await supabase
-        .from('product_categories')
-        .select('id')
-        .eq('is_active', true)
-        .limit(1)
-
-      const { data: brands } = await supabase
-        .from('brands')
-        .select('id')
-        .eq('is_active', true)
-        .limit(1)
+      // Fetch price lists, categories, brands for defaults
+      const [{ data: priceLists }, { data: categories }, { data: brands }] = await Promise.all([
+        supabase.from('price_lists').select('id, code').eq('is_active', true),
+        supabase.from('product_categories').select('id').eq('is_active', true).limit(1),
+        supabase.from('brands').select('id').eq('is_active', true).limit(1)
+      ])
 
       const defaultCategoryId = categories && categories.length > 0 ? categories[0].id : null
       const defaultBrandId = brands && brands.length > 0 ? brands[0].id : null
@@ -143,11 +157,10 @@ export default function ImportProductsModal({
       let successCount = 0
       let failedCount = 0
 
-      // Import each product and its corresponding prices
       for (const row of validRows) {
-        // Generate a clean unique SKU code
-        const uniqueSku = `SP-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`
-        
+        // Generate unique SKU
+        const uniqueSku = `SP-${Date.now().toString().slice(-7)}-${Math.floor(100 + Math.random() * 900)}`
+
         const { data: newProd, error: insertErr } = await supabase
           .from('products')
           .insert({
@@ -183,16 +196,16 @@ export default function ImportProductsModal({
             .insert(priceItems)
 
           if (priceErr) {
-            console.error('Error inserting default prices for imported product:', priceErr)
+            console.warn('Error inserting default prices:', priceErr)
           }
         }
         successCount++
       }
 
       setImportSummary({ success: successCount, failed: failedCount })
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err)
-      setErrorMsg('Lỗi nhập dữ liệu: ' + err.message)
+      setErrorMsg('Lỗi nhập dữ liệu: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setImporting(false)
     }
@@ -208,7 +221,7 @@ export default function ImportProductsModal({
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-25">
           <div>
             <h3 className="text-body-lg font-bold text-gray-800">Nhập danh sách hàng hóa</h3>
-            <p className="text-tiny text-gray-400">Tải tệp CSV chứa danh sách tên sản phẩm cần nhập vào hệ thống</p>
+            <p className="text-tiny text-gray-400">Hỗ trợ CSV từ KiotViet, Excel hoặc file tự tạo. Chỉ cần cột Tên sản phẩm.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100">
             <X size={20} />
@@ -216,7 +229,7 @@ export default function ImportProductsModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {errorMsg && (
             <div className="p-4 bg-red-50 border border-red-200 text-danger-500 rounded-lg text-body-md flex items-start gap-2.5">
               <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
@@ -243,10 +256,7 @@ export default function ImportProductsModal({
               </div>
               <div className="pt-4 flex justify-center gap-3">
                 <button
-                  onClick={() => {
-                    onSuccess()
-                    onClose()
-                  }}
+                  onClick={() => { onSuccess(); onClose() }}
                   className="px-6 h-11 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md"
                 >
                   Xác nhận &amp; Đóng
@@ -254,29 +264,44 @@ export default function ImportProductsModal({
               </div>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {!file ? (
-                <div className="border-2 border-dashed border-gray-200 hover:border-blue-400 rounded-xl p-10 text-center transition-all bg-gray-25/50 relative">
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileChange}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <Upload size={36} className="text-gray-400 mx-auto mb-3" />
-                  <p className="font-bold text-body-lg text-gray-700">Kéo thả hoặc nhấn để tải tệp CSV lên</p>
-                  <p className="text-tiny text-gray-450 mt-1">Hỗ trợ tệp định dạng CSV (.csv) mã hóa UTF-8</p>
-                  
-                  <button
-                    onClick={handleDownloadTemplate}
-                    type="button"
-                    className="mt-5 inline-flex items-center gap-2 text-blue-500 hover:text-blue-600 font-semibold text-body-md px-4 py-2 bg-blue-50/50 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
-                    Tải file mẫu template (CSV)
-                  </button>
+                <div className="space-y-4">
+                  {/* How-to hint */}
+                  <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-body-md text-blue-700 space-y-1.5">
+                    <p className="font-bold flex items-center gap-1.5"><FileText size={15} /> Hướng dẫn nhập từ KiotViet / Excel</p>
+                    <ul className="list-disc list-inside text-tiny space-y-1 text-blue-600">
+                      <li>Xuất file danh sách hàng hóa từ KiotViet ra định dạng <strong>CSV</strong></li>
+                      <li>Hệ thống tự nhận dạng cột <strong>Tên sản phẩm</strong> / <strong>Tên hàng hóa</strong> / <strong>Tên</strong></li>
+                      <li>Các cột khác (giá, mã, tồn kho…) sẽ được bỏ qua, không gây lỗi</li>
+                      <li>Mỗi sản phẩm được tạo với giá mặc định 0 và mã SKU tự động – có thể chỉnh sửa sau</li>
+                    </ul>
+                  </div>
+
+                  {/* Drag-drop zone */}
+                  <div className="border-2 border-dashed border-gray-200 hover:border-blue-400 rounded-xl p-10 text-center transition-all bg-gray-25/50 relative">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleFileChange}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <Upload size={36} className="text-gray-400 mx-auto mb-3" />
+                    <p className="font-bold text-body-lg text-gray-700">Kéo thả hoặc nhấn để tải tệp CSV lên</p>
+                    <p className="text-tiny text-gray-450 mt-1">Hỗ trợ tệp định dạng CSV (.csv) – UTF-8 hoặc ANSI</p>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDownloadTemplate() }}
+                      type="button"
+                      className="mt-5 inline-flex items-center gap-2 text-blue-500 hover:text-blue-600 font-semibold text-body-md px-4 py-2 bg-blue-50/50 hover:bg-blue-50 rounded-lg transition-colors"
+                    >
+                      <Download size={14} />
+                      Tải file mẫu (CSV)
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-5">
+                  {/* File info */}
                   <div className="bg-gray-25 border border-gray-100 rounded-lg px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-blue-50 text-blue-500 rounded font-mono font-bold text-tiny uppercase">CSV</div>
@@ -293,21 +318,24 @@ export default function ImportProductsModal({
                     </button>
                   </div>
 
+                  {/* Stats */}
                   <div className="flex gap-4">
                     <div className="bg-emerald-50/50 border border-emerald-100 px-4 py-2.5 rounded-lg text-emerald-700 text-body-md">
                       Hợp lệ: <span className="font-bold">{validCount}</span> dòng
                     </div>
                     {invalidCount > 0 && (
                       <div className="bg-red-50/50 border border-red-100 px-4 py-2.5 rounded-lg text-red-600 text-body-md">
-                        Lỗi/Cảnh báo: <span className="font-bold">{invalidCount}</span> dòng
+                        Bỏ qua: <span className="font-bold">{invalidCount}</span> dòng (thiếu tên)
                       </div>
                     )}
                   </div>
 
+                  {/* Preview Table */}
                   <div className="border border-gray-100 rounded-lg overflow-hidden max-h-[300px] overflow-y-auto">
                     <table className="w-full text-left border-collapse text-body-md">
                       <thead>
                         <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider sticky top-0 z-10">
+                          <th className="px-4 py-3 w-8">#</th>
                           <th className="px-4 py-3">Tên sản phẩm</th>
                           <th className="px-4 py-3">Trạng thái</th>
                         </tr>
@@ -315,11 +343,14 @@ export default function ImportProductsModal({
                       <tbody className="divide-y divide-gray-50 text-gray-650">
                         {parsedRows.map((row, idx) => (
                           <tr key={idx} className={row.isValid ? 'hover:bg-gray-25/50' : 'bg-red-25/10 hover:bg-red-25/20'}>
-                            <td className="px-4 py-3 font-semibold text-gray-700">{row.name || <span className="text-red-400 italic">Trống</span>}</td>
+                            <td className="px-4 py-3 text-gray-400 text-tiny">{idx + 1}</td>
+                            <td className="px-4 py-3 font-semibold text-gray-700">
+                              {row.name || <span className="text-red-400 italic">Trống</span>}
+                            </td>
                             <td className="px-4 py-3">
                               {row.isValid ? (
                                 <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-tiny">
-                                  Hợp lệ
+                                  <CheckCircle size={12} /> Hợp lệ
                                 </span>
                               ) : (
                                 <div className="text-red-500 text-tiny font-semibold space-y-0.5">

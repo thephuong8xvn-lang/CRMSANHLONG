@@ -302,4 +302,14 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Tải biểu đồ xu hướng dòng tiền (Cash flows) từ bảng `cashbook_transactions` theo dòng tiền thu/chi thực tế được phê duyệt của 6 tháng gần nhất.
   - Bổ sung giao diện thông báo trạng thái trống (Empty State) lịch thiệp cho danh sách lịch hẹn và phiếu chi chờ duyệt.
   - Dọn dẹp các khai báo dữ liệu mẫu không còn sử dụng (`mockVaccines`, `mockDiseases`, `mockOrders`) trong trang Chi tiết khách hàng.
+- [x] **Nâng cấp Tính năng Import Khách hàng & Hàng hóa từ KiotViet/CSV (2026-05-25)**:
+  - **Vấn đề**: Tính năng import CSV không hoạt động hiệu quả với file xuất từ KiotViet – nhiều trường không hợp lệ, không tải được file mẫu.
+  - **Giải pháp – Download file mẫu**: Thay cơ chế tải file mẫu qua đường dẫn tĩnh (`/template_....csv`) bằng cơ chế **tạo file Blob trực tiếp trên trình duyệt** (`URL.createObjectURL`) – không phụ thuộc vào server, luôn tải được ngay lập tức.
+  - **Giải pháp – Nhận dạng cột linh hoạt (KiotViet compatibility)**: Xây dựng hàm `normalize()` chuẩn hóa tên cột (bỏ dấu, lowercase, loại ký tự đặc biệt) và bộ alias cột mở rộng gồm hàng chục tên biến thể thường gặp trong file xuất KiotViet, Excel: `Tên khách hàng`, `Tên hàng hóa`, `Điện thoại`, `Số ĐT`, `Phone`, `Name`, `Tên`, `Tên SP`...
+  - **Giải pháp – Chỉ bắt buộc Tên**: Cả Import khách hàng và Import hàng hóa chỉ yêu cầu trường **Tên** là bắt buộc. Số điện thoại (khách hàng) và các trường khác đều optional – nếu thiếu cột hoặc để trống đều không gây lỗi dòng.
+  - **Bổ sung hướng dẫn in-app**: Thêm khung hướng dẫn trực quan ngay trong modal mô tả cách xuất từ KiotViet và cột nào được nhận dạng.
+  - Cập nhật 2 file: [ImportCustomersModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/customers/ImportCustomersModal.tsx) và [ImportProductsModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ImportProductsModal.tsx).
+  - 0 TypeScript errors sau thay đổi.
+
+
 
