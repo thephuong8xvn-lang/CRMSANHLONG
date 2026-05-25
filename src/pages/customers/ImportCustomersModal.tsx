@@ -217,7 +217,7 @@ export default function ImportCustomersModal({
       }
 
       // Build contacts bulk list
-      const contactsToInsert = insertedCustomers.map((cust, idx) => {
+      const contactsToInsert = insertedCustomers.map((cust: { id: string; farm_name: string }, idx: number) => {
         const row = validRows[idx]
         return {
           customer_id: cust.id,

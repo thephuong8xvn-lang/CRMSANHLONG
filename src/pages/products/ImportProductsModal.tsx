@@ -183,7 +183,7 @@ export default function ImportProductsModal({
         }
 
         if (newProd && priceLists && priceLists.length > 0) {
-          const priceItems = priceLists.map(list => ({
+          const priceItems = priceLists.map((list: { id: string; code: string }) => ({
             price_list_id: list.id,
             product_id: newProd.id,
             cost_price: 0,
