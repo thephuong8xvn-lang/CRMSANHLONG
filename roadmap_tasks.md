@@ -255,6 +255,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - [x] Cấu hình động CRUD cho Loài vật nuôi (`species`) và Phân nhóm nguyên nhân gây bệnh (`disease_etiologies`) hỗ trợ chỉ định bệnh nâng cao và phân loại tác nhân Gram-âm/Gram-dương, virus RNA/DNA trực quan.
 - [x] **Cải tiến Catalog Sản Phẩm & Chỉ định bệnh lý**:
   - [x] Nâng cấp Modals Thêm mới (`AddProductModal`) và Cập nhật (`EditProductModal`) hàng hóa lên giao diện 2 cột rộng rãi (`max-w-4xl`).
+  - [x] Thiết kế cấu trúc giao diện Modal thông minh: Tiêu đề (Header) và nút Tác vụ (Hủy/Lưu ở Footer) được giữ cố định (sticky layout), chỉ cuộn phần nội dung biểu mẫu ở giữa giúp loại bỏ hoàn toàn lỗi tràn layout và không bấm được nút thoát/lưu trên màn hình độ phân giải thấp.
   - [x] Hỗ trợ tìm kiếm & tick chọn nhiều hoạt chất kèm nhập nồng độ/hàm lượng trực tiếp, cùng với checklist chỉ định điều trị bệnh lý gán thẳng vào sản phẩm.
   - [x] Đồng bộ lưu trữ và hiển thị các bệnh lý chỉ định điều trị dạng tag tag-badges trực quan trên thanh thông tin bổ sung của trang Chi tiết sản phẩm (`ProductDetailPage`).
 - [x] **Tích hợp Giỏ hàng thông minh (Smart Cart) & Tương kỵ thuốc tại POS**:
