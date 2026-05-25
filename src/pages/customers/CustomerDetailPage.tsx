@@ -400,7 +400,7 @@ export default function CustomerDetailPage() {
         setFarms(farmsData)
         if (farmsData.length > 0) {
           setHerdFarmId(farmsData[0].id)
-          const farmIds = farmsData.map(f => f.id)
+          const farmIds = farmsData.map((f: any) => f.id)
           
           // 3. Fetch herds for those farms
           const { data: herdsData } = await supabase
@@ -417,7 +417,7 @@ export default function CustomerDetailPage() {
             
             // 4. Fetch disease history for those herds
             if (herdsData.length > 0) {
-              const herdIds = herdsData.map(h => h.id)
+              const herdIds = herdsData.map((h: any) => h.id)
               const { data: diseasesData } = await supabase
                 .from('disease_history')
                 .select(`
