@@ -242,49 +242,7 @@ export default function OrderListPage() {
     )
   }
 
-  // Mock Orders if Database is completely empty and finished loading
-  const mockOrders: Order[] = [
-    {
-      id: 'mock-1',
-      order_code: 'DH-2026-00001',
-      created_at: new Date().toISOString(),
-      status: 'confirmed',
-      payment_status: 'partially_paid',
-      grand_total: 6160000,
-      paid_amount: 1000000,
-      customer_id: 'cust-1',
-      customers: { farm_name: 'Trần Thị Minh Khai - Trại Hóc Môn' },
-      owner: { full_name: 'Lê Minh Tuấn' }
-    },
-    {
-      id: 'mock-2',
-      order_code: 'DH-2026-00002',
-      created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      status: 'draft',
-      payment_status: 'unpaid',
-      grand_total: 2940000,
-      paid_amount: 0,
-      customer_id: 'cust-2',
-      customers: { farm_name: 'Nguyễn Văn Hùng - Trại Củ Chi' },
-      owner: { full_name: 'Văn Anh' }
-    },
-    {
-      id: 'mock-3',
-      order_code: 'DH-2026-00003',
-      created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-      status: 'completed',
-      payment_status: 'paid',
-      grand_total: 12500000,
-      paid_amount: 12500000,
-      customer_id: 'cust-3',
-      customers: { farm_name: 'Trại gà Minh Tâm - Đồng Nai' },
-      owner: { full_name: 'Trần Thanh' }
-    }
-  ]
-
-  const displayList = currentOrders.length > 0
-    ? currentOrders
-    : (orders.length === 0 && !loading ? mockOrders : [])
+  const displayList = currentOrders
 
   return (
     <Layout activeMenu="Đơn hàng">
@@ -442,10 +400,8 @@ export default function OrderListPage() {
                   {displayList.map(order => (
                     <tr
                       key={order.id}
-                      onClick={() => navigate(order.id.startsWith('mock') ? '#' : `/orders/${order.id}`)}
-                      className={`transition-colors group ${
-                        order.id.startsWith('mock') ? 'cursor-default' : 'hover:bg-gray-25/50 cursor-pointer'
-                      }`}
+                      onClick={() => navigate(`/orders/${order.id}`)}
+                      className="transition-colors group hover:bg-gray-25/50 cursor-pointer"
                     >
                       <td className="px-6 py-4 font-mono font-bold text-blue-600 group-hover:underline">
                         {order.order_code}

@@ -296,3 +296,10 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Sửa lỗi biên dịch do thiếu thẻ đóng `</div>` ở phần cuối mã nguồn của cả hai modal.
   - Khắc phục lỗi TypeScript type mismatch tại trang [ActiveIngredientsPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ActiveIngredientsPage.tsx) (ép kiểu `comp.interaction_type` thành `'synergy' | 'antagonism'`).
   - Dọn dẹp và chuẩn hóa toàn bộ các lớp CSS màu Tailwind không tồn tại (ví dụ: `gray-150`, `gray-250`...) trên tất cả các trang liên quan đến phân hệ sản phẩm thành các màu chuẩn của dự án để đảm bảo các thành phần giao diện, nút bấm, ô nhập liệu hiển thị chính xác.
+- [x] **Tải dữ liệu thực tế 100% & Loại bỏ dữ liệu mẫu (2026-05-25)**:
+  - Loại bỏ hoàn toàn các cấu trúc hiển thị dữ liệu mẫu/mặc định cứng trên màn hình Bảng điều khiển (Dashboard).
+  - Tải động số liệu doanh thu thực tế, tính toán sự tăng trưởng MoM bằng cách truy vấn số liệu doanh thu tháng trước trực tiếp.
+  - Tải biểu đồ xu hướng dòng tiền (Cash flows) từ bảng `cashbook_transactions` theo dòng tiền thu/chi thực tế được phê duyệt của 6 tháng gần nhất.
+  - Bổ sung giao diện thông báo trạng thái trống (Empty State) lịch thiệp cho danh sách lịch hẹn và phiếu chi chờ duyệt.
+  - Dọn dẹp các khai báo dữ liệu mẫu không còn sử dụng (`mockVaccines`, `mockDiseases`, `mockOrders`) trong trang Chi tiết khách hàng.
+

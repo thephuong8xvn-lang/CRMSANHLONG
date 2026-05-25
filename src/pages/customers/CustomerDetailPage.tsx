@@ -895,15 +895,7 @@ export default function CustomerDetailPage() {
       })
     }
 
-    // Fallback mockup if zero actual debt
-    if (age30 === 0 && age60 === 0 && age90 === 0 && ageOver90 === 0) {
-      return [
-        { name: '0-30 ngày', amount: 1500000, display: '1.5M', color: '#0E6646' },
-        { name: '31-60 ngày', amount: 6000000, display: '6.0M', color: '#54606d' },
-        { name: '61-90 ngày', amount: 11200000, display: '11.2M', color: '#1E5A9C' },
-        { name: '90+ ngày', amount: 3700000, display: '3.7M', color: '#BA1A1A' }
-      ]
-    }
+
 
     return [
       { name: '0-30 ngày', amount: age30, display: `${(age30 / 1000000).toFixed(1)}M`, color: '#0E6646' },
@@ -1162,23 +1154,7 @@ export default function CustomerDetailPage() {
     }
   }
 
-  // Fallbacks if data empty
-  const mockVaccines = [
-    { name: 'Tai xanh (PRRS) - Đợt 3', status: 'Quá hạn 2 ngày', urgent: true },
-    { name: 'Dịch tả lợn Châu Phi - Đợt 1', status: 'Dự kiến: 20/06', urgent: false }
-  ]
 
-  const mockDiseases = [
-    { date: 'Tháng 03/2024', name: 'Dịch tiêu chảy cấp (PED)', notes: 'Gây thiệt hại 5% tổng đàn lợn con. Đã xử lý triệt để.', urgent: true },
-    { date: 'Tháng 08/2023', name: 'Lở mồm long móng', notes: 'Vùng đệm có dịch. Trại thực hiện cách ly nghiêm ngặt.', urgent: false },
-    { date: 'Tháng 01/2023', name: 'Không ghi nhận dịch bệnh', notes: '', urgent: false }
-  ]
-
-  const mockOrders = [
-    { code: 'ORD-2024-0512', date: '12/05/2024', items: 'Cám Bio-Zeal, Vaccine FMD', total: 45000000, status: 'Đã thanh toán', statusColor: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-    { code: 'ORD-2024-0498', date: '28/04/2024', items: 'Thuốc sát trùng Virocid', total: 12500000, status: 'Đang giao', statusColor: 'bg-blue-50 text-blue-700 border-blue-100' },
-    { code: 'ORD-2024-0450', date: '15/04/2024', items: 'Hệ thống máng ăn tự động', total: 15000000, status: 'Chưa thanh toán', statusColor: 'bg-red-50 text-danger-500 border-red-100' }
-  ]
 
   if (loading) {
     return (
@@ -1577,58 +1553,19 @@ export default function CustomerDetailPage() {
                   <div className="lg:col-span-2 space-y-6">
                     
                     {farms.length === 0 ? (
-                      /* Mockup fallback farm card if empty */
-                      <div className="bg-gray-0 border border-gray-100 rounded-xl p-6 relative">
-                        <div className="absolute top-4 right-4 bg-gray-50 border border-gray-100 px-2 py-0.5 text-[9px] text-gray-400 font-bold uppercase rounded">Dữ liệu mẫu</div>
-                        <div className="flex justify-between items-start mb-6">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
-                              <Home size={24} />
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-body-lg text-gray-700">Trại Sanh Long 01 (Mẫu)</h4>
-                              <p className="text-body-md text-gray-400 flex items-center gap-1 mt-0.5">
-                                <MapPin size={14} />
-                                {[customer.district || 'Ba Vì', customer.province || 'Hà Nội'].join(', ')}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-bold text-tiny">Đang hoạt động</span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4 mb-6">
-                          <div className="p-4 rounded-lg bg-gray-25/50 border border-gray-100">
-                            <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Quy mô đàn</p>
-                            <p className="font-bold text-body-lg text-gray-700">500 <span className="text-body-md font-normal text-gray-400">con</span></p>
-                          </div>
-                          <div className="p-4 rounded-lg bg-gray-25/50 border border-gray-100">
-                            <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Diện tích chuồng</p>
-                            <p className="font-bold text-body-lg text-gray-700">2.400 <span className="text-body-md font-normal text-gray-400">m²</span></p>
-                          </div>
-                          <div className="p-4 rounded-lg bg-gray-25/50 border border-gray-100">
-                            <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Ngày bắt đầu</p>
-                            <p className="font-bold text-body-lg text-gray-700">12/2023</p>
-                          </div>
-                        </div>
-
-                        {/* Vaccine plans under farm */}
-                        <div>
-                          <h5 className="font-semibold text-body-md text-blue-500 mb-3 flex items-center gap-1.5">
-                            <Activity size={16} />
-                            Kế hoạch Vaccine hiện tại
-                          </h5>
-                          <div className="space-y-2">
-                            {mockVaccines.map((v, index) => (
-                              <div key={index} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg bg-gray-25/30">
-                                <div className="flex items-center gap-2.5">
-                                  <span className={`w-2 h-2 rounded-full ${v.urgent ? 'bg-red-500' : 'bg-blue-500'}`}></span>
-                                  <span className="text-body-md text-gray-600 font-semibold">{v.name}</span>
-                                </div>
-                                <span className={`text-tiny font-bold ${v.urgent ? 'text-danger-500' : 'text-gray-400'}`}>{v.status}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                      <div className="bg-gray-0 border border-dashed border-gray-250 rounded-xl p-12 text-center flex flex-col items-center justify-center">
+                        <Home className="text-gray-400 mb-3" size={40} />
+                        <h4 className="font-bold text-body-lg text-gray-700">Chưa có thông tin chuồng trại</h4>
+                        <p className="text-tiny text-gray-400 max-w-sm mt-1 mb-4">
+                          Khách hàng này chưa có dữ liệu chuồng trại được ghi nhận trên hệ thống.
+                        </p>
+                        <button
+                          onClick={() => setIsFarmModalOpen(true)}
+                          className="bg-blue-50 text-blue-500 border border-blue-100 px-4 h-9 rounded-lg text-tiny font-bold hover:bg-blue-100 transition-colors flex items-center gap-1.5"
+                        >
+                          <PlusCircle size={14} />
+                          Thêm chuồng trại mới
+                        </button>
                       </div>
                     ) : (
                       /* Actual farms list */
@@ -1724,18 +1661,9 @@ export default function CustomerDetailPage() {
 
                       <div className="relative pl-4 border-l border-gray-250 space-y-6">
                         {diseases.length === 0 ? (
-                          /* Render mock history if empty */
-                          mockDiseases.map((d, index) => (
-                            <div key={index} className="relative">
-                              {/* Bullets */}
-                              <div className={`absolute -left-[21px] top-1 w-3 h-3 rounded-full border-2 border-gray-0 ${
-                                d.urgent ? 'bg-red-500' : 'bg-gray-400'
-                              }`}></div>
-                              <p className={`text-tiny font-bold ${d.urgent ? 'text-danger-500' : 'text-gray-400'}`}>{d.date}</p>
-                              <p className="font-semibold text-body-md text-gray-700 mt-0.5">{d.name}</p>
-                              {d.notes && <p className="text-body-md text-gray-400 mt-1 leading-relaxed">{d.notes}</p>}
-                            </div>
-                          ))
+                          <div className="py-6 text-gray-400 italic text-body-md text-center">
+                            Chưa ghi nhận dịch bệnh nào cho đàn vật nuôi.
+                          </div>
                         ) : (
                           /* Render actual history list */
                           diseases.map(d => (
@@ -1857,35 +1785,8 @@ export default function CustomerDetailPage() {
                     <div>
                       <div className="bg-gray-0 border border-gray-100 rounded-xl overflow-hidden">
                         {!customer.orders || customer.orders.length === 0 ? (
-                          /* Render mock orders if none exist */
-                          <div className="overflow-x-auto relative">
-                            <div className="absolute top-3 right-4 bg-gray-50 border border-gray-100 px-2 py-0.5 text-[9px] text-gray-400 font-bold uppercase rounded z-10">Dữ liệu mẫu</div>
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="bg-gray-25 border-b border-gray-100">
-                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Mã đơn hàng</th>
-                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Ngày đặt</th>
-                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Sản phẩm tiêu biểu</th>
-                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider text-right">Tổng tiền</th>
-                                  <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Trạng thái</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
-                                {mockOrders.map((o, idx) => (
-                                  <tr key={idx} className="hover:bg-gray-25/50 transition-colors">
-                                    <td className="px-6 py-4 font-bold text-blue-500">{o.code}</td>
-                                    <td className="px-6 py-4">{o.date}</td>
-                                    <td className="px-6 py-4 font-medium">{o.items}</td>
-                                    <td className="px-6 py-4 text-right font-bold tabular-nums text-gray-700">{formatVND(o.total)}</td>
-                                    <td className="px-6 py-4">
-                                      <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${o.statusColor}`}>
-                                        {o.status}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                          <div className="py-16 text-center text-gray-400 italic text-body-md">
+                            Khách hàng này chưa phát sinh đơn hàng nào.
                           </div>
                         ) : (
                           /* Actual orders table */

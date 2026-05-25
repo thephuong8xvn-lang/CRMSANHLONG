@@ -59,66 +59,15 @@ export default function DashboardPage() {
   // State for data
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats>({
-    monthlyRevenue: 480500000,
-    monthlyRevenueDelta: '+12% vs tháng trước',
-    overdueDebt: 45200000,
-    overdueDebtCount: 8,
-    expiringLotsCount: 14
+    monthlyRevenue: 0,
+    monthlyRevenueDelta: '0% vs tháng trước',
+    overdueDebt: 0,
+    overdueDebtCount: 0,
+    expiringLotsCount: 0
   })
-  const [chartData, setChartData] = useState<ChartDataItem[]>([
-    { name: 'Tháng 1', inflow: 300000000, outflow: 200000000 },
-    { name: 'Tháng 2', inflow: 380000000, outflow: 180000000 },
-    { name: 'Tháng 3', inflow: 450000000, outflow: 250000000 },
-    { name: 'Tháng 4', inflow: 325000000, outflow: 225000000 },
-    { name: 'Tháng 5', inflow: 400000000, outflow: 150000000 },
-    { name: 'Tháng 6', inflow: 480500000, outflow: 200000000 }
-  ])
-  const [disbursements, setDisbursements] = useState<DisbursementItem[]>([
-    {
-      id: '1',
-      name: 'Trần Văn Hùng',
-      time: '10:30',
-      category: 'Nhập thuốc',
-      amount: 12500000,
-      avatar_url: ''
-    },
-    {
-      id: '2',
-      name: 'Lê Thị An',
-      time: '09:15',
-      category: 'Vận chuyển',
-      amount: 3200000,
-      avatar_url: ''
-    },
-    {
-      id: '3',
-      name: 'Nguyễn Minh',
-      time: '08:45',
-      category: 'Vật tư',
-      amount: 8900000,
-      avatar_url: ''
-    }
-  ])
-  const [appointments, setAppointments] = useState<AppointmentItem[]>([
-    {
-      id: '1',
-      time: '14:00',
-      title: 'Phòng khám thú y PetCare',
-      description: 'Giao lô vắc-xin tổng hợp'
-    },
-    {
-      id: '2',
-      time: '15:30',
-      title: 'Hộ chăn nuôi Anh Tuấn',
-      description: 'Tư vấn dinh dưỡng định kỳ'
-    },
-    {
-      id: '3',
-      time: '16:45',
-      title: 'Đại lý thuốc thú y Miền Tây',
-      description: 'Ký kết hợp đồng phân phối mới'
-    }
-  ])
+  const [chartData, setChartData] = useState<ChartDataItem[]>([])
+  const [disbursements, setDisbursements] = useState<DisbursementItem[]>([])
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([])
 
   // Fetch data on load
   useEffect(() => {
@@ -155,6 +104,38 @@ export default function DashboardPage() {
           revSum = ordersData.reduce((acc, curr) => acc + Number(curr.grand_total || 0), 0)
         }
 
+        // 2b. Fetch Last Month Revenue from orders for delta calculation
+        const startOfLastMonth = new Date()
+        startOfLastMonth.setMonth(startOfLastMonth.getMonth() - 1)
+        startOfLastMonth.setDate(1)
+        startOfLastMonth.setHours(0, 0, 0, 0)
+
+        const endOfLastMonth = new Date()
+        endOfLastMonth.setDate(1)
+        endOfLastMonth.setHours(0, 0, 0, 0)
+        endOfLastMonth.setMilliseconds(-1) // Last millisecond of previous month
+
+        const { data: lastMonthOrders } = await supabase
+          .from('orders')
+          .select('grand_total')
+          .neq('status', 'cancelled')
+          .gte('created_at', startOfLastMonth.toISOString())
+          .lte('created_at', endOfLastMonth.toISOString())
+
+        let lastRevSum = 0
+        if (lastMonthOrders && lastMonthOrders.length > 0) {
+          lastRevSum = lastMonthOrders.reduce((acc, curr) => acc + Number(curr.grand_total || 0), 0)
+        }
+
+        let deltaStr = '0% vs tháng trước'
+        if (lastRevSum > 0) {
+          const diffPercent = ((revSum - lastRevSum) / lastRevSum) * 100
+          const sign = diffPercent >= 0 ? '+' : ''
+          deltaStr = `${sign}${diffPercent.toFixed(1)}% vs tháng trước`
+        } else if (revSum > 0) {
+          deltaStr = '+100% vs tháng trước'
+        }
+
         // 3. Fetch Overdue Debts
         const todayStr = new Date().toISOString().split('T')[0]
         const { data: debtData } = await supabase
@@ -184,14 +165,63 @@ export default function DashboardPage() {
 
         const expiringCount = expiringLots ? expiringLots.length : 0
 
-        // Update stats (use fallback values if actual database returned 0 or null)
+        // Update stats
         setStats({
-          monthlyRevenue: revSum > 0 ? revSum : 480500000,
-          monthlyRevenueDelta: revSum > 0 ? '+15% vs tháng trước' : '+12% vs tháng trước',
-          overdueDebt: debtSum > 0 ? debtSum : 45200000,
-          overdueDebtCount: debtCount > 0 ? debtCount : 8,
-          expiringLotsCount: expiringCount > 0 ? expiringCount : 14
+          monthlyRevenue: revSum,
+          monthlyRevenueDelta: deltaStr,
+          overdueDebt: debtSum,
+          overdueDebtCount: debtCount,
+          expiringLotsCount: expiringCount
         })
+
+        // 4b. Fetch Cash flow data for the last 6 months
+        const sixMonthsAgo = new Date()
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5)
+        sixMonthsAgo.setDate(1)
+        sixMonthsAgo.setHours(0, 0, 0, 0)
+
+        const { data: transData } = await supabase
+          .from('cashbook_transactions')
+          .select('amount, flow_type, transaction_date')
+          .eq('status', 'approved')
+          .gte('transaction_date', sixMonthsAgo.toISOString().split('T')[0])
+
+        const chartMonths = []
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date()
+          d.setMonth(d.getMonth() - i)
+          chartMonths.push({
+            name: `Tháng ${d.getMonth() + 1}`,
+            year: d.getFullYear(),
+            monthIndex: d.getMonth(),
+            inflow: 0,
+            outflow: 0
+          })
+        }
+
+        if (transData) {
+          transData.forEach(tx => {
+            const txDate = new Date(tx.transaction_date)
+            const txMonth = txDate.getMonth()
+            const txYear = txDate.getFullYear()
+            const match = chartMonths.find(m => m.monthIndex === txMonth && m.year === txYear)
+            if (match) {
+              const amt = Number(tx.amount || 0)
+              if (tx.flow_type === 'inflow') {
+                match.inflow += amt
+              } else if (tx.flow_type === 'outflow') {
+                match.outflow += amt
+              }
+            }
+          })
+        }
+
+        const formattedChartData = chartMonths.map(m => ({
+          name: m.name,
+          inflow: m.inflow,
+          outflow: m.outflow
+        }))
+        setChartData(formattedChartData)
 
         // 5. Fetch Pending Disbursements (outflow transactions pending approval)
         const { data: pendingTrans } = await supabase
@@ -214,6 +244,8 @@ export default function DashboardPage() {
             }
           })
           setDisbursements(items)
+        } else {
+          setDisbursements([])
         }
 
         // 6. Fetch Today's Appointments (planned activities)
@@ -233,6 +265,8 @@ export default function DashboardPage() {
             description: a.description || ''
           }))
           setAppointments(apps)
+        } else {
+          setAppointments([])
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err)
@@ -458,22 +492,28 @@ export default function DashboardPage() {
               </div>
               
               <div className="space-y-6">
-                {disbursements.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-500 font-semibold">
-                        {item.name.charAt(0).toUpperCase()}
+                {disbursements.length > 0 ? (
+                  disbursements.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-500 font-semibold">
+                          {item.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-body-md font-semibold text-gray-700">{item.name}</p>
+                          <p className="text-tiny text-gray-400">{item.time} • {item.category}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-body-md font-semibold text-gray-700">{item.name}</p>
-                        <p className="text-tiny text-gray-400">{item.time} • {item.category}</p>
-                      </div>
+                      <p className="text-body-md font-semibold tabular-nums text-right text-gray-700">
+                        {formatVND(item.amount)}
+                      </p>
                     </div>
-                    <p className="text-body-md font-semibold tabular-nums text-right text-gray-700">
-                      {formatVND(item.amount)}
-                    </p>
+                  ))
+                ) : (
+                  <div className="py-6 text-center text-gray-400 text-tiny">
+                    Không có phiếu chi nào đang chờ duyệt.
                   </div>
-                ))}
+                )}
               </div>
             </section>
 
@@ -484,20 +524,26 @@ export default function DashboardPage() {
               </div>
 
               <div className="space-y-6">
-                {appointments.map((item, idx) => (
-                  <div key={item.id} className="flex items-start gap-3">
-                    <div className="flex flex-col items-center min-w-[48px]">
-                      <span className="text-[12px] font-semibold text-blue-500 tabular-nums">{item.time}</span>
-                      {idx !== appointments.length - 1 && (
-                        <div className="w-[2px] h-10 bg-gray-100 mt-1"></div>
-                      )}
+                {appointments.length > 0 ? (
+                  appointments.map((item, idx) => (
+                    <div key={item.id} className="flex items-start gap-3">
+                      <div className="flex flex-col items-center min-w-[48px]">
+                        <span className="text-[12px] font-semibold text-blue-500 tabular-nums">{item.time}</span>
+                        {idx !== appointments.length - 1 && (
+                          <div className="w-[2px] h-10 bg-gray-100 mt-1"></div>
+                        )}
+                      </div>
+                      <div className="flex-1 bg-gray-25 p-3 rounded-lg border-l-4 border-blue-500">
+                        <p className="text-body-md font-semibold text-gray-700">{item.title}</p>
+                        <p className="text-tiny text-gray-400 mt-1">{item.description}</p>
+                      </div>
                     </div>
-                    <div className="flex-1 bg-gray-25 p-3 rounded-lg border-l-4 border-blue-500">
-                      <p className="text-body-md font-semibold text-gray-700">{item.title}</p>
-                      <p className="text-tiny text-gray-400 mt-1">{item.description}</p>
-                    </div>
+                  ))
+                ) : (
+                  <div className="py-6 text-center text-gray-400 text-tiny">
+                    Không có lịch hẹn nào được lên kế hoạch hôm nay.
                   </div>
-                ))}
+                )}
               </div>
             </section>
 
