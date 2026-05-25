@@ -24,7 +24,6 @@ import {
   ChevronDown
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { supabase } from '../lib/supabase'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -34,18 +33,15 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, activeMenu, onSearch, searchElement }: LayoutProps) {
-  const { profile, signOut } = useAuth()
+  // Sprint P1-6 (2026-05-26): role + permissions giờ đọc từ AuthContext
+  // (cache TanStack Query 15 phút), thay vì 2 query lặp lại mỗi page render.
+  const { profile, signOut, userRole, userPermissions } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickActionOpen, setQuickActionOpen] = useState(false)
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
-  const [userRole, setUserRole] = useState<{ code: string; name: string }>({
-    code: 'admin',
-    name: 'Quản trị viên'
-  })
-  const [userPermissions, setUserPermissions] = useState<string[]>([])
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
 
   // Handle dropdown outside click
@@ -61,60 +57,6 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
       document.removeEventListener('mousedown', handleOutsideClick)
     }
   }, [])
-
-  // Fetch User Role & Permissions
-  useEffect(() => {
-    const fetchUserRoleAndPermissions = async () => {
-      if (!profile?.id) return
-      try {
-        // Fetch Role
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role:roles(code, name)')
-          .eq('user_id', profile.id)
-
-        if (!roleError && roleData && roleData.length > 0) {
-          const roleObj = roleData[0].role as unknown as { code: string; name: string }
-          if (roleObj) {
-            setUserRole(roleObj)
-          }
-        }
-
-        // Fetch Permissions
-        const { data: permData, error: permError } = await supabase
-          .from('user_roles')
-          .select(`
-            role:roles(
-              code,
-              name,
-              role_permissions!role_permissions_role_id_fkey(
-                permission:permissions!role_permissions_permission_id_fkey(
-                  code
-                )
-              )
-            )
-          `)
-          .eq('user_id', profile.id)
-
-        if (!permError && permData) {
-          const perms = new Set<string>()
-          permData.forEach((ur: any) => {
-            if (ur.role && ur.role.role_permissions) {
-              ur.role.role_permissions.forEach((rp: any) => {
-                if (rp.permission && rp.permission.code) {
-                  perms.add(rp.permission.code)
-                }
-              })
-            }
-          })
-          setUserPermissions(Array.from(perms))
-        }
-      } catch (err) {
-        console.error('Error fetching user role & permissions in Layout:', err)
-      }
-    }
-    fetchUserRoleAndPermissions()
-  }, [profile])
 
   // Navigation Items according to spec
   const menuGroups = [

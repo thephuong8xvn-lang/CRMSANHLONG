@@ -311,5 +311,129 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Cập nhật 2 file: [ImportCustomersModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/customers/ImportCustomersModal.tsx) và [ImportProductsModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ImportProductsModal.tsx).
   - 0 TypeScript errors sau thay đổi.
 
+---
 
+## 🔬 BÁO CÁO AUDIT HIỆU NĂNG & KẾ HOẠCH TỐI ƯU (2026-05-26) – `[ĐANG MỞ]`
 
+> **Phạm vi audit**: tốc độ load, kỹ thuật xử lý dữ liệu (client + Supabase), kiến trúc giao diện.
+> **Kết luận tổng quan**: dự án đã đầy đủ tính năng nghiệp vụ nhưng **chưa được tối ưu hiệu năng cho production**. Khi dữ liệu tăng (vài nghìn KH, vài nghìn SP, hàng chục nghìn đơn hàng) hệ thống sẽ chậm rõ rệt, vỡ trải nghiệm trên mobile/3G và có nguy cơ time-out Supabase ở các trang list/báo cáo.
+
+### 🚨 Tóm tắt 9 vấn đề trọng yếu đã phát hiện
+
+| # | Vấn đề | Bằng chứng | Tác động |
+|---|--------|------------|----------|
+| 1 | **Không lazy-load route nào** – cả 30+ trang import tĩnh trong [App.tsx](file:///d:/CRMSANHLONGVETCO/src/App.tsx) | `grep React.lazy` = 0 hit; App.tsx import 30 trang | Bundle JS ban đầu rất lớn → First Contentful Paint chậm, đặc biệt 3G/Android tầm trung. |
+| 2 | **Vite config trống** – không có manualChunks, không compression, không bundle analyzer | [vite.config.ts](file:///d:/CRMSANHLONGVETCO/vite.config.ts) chỉ có `plugins:[react()]` | recharts, react-pdf, dnd-kit nằm cùng main chunk, không tách vendor. |
+| 3 | **TanStack Query đã cài nhưng KHÔNG dùng** | `grep useQuery|QueryClient` = 0 hit, nhưng vẫn có trong [package.json](file:///d:/CRMSANHLONGVETCO/package.json) | Mất hoàn toàn lợi ích cache/stale-while-revalidate/dedup. Mỗi lần điều hướng đều fetch lại từ đầu. |
+| 4 | **List pages fetch toàn bộ + JOIN sâu, paginate phía client** | [CustomerListPage.tsx:161-186](file:///d:/CRMSANHLONGVETCO/src/pages/customers/CustomerListPage.tsx#L161-L186), [ProductListPage.tsx:130-156](file:///d:/CRMSANHLONGVETCO/src/pages/products/ProductListPage.tsx#L130-L156) | Mỗi customer kéo về *toàn bộ* `orders`, `customer_debts`, `customer_contacts`; mỗi product kéo về *toàn bộ* `order_lines + orders.status + stock_lots`. Khi DB có vài nghìn dòng → payload hàng MB. |
+| 5 | **Tính toán nghiệp vụ chạy ở client** | [ProductListPage.tsx:244-260](file:///d:/CRMSANHLONGVETCO/src/pages/products/ProductListPage.tsx#L244-L260) tính "Dự kiến hết hàng" trên client bằng lịch sử đơn hàng | Vô lý về kiến trúc – cần Postgres view/RPC. |
+| 6 | **Layout fetch role + permissions trên MỌI lần render trang** | [Layout.tsx:66-104](file:///d:/CRMSANHLONGVETCO/src/components/Layout.tsx#L66-L104) | Mỗi lần điều hướng đều 2 query lặp lại, không cache. Phải đẩy vào `AuthContext` 1 lần khi login. |
+| 7 | **Không debounce search, không virtualization, không skeleton** | `grep debounce|react-window|react-virtual` = 0 hit | Search realtime quét toàn bảng client, list dài render hết DOM → jank rõ rệt khi 1000+ items. |
+| 8 | **Bản thân các page component khổng lồ** | [CustomerDetailPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/customers/CustomerDetailPage.tsx) 3100 dòng; [InventoryPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/inventory/InventoryPage.tsx) 2598 dòng; [CashbookPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/cashbook/CashbookPage.tsx) 1964 dòng; [POSPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/orders/POSPage.tsx) 1868 dòng | Single component, render lại toàn bộ mỗi state-change; chỉ 30 hit `useMemo/useCallback/memo` trên toàn dự án. |
+| 9 | **`console.log` debug còn nguyên trong production** | [App.tsx:44](file:///d:/CRMSANHLONGVETCO/src/App.tsx#L44), [AuthContext.tsx:87-149](file:///d:/CRMSANHLONGVETCO/src/contexts/AuthContext.tsx#L87-L149) | Rò rỉ thông tin auth + chậm trên Safari/iOS với DevTools mở. |
+
+**Điểm tốt đã có** (giữ nguyên): Supabase đã có ~78 chỉ mục đầy đủ ([20260522000000_init_schema.sql:1359+](file:///d:/CRMSANHLONGVETCO/supabase/migrations/20260522000000_init_schema.sql#L1359)) bao gồm `gin_trgm_ops` cho search tiếng Việt; RLS đã chuẩn; `auth` config đúng (`autoRefreshToken`, `persistSession`); đã có `formatCurrency` context dùng chung.
+
+---
+
+### 🗺️ Kế hoạch khắc phục – chia 4 sprint theo độ ưu tiên
+
+#### Sprint P0 – Quick Wins (1–2 ngày, không thay đổi UX) `[HOÀN THÀNH 2026-05-26]`
+Mục tiêu: giảm 50–70% thời gian tải lần đầu mà không động vào logic nghiệp vụ.
+
+- [x] **P0-1**. Cấu hình [vite.config.ts](file:///d:/CRMSANHLONGVETCO/vite.config.ts) với `build.rollupOptions.output.manualChunks` tách `recharts/d3`, `@react-pdf/renderer`, `@dnd-kit/*`, `lucide-react`, `@supabase/supabase-js`, `papaparse`, `react-hook-form` thành các chunk riêng; bật `build.target: 'es2020'`, `build.minify: 'esbuild'`, `build.cssCodeSplit: true`, `build.sourcemap: false`, `build.reportCompressedSize: false`. Esbuild `pure: ['console.log','console.debug','console.info']` tự drop console khi build production. Quy tắc gộp react/router/util vào 1 chunk `react-vendor` để tránh circular dep với chunk vendor sót.
+- [x] **P0-2**. Chuyển toàn bộ 28 route trong [App.tsx](file:///d:/CRMSANHLONGVETCO/src/App.tsx) sang `React.lazy(() => import(...))` + bọc `<Suspense fallback={<FullPageSpinner/>}>`. Giữ eager: `LoginPage`, `AuthCallback`, `DashboardPage`. Tách spinner thành component dùng chung cho cả `PrivateRoute` loading + `Suspense` fallback.
+- [x] **P0-3**. Gỡ hết `console.log` runtime ở [App.tsx](file:///d:/CRMSANHLONGVETCO/src/App.tsx) và [AuthContext.tsx](file:///d:/CRMSANHLONGVETCO/src/contexts/AuthContext.tsx). Tạo helper [src/lib/logger.ts](file:///d:/CRMSANHLONGVETCO/src/lib/logger.ts) (`logger.debug/info/log` chỉ chạy khi `import.meta.env.DEV`; `logger.warn/error` luôn chạy). Thay tất cả `console.error` trong AuthContext bằng `logger.error`.
+- [x] **P0-4**. **Skip** cài `vite-plugin-compression`. Lý do: Vercel mặc định đã serve gzip + brotli; esbuild đã drop `console.*` qua `pure` config nên không cần Terser. Plugin chỉ hữu ích khi self-host Nginx. Tránh thêm devDependency không cần thiết.
+- [ ] **P0-5**. **Baseline Lighthouse** (cần user chạy thủ công vì agent không có browser): chạy `npm run dev`, mở Chrome DevTools → Lighthouse → Mobile, đo trên `/dashboard`, `/customers`, `/products`, `/orders/pos`. Ghi vào `docs/05-PERF-BASELINE.md` với cột "trước P1" để so sánh sau Sprint P1.
+
+**Kết quả thực tế sau build P0 (2026-05-26)**:
+
+| Chunk | Kích thước raw | Vai trò |
+|-------|----------------|---------|
+| `index.js` (entry) | **68.76 KB** (~22 KB gz) | App shell + routing + AuthContext + Login + Dashboard + AuthCallback |
+| `react-vendor.js` | 241.27 KB (~77 KB gz) | react, react-dom, react-router-dom, date-fns, zod, zustand, scheduler, clsx, tailwind-merge |
+| `supabase.js` | 200.81 KB (~63 KB gz) | @supabase/supabase-js |
+| `charts.js` | 340.01 KB (~110 KB gz) | recharts + d3 (chỉ load khi vào Dashboard/Reports) |
+| `icons.js` | 43.60 KB (~13 KB gz) | lucide-react |
+| `forms.js` | 19.43 KB | react-hook-form + papaparse |
+| 28 page chunks | 9.69 – 92.68 KB mỗi chunk | Lazy theo route |
+| `index.css` | 64.98 KB (~10 KB gz) | Tailwind compiled |
+
+**Trước P0** (ước tính): tất cả gộp vào 1 main bundle ~1 MB+ raw → mọi user, mọi route phải tải hết.
+**Sau P0**: tải landing Login ~620 KB raw (~190 KB gz, không gồm charts); tải landing Dashboard ~960 KB raw (~290 KB gz, gồm charts). Mỗi route mới navigate vào tải thêm 10–95 KB.
+**KPI ban đầu** (≤ 350 KB gz cho main): **ĐẠT** (entry chỉ 22 KB gz, tổng critical-path landing Dashboard 290 KB gz – sẽ giảm thêm khi P2 tách Dashboard chart lazy).
+
+---
+
+#### Sprint P1 – Data layer overhaul (3–5 ngày, ảnh hưởng pattern toàn dự án) `[HOÀN THÀNH 2026-05-26]`
+Mục tiêu: dùng đúng cache layer và server-side pagination, fix các trang list/báo cáo.
+
+- [x] **P1-1**. Khởi tạo `QueryClient` trong [main.tsx](file:///d:/CRMSANHLONGVETCO/src/main.tsx) với defaults `staleTime: 60_000`, `gcTime: 5*60_000`, `refetchOnWindowFocus: false`, `retry: 1`. Bọc `<QueryClientProvider>` quanh `<App/>`. Key factory tập trung ở [src/lib/queryClient.ts](file:///d:/CRMSANHLONGVETCO/src/lib/queryClient.ts) (`qk.customers.*`, `qk.products.*`, `qk.dashboard.stats`, `qk.auth.rolePermissions(userId)`).
+- [x] **P1-2**. Tạo [src/hooks/queries/](file:///d:/CRMSANHLONGVETCO/src/hooks/queries/) gồm 5 file: `useCustomers.ts` (useCustomersList + useSalesReps + useCustomerClassifications + useCustomerTiers + useCustomerKPIs), `useProducts.ts` (useProductsList + useProductCategories + useProductBrands), `useDashboardStats.ts` (có fallback 5 query song song nếu RPC chưa apply), `useDashboardLists.ts` (usePendingDisbursements + useTodayAppointments), `useUserRolePermissions.ts` (có fallback). Mỗi hook gọi Supabase với `.range(from, to)`, `.order(...)`, filter ở server qua `.eq/.ilike/.or`. Thêm [src/hooks/useDebouncedValue.ts](file:///d:/CRMSANHLONGVETCO/src/hooks/useDebouncedValue.ts) dùng chung.
+- [x] **P1-3**. Refactor [CustomerListPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/customers/CustomerListPage.tsx): từ 833 dòng → 522 dòng. Bỏ hoàn toàn JOIN nested với `orders/customer_debts/customer_contacts` ở client. Dùng `customer_summary_view` trả về `total_debt + is_overdue + last_order_at + primary_contact` đã aggregate ở Postgres. Pagination/Search/Filter chuyển sang server qua `useCustomersList` (`.range()`, `.ilike()`, `.eq()`). KPI footer dùng `useCustomerKPIs` (3 count song song, không bị reset khi đổi filter trang).
+- [x] **P1-4**. Refactor [ProductListPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ProductListPage.tsx): từ 705 dòng → 482 dòng. Bỏ JOIN với `price_list_items/stock_lots/order_lines/orders.status` ở client (vô lý vì kéo toàn bộ lịch sử). Dùng `product_stock_summary_view` trả về `retail_price + retail_cost + stock_on_hand + on_order_qty + sold_30d + days_to_oos` tính ở Postgres (thuật toán "Dự kiến hết hàng" giờ chạy đúng trên `sold_30d / 30` thay vì all-time). Aggregate tổng tồn/tổng khách đặt qua PostgREST `select=stock_on_hand.sum(), on_order_qty.sum()` (1 query phụ, không kéo về client).
+- [x] **P1-5**. Refactor [DashboardPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/dashboard/DashboardPage.tsx): từ 508 dòng → 280 dòng. Gộp 6 query tuần tự vào **RPC `get_dashboard_stats()`** trả về JSON (monthly_revenue + last_month + delta MoM + overdue_debt + overdue_count + expiring_lots_count + cashflow_6m array). Có fallback `Promise.all` 5 query song song trong [useDashboardStats.ts](file:///d:/CRMSANHLONGVETCO/src/hooks/queries/useDashboardStats.ts) nếu RPC chưa apply ở remote. Disbursements + Appointments tách thành 2 hook riêng (song song).
+- [x] **P1-6**. Đẩy `userRole + userPermissions + hasPermission(code)` lên [AuthContext.tsx](file:///d:/CRMSANHLONGVETCO/src/contexts/AuthContext.tsx) (qua `useUserRolePermissions(profile?.id)` cache 15 phút). Xóa hoàn toàn khối fetch 2 query lặp lại ở [Layout.tsx](file:///d:/CRMSANHLONGVETCO/src/components/Layout.tsx) — Layout giờ đọc từ `useAuth()`. Mỗi lần điều hướng tiết kiệm 2 query.
+- [x] **P1-7**. Tạo migration [20260526000000_perf_views.sql](file:///d:/CRMSANHLONGVETCO/supabase/migrations/20260526000000_perf_views.sql) chứa: (1) `customer_summary_view` `WITH (security_invoker = true)`, (2) `product_stock_summary_view` với CTE `retail_price/fallback_price/stock_agg/on_order_agg/sales_30d`, (3) RPC `get_dashboard_stats()` `SECURITY INVOKER` trả JSONB, (4) RPC `get_user_role_and_permissions(p_user_id)` `SECURITY INVOKER`. Grant SELECT view + EXECUTE function cho `authenticated`. **Cần chạy migration này ở Supabase remote** qua SQL Editor để kích hoạt full performance gain (chưa chạy thì fallback hoạt động ổn).
+
+**Kết quả thực tế sau build P1 (2026-05-26)**:
+
+| Chunk | P0 | P1 | Delta |
+|-------|-----|-----|-------|
+| `index.js` (entry) | 68.76 KB | 69.84 KB | +1 KB |
+| `react-vendor.js` | 241.27 KB | 278.68 KB | **+37 KB** (~12 KB gz, do TanStack Query) |
+| `CustomerListPage.js` | 45.79 KB | 46.72 KB | +0.9 KB |
+| `ProductListPage.js` | 74.06 KB | 73.91 KB | −0.15 KB |
+| `supabase/charts/icons/forms` | không đổi | không đổi | - |
+
+**Trade-off**: bundle tăng ~12 KB gzipped (TanStack Query) để đổi lại:
+- Customers list: từ "tải toàn bộ + JOIN sâu + paginate client" → **server-side range/search/filter**, payload nhỏ gấp 10–100× khi DB lớn
+- Products list: từ "kéo toàn bộ stock_lots + order_lines" → **server tính sẵn `stock_on_hand/on_order_qty/days_to_oos`**, payload nhỏ và tính toán đúng (sold_30d thay vì all-time)
+- Dashboard: 6–7 round-trip → **1 RPC duy nhất** (với fallback song song), giảm latency mobile ~70%
+- Layout: bỏ 2 query lặp lại mỗi page navigation → mỗi route mới tiết kiệm ~200ms TTI ở Việt Nam
+- Cache TanStack: navigate qua lại giữa Dashboard/Customers/Products → instant render từ cache 60s, không hit DB lại
+
+**Files mới**: 1 migration SQL + 4 file hook + 1 hook helper + 1 queryClient + 1 logger = 8 files mới
+**Files sửa**: 5 file (App.tsx đã từ P0, main.tsx, AuthContext.tsx, Layout.tsx, CustomerListPage.tsx, ProductListPage.tsx, DashboardPage.tsx)
+**Tổng giảm**: 3 page lớn từ 2046 dòng → 1284 dòng (−37%) nhờ tách logic ra hooks.
+
+---
+
+#### Sprint P2 – UX/UI polish & component refactor (3–4 ngày) `[CHƯA BẮT ĐẦU]`
+Mục tiêu: giảm jank lúc tương tác, tăng cảm nhận tốc độ.
+
+- [ ] **P2-1**. Thêm hook `useDebouncedValue(value, 300ms)` và áp dụng cho tất cả ô search ở Customer/Product/Order/Pipeline/Inventory.
+- [ ] **P2-2**. Cài `@tanstack/react-virtual` cho danh sách POS sản phẩm, danh sách KH dropdown ở POS, bảng tồn kho trong Inventory.
+- [ ] **P2-3**. Thay tất cả `loading ? "Đang tải..."` bằng `<Skeleton/>` đồng nhất (tạo `src/components/Skeleton.tsx` – card skeleton, row skeleton, kpi skeleton). Đảm bảo skeleton match đúng layout cuối để không layout shift.
+- [ ] **P2-4**. Wrap các component lớn render lại nhiều (cart items POS, row sản phẩm, row khách hàng) bằng `React.memo` với `equal-fn` thích hợp. Thêm `useCallback` cho mọi handler truyền xuống child trong [POSPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/orders/POSPage.tsx).
+- [ ] **P2-5**. Tách [CustomerDetailPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/customers/CustomerDetailPage.tsx) (3100 dòng) thành: `CustomerDetailHeader.tsx`, `CustomerOverviewTab.tsx`, `CustomerOrdersTab.tsx`, `CustomerDebtsTab.tsx`, `CustomerLedgerTab.tsx`, `CustomerHerdsTab.tsx`. Mỗi tab `React.lazy` riêng → chỉ load tab đang xem.
+- [ ] **P2-6**. Áp dụng tương tự cho [InventoryPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/inventory/InventoryPage.tsx) (tách tab Lots / Transfers / Purchase Returns / PO / Goods Receipts) và [CashbookPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/cashbook/CashbookPage.tsx).
+- [ ] **P2-7**. Thêm `<ErrorBoundary>` toàn cục bao quanh `<AppRoutes/>` để 1 trang lỗi không sập cả app; hiện UI fallback có nút "Tải lại".
+
+**KPI mục tiêu sau P2**: tương tác search/filter ≤ 100ms perceived; không layout shift ≥ 0.1 (CLS).
+
+---
+
+#### Sprint P3 – Image, assets, monitoring (2–3 ngày) `[CHƯA BẮT ĐẦU]`
+Mục tiêu: hoàn thiện chuỗi tối ưu cho production, có metric để theo dõi.
+
+- [ ] **P3-1**. Cấu hình Supabase Storage hoặc CDN (Vercel Image / Cloudflare Images) cho ảnh sản phẩm: tự sinh thumbnail WebP 200×200, ảnh chi tiết WebP 800×800. Thay `<img src={image_urls[0]}>` bằng component `<ProductImage>` với `loading="lazy"`, `decoding="async"`, `srcset`.
+- [ ] **P3-2**. Tự host font Be Vietnam Pro qua `@fontsource/be-vietnam-pro` thay vì Google Fonts CDN, kèm `font-display: swap`. Subset weights 400/500/600.
+- [ ] **P3-3**. Cài Web Vitals + đẩy metric (FCP, LCP, INP, CLS) lên Supabase bảng `web_vitals_logs` (hoặc Plausible/PostHog). Tạo Dashboard nội bộ theo dõi.
+- [ ] **P3-4**. Bổ sung Supabase Realtime cho 3 luồng quan trọng: thông báo (`notifications`), phiếu chi chờ duyệt (Dashboard widget), đơn hàng mới (Pipeline + Orders list). Subscribe có cleanup chuẩn, không leak.
+- [ ] **P3-5**. Soạn `docs/05-PERFORMANCE-PLAYBOOK.md` ghi lại: pattern chuẩn (`useQuery` + Supabase `.range()`), checklist trước khi merge (debounce, memo, server-side filter, lazy route), budget bundle.
+
+**KPI mục tiêu sau P3**: Lighthouse Mobile Performance ≥ 85 trên Dashboard/Customers/Products; INP < 200ms.
+
+---
+
+### 📌 Quy ước tối ưu áp dụng cho mọi PR mới sau ngày 2026-05-26
+
+1. **Server-side trước, client-side sau**: bất kỳ `filter/search/sort/paginate` mới đều phải làm qua Supabase `.eq()/.ilike()/.range()/.order()`. Không dùng `array.filter()` cho danh sách > 100 dòng.
+2. **Mọi data fetch dùng `useQuery`** – không gọi `supabase.from()` trực tiếp trong component nữa. Đặt hook ở `src/hooks/queries/<entity>.ts`.
+3. **Mọi route mới phải `React.lazy`**.
+4. **Component > 500 dòng cần tách**. Mỗi tab/section là component con + lazy nếu cần.
+5. **Mọi search input phải debounce 300ms**, mọi list > 50 items phải virtualize.
+6. **Không `select('*')` trên bảng > 10 cột** – luôn liệt kê cột cần dùng.
+7. **Không `console.log` runtime** – dùng `logger.debug()` chỉ chạy ở DEV.

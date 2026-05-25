@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
@@ -7,11 +7,7 @@ import {
   X,
   Eye,
   Edit2,
-  Trash2,
   AlertCircle,
-  TrendingUp,
-  CheckCircle,
-  HelpCircle,
   Users,
   MapPin,
   ChevronLeft,
@@ -25,309 +21,141 @@ import {
 import Layout from '../../components/Layout'
 import AddCustomerModal from './AddCustomerModal'
 import ImportCustomersModal from './ImportCustomersModal'
-import { supabase } from '../../lib/supabase'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
-
-interface Profile {
-  id: string
-  full_name: string
-  avatar_url?: string
-}
-
-interface CustomerContact {
-  id: string
-  full_name: string
-  role_at_farm?: string
-  phone?: string
-  is_primary: boolean
-}
-
-interface CustomerDebt {
-  id: string
-  amount: number
-  due_date: string | null
-  is_settled: boolean
-}
-
-interface Order {
-  created_at: string
-}
-
-interface Customer {
-  id: string
-  code: string
-  customer_type: string
-  farm_name: string
-  value_tier: string
-  province: string | null
-  district: string | null
-  address: string | null
-  credit_limit: number
-  owner_user_id: string
-  is_active: boolean
-  created_at: string
-  owner?: Profile | null
-  customer_contacts?: CustomerContact[]
-  customer_debts?: CustomerDebt[]
-  orders?: Order[]
-}
-
-const CUSTOMER_TYPE_LABELS: Record<string, string> = {
-  farm_household: 'Hộ chăn nuôi',
-  farm_commercial: 'Trang trại lớn',
-  dealer: 'Đại lý',
-  enterprise: 'Doanh nghiệp',
-  vet_clinic: 'Phòng khám',
-  other: 'Khác'
-}
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import {
+  useCustomersList,
+  useSalesReps,
+  useCustomerClassifications,
+  useCustomerTiers,
+  useCustomerKPIs,
+  type CustomerSummaryRow,
+} from '../../hooks/queries/useCustomers'
+import { useQueryClient } from '@tanstack/react-query'
+import { qk } from '../../lib/queryClient'
+import { supabase } from '../../lib/supabase'
+import { logger } from '../../lib/logger'
 
 const CUSTOMER_TYPE_COLORS: Record<string, string> = {
-  farm_household: 'bg-purple-50 text-purple-700 border-purple-100',
+  farm_household:  'bg-purple-50 text-purple-700 border-purple-100',
   farm_commercial: 'bg-blue-50 text-blue-700 border-blue-100',
-  dealer: 'bg-orange-50 text-orange-700 border-orange-100',
-  enterprise: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-  vet_clinic: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  other: 'bg-gray-50 text-gray-600 border-gray-100'
+  dealer:          'bg-orange-50 text-orange-700 border-orange-100',
+  enterprise:      'bg-indigo-50 text-indigo-700 border-indigo-100',
+  vet_clinic:      'bg-emerald-50 text-emerald-700 border-emerald-100',
+  other:           'bg-gray-50 text-gray-600 border-gray-100',
 }
 
-const TIER_LABELS: Record<string, string> = {
-  normal: 'Thường',
-  vip: 'VIP',
-  high_potential: 'Tiềm năng'
-}
+const PAGE_SIZE = 10
 
 export default function CustomerListPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { formatPhone, maskData } = useDisplaySettings()
-  
-  // State
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [salesReps, setSalesReps] = useState<Profile[]>([])
-  const [classifications, setClassifications] = useState<{ code: string; name: string; is_active: boolean }[]>([])
-  const [tiers, setTiers] = useState<{ code: string; name: string; is_active: boolean }[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+
+  // ── Filter state (UI input)
+  const [searchTerm, setSearchTerm]   = useState('')
+  const [selectedType, setSelectedType]     = useState('')
+  const [selectedTier, setSelectedTier]     = useState('')
+  const [selectedOwner, setSelectedOwner]   = useState('')
+  const [filterOverdueOnly, setFilterOverdueOnly] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [isAddModalOpen, setIsAddModalOpen]       = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
 
-  const classLabels = classifications.reduce<Record<string, string>>((acc, curr) => {
-    acc[curr.code] = curr.name
-    return acc
-  }, {})
+  // Debounced search → tránh fire query mỗi keystroke
+  const debouncedSearch = useDebouncedValue(searchTerm, 300)
 
-  const tierLabels = tiers.reduce<Record<string, string>>((acc, curr) => {
-    acc[curr.code] = curr.name
-    return acc
-  }, {})
+  // ── Server-side query qua customer_summary_view
+  const listParams = useMemo(() => ({
+    page: currentPage,
+    pageSize: PAGE_SIZE,
+    search: debouncedSearch || undefined,
+    customerType: selectedType || undefined,
+    valueTier: selectedTier || undefined,
+    ownerId: selectedOwner || undefined,
+    overdueOnly: filterOverdueOnly || undefined,
+  }), [currentPage, debouncedSearch, selectedType, selectedTier, selectedOwner, filterOverdueOnly])
 
-  // Filter States
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedType, setSelectedType] = useState('')
-  const [selectedTier, setSelectedTier] = useState('')
-  const [selectedOwner, setSelectedOwner] = useState('')
-  const [filterOverdueOnly, setFilterOverdueOnly] = useState(false)
+  const customersQuery   = useCustomersList(listParams)
+  const salesRepsQuery   = useSalesReps()
+  const classifications  = useCustomerClassifications().data ?? []
+  const tiers            = useCustomerTiers().data ?? []
+  const kpisQuery        = useCustomerKPIs()
 
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const rows       = customersQuery.data?.rows ?? []
+  const totalItems = customersQuery.data?.total ?? 0
+  const loading    = customersQuery.isLoading
+  const salesReps  = salesRepsQuery.data ?? []
+  const kpis       = kpisQuery.data ?? { total: 0, overdue: 0, vip: 0 }
 
-  // Load Data
-  const fetchCustomersAndReps = async () => {
-    setLoading(true)
-    try {
-      // 1. Fetch sales profiles
-      const { data: repsData, error: repsErr } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .eq('is_active', true)
-      
-      if (!repsErr && repsData) {
-        setSalesReps(repsData)
-      }
+  const classLabels = useMemo(
+    () => classifications.reduce<Record<string, string>>((acc, c) => ({ ...acc, [c.code]: c.name }), {}),
+    [classifications]
+  )
+  const tierLabels = useMemo(
+    () => tiers.reduce<Record<string, string>>((acc, t) => ({ ...acc, [t.code]: t.name }), {}),
+    [tiers]
+  )
+  const repsById = useMemo(
+    () => salesReps.reduce<Record<string, { full_name: string; avatar_url?: string | null }>>(
+      (acc, r) => ({ ...acc, [r.id]: { full_name: r.full_name, avatar_url: (r as any).avatar_url } }), {}),
+    [salesReps]
+  )
 
-      // Fetch classifications
-      const { data: classData } = await supabase
-        .from('customer_classifications')
-        .select('code, name, is_active')
-      if (classData) setClassifications(classData)
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  const startIndex = (currentPage - 1) * PAGE_SIZE
 
-      // Fetch tiers
-      const { data: tierData } = await supabase
-        .from('customer_tiers')
-        .select('code, name, is_active')
-      if (tierData) setTiers(tierData)
-
-      // 2. Fetch customers with related information
-      const { data: custData, error: custErr } = await supabase
-        .from('customers')
-        .select(`
-          id,
-          code,
-          customer_type,
-          farm_name,
-          value_tier,
-          province,
-          district,
-          address,
-          credit_limit,
-          owner_user_id,
-          is_active,
-          created_at,
-          owner:profiles!owner_user_id(id, full_name, avatar_url),
-          customer_contacts(id, full_name, role_at_farm, phone, is_primary),
-          customer_debts(id, amount, due_date, is_settled),
-          orders(created_at)
-        `)
-        .order('created_at', { ascending: false })
-
-      if (custErr) throw custErr
-      if (custData) {
-        setCustomers(custData as unknown as Customer[])
-      }
-    } catch (err) {
-      console.error('Error fetching customers/reps:', err)
-    } finally {
-      setLoading(false)
-    }
+  // ── Helpers
+  const handleResetFilters = () => {
+    setSearchTerm(''); setSelectedType(''); setSelectedTier('')
+    setSelectedOwner(''); setFilterOverdueOnly(false); setCurrentPage(1)
   }
 
-  useEffect(() => {
-    fetchCustomersAndReps()
-  }, [])
-
-  // Calculate Debt Helper
-  const getCustomerDebtStats = (customer: Customer) => {
-    const todayStr = new Date().toISOString().split('T')[0]
-    let totalDebt = 0
-    let isOverdue = false
-
-    if (customer.customer_debts && customer.customer_debts.length > 0) {
-      customer.customer_debts.forEach(debt => {
-        if (!debt.is_settled) {
-          totalDebt += Number(debt.amount || 0)
-          if (debt.due_date && debt.due_date < todayStr) {
-            isOverdue = true
-          }
-        }
-      })
-    }
-
-    return { totalDebt, isOverdue }
-  }
-
-  // Get Last Purchase Date Helper
-  const getLastPurchaseDate = (customer: Customer) => {
-    if (!customer.orders || customer.orders.length === 0) return 'Chưa giao dịch'
-    
-    // Find latest order date
-    const latestDate = customer.orders.reduce((latest, current) => {
-      const currentDate = new Date(current.created_at)
-      return currentDate > latest ? currentDate : latest
-    }, new Date(0))
-
-    if (latestDate.getTime() === 0) return 'Chưa giao dịch'
-    
-    return latestDate.toLocaleDateString('vi-VN')
-  }
-
-  // Handle successful customer add
   const handleAddSuccess = (newCustomerId?: string) => {
     setIsAddModalOpen(false)
-    fetchCustomersAndReps()
-    if (newCustomerId) {
-      navigate(`/customers/${newCustomerId}`)
-    }
+    queryClient.invalidateQueries({ queryKey: qk.customers.all })
+    queryClient.invalidateQueries({ queryKey: ['customers', 'kpis'] })
+    if (newCustomerId) navigate(`/customers/${newCustomerId}`)
   }
 
-  // Reset Filters
-  const handleResetFilters = () => {
-    setSearchTerm('')
-    setSelectedType('')
-    setSelectedTier('')
-    setSelectedOwner('')
-    setFilterOverdueOnly(false)
-    setCurrentPage(1)
+  const handleImportSuccess = () => {
+    setIsImportModalOpen(false)
+    queryClient.invalidateQueries({ queryKey: qk.customers.all })
+    queryClient.invalidateQueries({ queryKey: ['customers', 'kpis'] })
   }
 
-  // Filter & Search Logic
-  const filteredCustomers = customers.filter(customer => {
-    // 1. Search term (code, farm_name, contact phone, or contact name)
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase()
-      const matchesCode = customer.code?.toLowerCase().includes(term)
-      const matchesName = customer.farm_name.toLowerCase().includes(term)
-      
-      const matchesContacts = customer.customer_contacts?.some(c => 
-        c.full_name.toLowerCase().includes(term) || c.phone?.includes(term)
-      )
+  const formatVND = (num: number) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num)
 
-      if (!matchesCode && !matchesName && !matchesContacts) {
-        return false
+  const getLastPurchaseDate = (row: CustomerSummaryRow) =>
+    row.last_order_at ? new Date(row.last_order_at).toLocaleDateString('vi-VN') : 'Chưa giao dịch'
+
+  // ── Export CSV: lấy toàn bộ filtered set (không paginate), không động trang hiện tại
+  const handleExportCSV = async () => {
+    try {
+      let q = supabase
+        .from('customer_summary_view')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (selectedType)  q = q.eq('customer_type', selectedType)
+      if (selectedTier)  q = q.eq('value_tier', selectedTier)
+      if (selectedOwner) q = q.eq('owner_user_id', selectedOwner)
+      if (filterOverdueOnly) q = q.eq('is_overdue', true)
+      if (debouncedSearch) {
+        const term = debouncedSearch.trim().replace(/[%_]/g, '\\$&')
+        q = q.or(`farm_name.ilike.%${term}%,code.ilike.%${term}%`)
       }
-    }
+      const { data, error } = await q
+      if (error) throw error
 
-    // 2. Customer Type
-    if (selectedType && customer.customer_type !== selectedType) {
-      return false
-    }
+      const headers = [
+        'Mã khách hàng','Tên trang trại/Doanh nghiệp','Phân loại','Hạng khách hàng',
+        'Tỉnh/Thành phố','Quận/Huyện','Địa chỉ','Hạn mức công nợ (VND)','Tổng nợ hiện tại (VND)',
+        'Người liên hệ chính','Số điện thoại chính','Nhân viên phụ trách','Trạng thái hoạt động','Ngày tạo'
+      ]
 
-    // 3. Customer Tier
-    if (selectedTier && customer.value_tier !== selectedTier) {
-      return false
-    }
-
-    // 4. Sales Rep (Owner)
-    if (selectedOwner && customer.owner_user_id !== selectedOwner) {
-      return false
-    }
-
-    // 5. Overdue Debt
-    if (filterOverdueOnly) {
-      const { isOverdue } = getCustomerDebtStats(customer)
-      if (!isOverdue) return false
-    }
-
-    return true
-  })
-
-  // Pagination Logic
-  const totalItems = filteredCustomers.length
-  const totalPages = Math.ceil(totalItems / itemsPerPage)
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const paginatedCustomers = filteredCustomers.slice(startIndex, startIndex + itemsPerPage)
-
-  // Calculations for Bottom KPI Cards
-  const totalCustomersCount = customers.length
-  const overdueCustomersCount = customers.filter(c => {
-    const { isOverdue } = getCustomerDebtStats(c)
-    return isOverdue
-  }).length
-  const vipCustomersCount = customers.filter(c => c.value_tier === 'vip').length
-  const handleExportCSV = () => {
-    // 1. Prepare headers
-    const headers = [
-      'Mã khách hàng',
-      'Tên trang trại/Doanh nghiệp',
-      'Phân loại',
-      'Hạng khách hàng',
-      'Tỉnh/Thành phố',
-      'Quận/Huyện',
-      'Địa chỉ',
-      'Hạn mức công nợ (VND)',
-      'Tổng nợ hiện tại (VND)',
-      'Người liên hệ chính',
-      'Số điện thoại chính',
-      'Nhân viên phụ trách',
-      'Trạng thái hoạt động',
-      'Ngày tạo'
-    ]
-
-    // 2. Map filtered customers to rows
-    const rows = filteredCustomers.map(cust => {
-      const { totalDebt } = getCustomerDebtStats(cust)
-      const primaryContact = cust.customer_contacts?.find(c => c.is_primary)
-      
-      return [
+      const exportRows = (data as CustomerSummaryRow[] ?? []).map(cust => [
         cust.code || '',
         cust.farm_name,
         classLabels[cust.customer_type] || cust.customer_type,
@@ -336,47 +164,43 @@ export default function CustomerListPage() {
         cust.district || '',
         cust.address || '',
         cust.credit_limit,
-        totalDebt,
-        primaryContact?.full_name || '',
-        primaryContact?.phone || '',
-        cust.owner?.full_name || 'Hệ thống',
+        cust.total_debt,
+        cust.primary_contact?.full_name || '',
+        cust.primary_contact?.phone || '',
+        repsById[cust.owner_user_id]?.full_name || 'Hệ thống',
         cust.is_active ? 'Hoạt động' : 'Tạm khóa',
-        cust.created_at ? new Date(cust.created_at).toLocaleDateString('vi-VN') : ''
-      ]
-    })
+        new Date(cust.created_at).toLocaleDateString('vi-VN'),
+      ])
 
-    // 3. Construct CSV content with UTF-8 BOM
-    const csvContent = '\uFEFF' + [
-      headers.join(','),
-      ...rows.map(row => 
-        row.map(val => {
-          const text = String(val ?? '').replace(/"/g, '""')
-          return text.includes(',') || text.includes('\n') || text.includes('"') ? `"${text}"` : text
-        }).join(',')
-      )
-    ].join('\n')
+      const csvContent = '﻿' + [
+        headers.join(','),
+        ...exportRows.map(row =>
+          row.map(val => {
+            const text = String(val ?? '').replace(/"/g, '""')
+            return text.includes(',') || text.includes('\n') || text.includes('"') ? `"${text}"` : text
+          }).join(',')
+        )
+      ].join('\n')
 
-    // 4. Download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    const today = new Date().toISOString().split('T')[0]
-    link.setAttribute('href', url)
-    link.setAttribute('download', `danh_sach_khach_hang_${today}.csv`)
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
-  const formatVND = (num: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num)
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const today = new Date().toISOString().split('T')[0]
+      link.setAttribute('href', url)
+      link.setAttribute('download', `danh_sach_khach_hang_${today}.csv`)
+      link.style.visibility = 'hidden'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err: any) {
+      logger.error('[CustomerListPage] export error:', err?.message ?? err)
+      alert('Xuất CSV thất bại. Vui lòng thử lại.')
+    }
   }
 
   return (
     <Layout activeMenu="Khách hàng">
       <div className="p-4 md:p-10 max-w-[1600px] w-full mx-auto space-y-6">
-        
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -419,42 +243,31 @@ export default function CustomerListPage() {
 
         {/* Filtering Bar */}
         <div className="bg-gray-0 p-6 rounded-xl border border-gray-100 flex flex-wrap items-end gap-4 shadow-sm">
-          {/* Search input */}
           <div className="flex-grow min-w-[280px]">
             <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Tìm kiếm</label>
             <div className="relative flex items-center bg-gray-25 rounded-lg border border-gray-100 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-150 transition-all">
               <Search className="text-gray-400 ml-3 mr-2" size={16} strokeWidth={1.5} />
               <input
                 className="bg-transparent border-none focus:ring-0 text-body-md w-full placeholder-gray-400 py-2 pl-0 pr-4 focus:outline-none"
-                placeholder="Mã, tên khách hàng, SĐT..."
+                placeholder="Mã, tên khách hàng..."
                 type="text"
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value)
-                  setCurrentPage(1)
-                }}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
               />
               {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-full mr-2"
-                >
+                <button onClick={() => setSearchTerm('')} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-full mr-2">
                   <X size={14} />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Type dropdown */}
           <div className="w-full sm:w-48">
             <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Phân loại</label>
             <select
               className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
               value={selectedType}
-              onChange={(e) => {
-                setSelectedType(e.target.value)
-                setCurrentPage(1)
-              }}
+              onChange={(e) => { setSelectedType(e.target.value); setCurrentPage(1) }}
             >
               <option value="">Tất cả phân loại</option>
               {classifications.filter(c => c.is_active).map((c) => (
@@ -463,16 +276,12 @@ export default function CustomerListPage() {
             </select>
           </div>
 
-          {/* Tier dropdown */}
           <div className="w-full sm:w-40">
             <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Hạng khách hàng</label>
             <select
               className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
               value={selectedTier}
-              onChange={(e) => {
-                setSelectedTier(e.target.value)
-                setCurrentPage(1)
-              }}
+              onChange={(e) => { setSelectedTier(e.target.value); setCurrentPage(1) }}
             >
               <option value="">Tất cả hạng</option>
               {tiers.filter(t => t.is_active).map((t) => (
@@ -481,25 +290,20 @@ export default function CustomerListPage() {
             </select>
           </div>
 
-          {/* Owner dropdown */}
           <div className="w-full sm:w-48">
             <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Nhân viên phụ trách</label>
             <select
               className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
               value={selectedOwner}
-              onChange={(e) => {
-                setSelectedOwner(e.target.value)
-                setCurrentPage(1)
-              }}
+              onChange={(e) => { setSelectedOwner(e.target.value); setCurrentPage(1) }}
             >
               <option value="">Tất cả nhân viên</option>
-              {salesReps.map(rep => (
+              {salesReps.map((rep: any) => (
                 <option key={rep.id} value={rep.id}>{rep.full_name}</option>
               ))}
             </select>
           </div>
 
-          {/* Overdue toggle */}
           <div className="flex items-center gap-3 h-10 pb-0.5 px-2 select-none">
             <span className="text-body-md font-semibold text-gray-500">Nợ quá hạn</span>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -507,16 +311,12 @@ export default function CustomerListPage() {
                 className="sr-only peer"
                 type="checkbox"
                 checked={filterOverdueOnly}
-                onChange={(e) => {
-                  setFilterOverdueOnly(e.target.checked)
-                  setCurrentPage(1)
-                }}
+                onChange={(e) => { setFilterOverdueOnly(e.target.checked); setCurrentPage(1) }}
               />
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
             </label>
           </div>
 
-          {/* Reset button */}
           <button
             onClick={handleResetFilters}
             className="h-10 px-4 border border-gray-100 text-gray-500 bg-gray-0 rounded-lg text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors w-full sm:w-auto"
@@ -533,7 +333,7 @@ export default function CustomerListPage() {
               <div className="w-10 h-10 border-4 border-gray-100 border-t-blue-500 rounded-full animate-spin mb-4"></div>
               <span>Đang tải danh sách khách hàng...</span>
             </div>
-          ) : paginatedCustomers.length === 0 ? (
+          ) : rows.length === 0 ? (
             <div className="py-20 flex flex-col items-center justify-center text-gray-400 px-4">
               <Users className="text-gray-200 mb-4" size={64} strokeWidth={1} />
               <h3 className="text-body-lg font-bold text-gray-600">Không tìm thấy khách hàng nào</h3>
@@ -561,23 +361,23 @@ export default function CustomerListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {paginatedCustomers.map((customer) => {
-                    const { totalDebt, isOverdue } = getCustomerDebtStats(customer)
-                    const primaryContact = customer.customer_contacts?.find(c => c.is_primary)
+                  {rows.map((customer) => {
+                    const owner = repsById[customer.owner_user_id]
+                    const primaryContact = customer.primary_contact
+                    const totalDebt = Number(customer.total_debt || 0)
+                    const isOverdue  = customer.is_overdue
                     const showDropdown = activeDropdown === customer.id
 
                     return (
-                      <tr 
-                        key={customer.id} 
+                      <tr
+                        key={customer.id}
                         className="hover:bg-gray-25/50 transition-colors cursor-pointer group"
                         onClick={() => navigate(`/customers/${customer.id}`)}
                       >
-                        {/* Customer Code */}
                         <td className="px-6 py-5 text-body-md text-blue-500 font-bold font-sans">
                           {customer.code || 'Đang cấp...'}
                         </td>
-                        
-                        {/* Name and Location */}
+
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-3">
                             <div className="flex-1">
@@ -612,7 +412,6 @@ export default function CustomerListPage() {
                           </div>
                         </td>
 
-                        {/* Customer Type */}
                         <td className="px-6 py-5">
                           <span className={`px-2.5 py-1 rounded-full border text-tiny font-semibold inline-flex items-center gap-1.5 ${
                             CUSTOMER_TYPE_COLORS[customer.customer_type] || CUSTOMER_TYPE_COLORS.other
@@ -622,27 +421,21 @@ export default function CustomerListPage() {
                           </span>
                         </td>
 
-                        {/* Owner / Sales Rep */}
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-2">
-                            {customer.owner?.avatar_url ? (
-                              <img 
-                                src={customer.owner.avatar_url} 
-                                alt={customer.owner.full_name} 
-                                className="w-6 h-6 rounded-full object-cover" 
-                              />
+                            {owner?.avatar_url ? (
+                              <img src={owner.avatar_url} alt={owner.full_name} className="w-6 h-6 rounded-full object-cover" />
                             ) : (
                               <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-500 border border-blue-100 flex items-center justify-center text-tiny font-semibold uppercase">
-                                {customer.owner?.full_name?.charAt(0) || 'S'}
+                                {owner?.full_name?.charAt(0) || 'S'}
                               </div>
                             )}
                             <span className="text-body-md text-gray-600 font-medium">
-                              {customer.owner?.full_name || 'Hệ thống'}
+                              {owner?.full_name || 'Hệ thống'}
                             </span>
                           </div>
                         </td>
 
-                        {/* Current Debt */}
                         <td className={`px-6 py-5 text-right text-body-md font-bold tabular-nums ${
                           isOverdue ? 'text-danger-500' : totalDebt > 0 ? 'text-gray-600' : 'text-gray-400'
                         }`}>
@@ -652,12 +445,10 @@ export default function CustomerListPage() {
                           )}
                         </td>
 
-                        {/* Last Purchase */}
                         <td className="px-6 py-5 text-body-md text-gray-400">
                           {getLastPurchaseDate(customer)}
                         </td>
 
-                        {/* Actions */}
                         <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="relative inline-block text-left">
                             <button
@@ -666,34 +457,22 @@ export default function CustomerListPage() {
                             >
                               <MoreVertical size={16} />
                             </button>
-                            
+
                             {showDropdown && (
                               <>
-                                <div 
-                                  className="fixed inset-0 z-10" 
-                                  onClick={() => setActiveDropdown(null)}
-                                />
+                                <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />
                                 <div className="absolute right-0 mt-1 w-36 bg-gray-0 border border-gray-100 rounded-lg shadow-lg py-1 z-20 animate-in fade-in slide-in-from-top-1 duration-100">
                                   <button
-                                    onClick={() => {
-                                      setActiveDropdown(null)
-                                      navigate(`/customers/${customer.id}`)
-                                    }}
+                                    onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}`) }}
                                     className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
                                   >
-                                    <Eye size={14} />
-                                    Xem chi tiết
+                                    <Eye size={14} /> Xem chi tiết
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      setActiveDropdown(null)
-                                      // Can trigger editing or detail editing page
-                                      navigate(`/customers/${customer.id}?edit=true`)
-                                    }}
+                                    onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}?edit=true`) }}
                                     className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
                                   >
-                                    <Edit2 size={14} />
-                                    Chỉnh sửa
+                                    <Edit2 size={14} /> Chỉnh sửa
                                   </button>
                                 </div>
                               </>
@@ -712,9 +491,9 @@ export default function CustomerListPage() {
           {!loading && totalItems > 0 && (
             <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-0">
               <div className="text-body-md text-gray-400">
-                Hiển thị <span className="font-semibold text-gray-500">{startIndex + 1}</span> - <span className="font-semibold text-gray-500">{Math.min(startIndex + itemsPerPage, totalItems)}</span> trên tổng số <span className="font-semibold text-gray-500">{totalItems}</span> khách hàng
+                Hiển thị <span className="font-semibold text-gray-500">{startIndex + 1}</span> - <span className="font-semibold text-gray-500">{Math.min(startIndex + PAGE_SIZE, totalItems)}</span> trên tổng số <span className="font-semibold text-gray-500">{totalItems}</span> khách hàng
               </div>
-              
+
               {totalPages > 1 && (
                 <div className="flex items-center gap-2">
                   <button
@@ -724,15 +503,10 @@ export default function CustomerListPage() {
                   >
                     <ChevronLeft size={16} />
                   </button>
-                  
+
                   {Array.from({ length: totalPages }, (_, idx) => {
                     const page = idx + 1
-                    // Logic to limit number of page buttons shown
-                    if (
-                      page === 1 || 
-                      page === totalPages || 
-                      (page >= currentPage - 1 && page <= currentPage + 1)
-                    ) {
+                    if (page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)) {
                       return (
                         <button
                           key={page}
@@ -766,7 +540,7 @@ export default function CustomerListPage() {
           )}
         </div>
 
-        {/* Footer Stats KPI Widgets */}
+        {/* KPI Footer (tổng toàn bộ DB, không bị filter) */}
         {!loading && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-gray-0 p-6 rounded-xl border border-gray-100 flex items-center gap-4 shadow-sm hover:border-gray-200 transition-all">
@@ -775,9 +549,7 @@ export default function CustomerListPage() {
               </div>
               <div>
                 <p className="text-body-md font-semibold text-gray-400">Tổng khách hàng</p>
-                <p className="text-[28px] font-bold text-gray-700 leading-tight mt-1 tabular-nums">
-                  {totalCustomersCount}
-                </p>
+                <p className="text-[28px] font-bold text-gray-700 leading-tight mt-1 tabular-nums">{kpis.total}</p>
               </div>
             </div>
 
@@ -787,9 +559,7 @@ export default function CustomerListPage() {
               </div>
               <div>
                 <p className="text-body-md font-semibold text-gray-400">Khách nợ quá hạn</p>
-                <p className="text-[28px] font-bold text-danger-500 leading-tight mt-1 tabular-nums">
-                  {overdueCustomersCount}
-                </p>
+                <p className="text-[28px] font-bold text-danger-500 leading-tight mt-1 tabular-nums">{kpis.overdue}</p>
               </div>
             </div>
 
@@ -799,34 +569,26 @@ export default function CustomerListPage() {
               </div>
               <div>
                 <p className="text-body-md font-semibold text-gray-400">Khách hàng VIP</p>
-                <p className="text-[28px] font-bold text-gray-700 leading-tight mt-1 tabular-nums">
-                  {vipCustomersCount}
-                </p>
+                <p className="text-[28px] font-bold text-gray-700 leading-tight mt-1 tabular-nums">{kpis.vip}</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Quick Add Customer Modal */}
         <AddCustomerModal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           onSuccess={handleAddSuccess}
         />
 
-        {/* Import Customers Modal */}
         <ImportCustomersModal
           isOpen={isImportModalOpen}
           onClose={() => setIsImportModalOpen(false)}
-          onSuccess={() => {
-            setIsImportModalOpen(false)
-            fetchCustomersAndReps()
-          }}
+          onSuccess={handleImportSuccess}
           classifications={classifications}
           tiers={tiers}
-          salesReps={salesReps}
+          salesReps={salesReps as any}
         />
-        
       </div>
     </Layout>
   )

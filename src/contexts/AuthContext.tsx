@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import type { User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import { logger } from '../lib/logger'
+import { useUserRolePermissions } from '../hooks/queries/useUserRolePermissions'
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -23,6 +25,12 @@ interface AuthContextType {
   profile: Profile | null
   loading: boolean
   isAuthenticated: boolean
+
+  // RBAC: tải 1 lần qua TanStack Query (Sprint P1-6, cache 15 phút)
+  userRole: { code: string; name: string }
+  userPermissions: string[]
+  permissionsLoading: boolean
+  hasPermission: (code: string) => boolean
 
   // Actions
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>
@@ -58,12 +66,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (error) {
-        console.error('[Auth] loadProfile error:', error.message)
+        logger.error('[Auth] loadProfile error:', error.message)
         return
       }
       setProfile(data as Profile)
     } catch (err) {
-      console.error('[Auth] loadProfile exception:', err)
+      logger.error('[Auth] loadProfile exception:', err)
     }
   }
 
@@ -72,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await loadProfile(user.id)
       } catch (err) {
-        console.error('[Auth] refreshProfile exception:', err)
+        logger.error('[Auth] refreshProfile exception:', err)
       }
     }
   }
@@ -84,39 +92,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true
 
     const init = async () => {
-      console.log('[Auth] init started, mounted:', mounted)
       try {
         const getSessionPromise = supabase.auth.getSession()
         const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) =>
           setTimeout(() => {
-            console.warn('[Auth] getSession timed out after 3 seconds')
+            logger.warn('[Auth] getSession timed out after 3 seconds')
             resolve({ data: { session: null } })
           }, 3000)
         )
         const { data: { session: initialSession } } = await Promise.race([getSessionPromise, timeoutPromise])
-        console.log('[Auth] getSession finished, session:', initialSession)
-        
-        if (!mounted) {
-          console.log('[Auth] init aborted because component unmounted')
-          return
-        }
+
+        if (!mounted) return
 
         setSession(initialSession)
         setUser(initialSession?.user ?? null)
 
         if (initialSession?.user) {
-          console.log('[Auth] loading profile for user:', initialSession.user.id)
           await loadProfile(initialSession.user.id)
         }
       } catch (err) {
-        console.error('[Auth] init session exception:', err)
+        logger.error('[Auth] init session exception:', err)
       } finally {
-        if (mounted) {
-          console.log('[Auth] setting loading to false')
-          setLoading(false)
-        } else {
-          console.log('[Auth] init finished but component already unmounted')
-        }
+        if (mounted) setLoading(false)
       }
     }
 
@@ -125,15 +122,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Lắng nghe thay đổi auth state (login, logout, token refresh, OAuth)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event: AuthChangeEvent, newSession: Session | null) => {
-        console.log('[Auth] onAuthStateChange event:', event, 'session:', newSession)
         try {
           if (!mounted) return
 
           setSession(newSession)
           setUser(newSession?.user ?? null)
 
+          // setTimeout(0) tránh deadlock GoTrue khi gọi supabase.from() trong callback
           if (event === 'SIGNED_IN' && newSession?.user) {
-            console.log('[Auth] SIGNED_IN event. Deferring profile load to next event loop tick to prevent deadlock.')
             setTimeout(() => {
               if (mounted) {
                 loadProfile(newSession.user.id)
@@ -145,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setProfile(null)
           }
         } catch (err) {
-          console.error('[Auth] onAuthStateChange exception:', err)
+          logger.error('[Auth] onAuthStateChange exception:', err)
         }
       }
     )
@@ -208,6 +204,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // ─────────────────────────────────────────────────────────
+  // RBAC: load role + permissions 1 lần khi có user, cache 15 phút.
+  // Trước đây Layout.tsx fetch lại trên mỗi page navigation → đã bỏ.
+  // ─────────────────────────────────────────────────────────
+  const rolePerms = useUserRolePermissions(profile?.id ?? null)
+  const userRole         = rolePerms.data?.role        ?? { code: 'admin', name: 'Quản trị viên' }
+  const userPermissions  = rolePerms.data?.permissions ?? []
+  const permissionsLoading = rolePerms.isLoading
+
+  const hasPermission = (code: string): boolean => {
+    if (userRole.code === 'admin') return true
+    return userPermissions.includes(code)
+  }
+
+  // ─────────────────────────────────────────────────────────
   // Value
   // ─────────────────────────────────────────────────────────
   const value: AuthContextType = {
@@ -216,6 +226,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     loading,
     isAuthenticated: !!session && !!user,
+    userRole,
+    userPermissions,
+    permissionsLoading,
+    hasPermission,
     signInWithEmail,
     signUpWithEmail,
     signInWithGoogle,
