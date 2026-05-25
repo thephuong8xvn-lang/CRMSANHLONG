@@ -26,6 +26,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
   const [registrationNumber, setRegistrationNumber] = useState('')
   const [contraindications, setContraindications] = useState('')
   const [withdrawalPeriodMeat, setWithdrawalPeriodMeat] = useState<string>('')
+  const [withdrawalPeriodMilkEgg, setWithdrawalPeriodMilkEgg] = useState<string>('')
   const [selectedIngredients, setSelectedIngredients] = useState<Record<string, string>>({})
   const [allIngredients, setAllIngredients] = useState<{ id: string; name: string }[]>([])
   const [allDiseases, setAllDiseases] = useState<{ id: string; name: string; code: string }[]>([])
