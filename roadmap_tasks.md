@@ -428,6 +428,126 @@ Mục tiêu: hoàn thiện chuỗi tối ưu cho production, có metric để th
 
 ---
 
+#### Sprint P4 – Enterprise & SaaS readiness (5–7 ngày) `[CHƯA BẮT ĐẦU]`
+Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS chuyên ngành" — sẵn sàng vận hành lâu dài cho Sanh Long Vetco và đủ chất lượng để chào hàng cho các công ty thú y khác như một sản phẩm thương mại.
+
+**Bối cảnh**: sau P3 sản phẩm đã nhanh, ổn định, được monitor. P4 lấp đầy các khoảng trống còn lại trong functional spec ban đầu (VAT điện tử, khuyến mãi đầy đủ, chấm công, Excel kế toán), đồng thời thêm các lớp đảm bảo chất lượng (test, offline, mobile native, multi-tenancy) cần thiết để chạy production lâu dài.
+
+- [ ] **P4-1. Test infrastructure (Vitest + Playwright)** — `~1.5 ngày`
+  - Cài `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `@vitest/coverage-v8`, `msw` (mock Supabase).
+  - Unit tests cho `src/lib/logger.ts`, `src/lib/queryClient.ts`, `src/hooks/useDebouncedValue.ts`, các format helper trong `DisplaySettingsContext`.
+  - Component tests cho `CustomerListPage`, `ProductListPage`, `DashboardPage`, `POSPage` cart logic (golden path: search → filter → paginate → click row).
+  - Cài `@playwright/test` cho E2E: 5 kịch bản chính — Login admin, Tạo KH mới, Tạo SP + nhập kho, Bán POS đa hóa đơn + thanh toán, Duyệt phiếu chi.
+  - CI workflow `.github/workflows/test.yml` chạy `tsc + vitest + playwright` mỗi PR.
+  - **KPI**: coverage ≥ 60% cho `src/hooks/*` và `src/lib/*`; 5 E2E pass < 3 phút.
+
+- [ ] **P4-2. PWA + offline support cho sales đi thị trường** — `~1 ngày`
+  - Cài `vite-plugin-pwa` với `workbox`. Tạo `manifest.webmanifest` với icon 192/512, theme `#1E5A9C`, name "Sanh Long Vetco".
+  - Cache strategy:
+    - App shell: `precache` toàn bộ JS/CSS chunk (đã có hash từ Vite).
+    - Supabase read API: `NetworkFirst` với fallback 24h cho `customers`, `products`, `customer_summary_view`, `product_stock_summary_view`.
+    - Supabase write API: queue qua IndexedDB → sync khi online (cho Mobile Order Entry ngoài trại không sóng).
+  - Service Worker update notification: hiện banner "Có phiên bản mới, tải lại?" khi `workbox` detect cập nhật.
+  - Test offline: bật airplane mode → vẫn xem được KH/SP cached, tạo đơn mới được lưu queue, online lại auto-sync.
+  - **KPI**: Mobile Order Entry hoạt động hoàn toàn offline cho sales ngoài trại; sync queue < 5s khi có mạng lại.
+
+- [ ] **P4-3. VAT điện tử — tích hợp Misa SInvoice hoặc Viettel SInvoice** — `~1.5 ngày`
+  - Khảo sát API của 2 nhà cung cấp (Misa MeInvoice, Viettel SInvoice) — chọn 1 dựa vào hợp đồng hiện có của Sanh Long.
+  - Tạo Supabase Edge Function `issue-einvoice` nhận `order_id` → đọc snapshot order + customer business_info → POST sang API nhà cung cấp → lưu `invoice_no` + `xml_url` + `pdf_url` vào bảng `invoices`.
+  - Nút "Xuất hóa đơn VAT điện tử" trên `OrderDetailPage` chỉ enable khi order ở trạng thái `paid` hoặc `completed` và KH có `tax_code`.
+  - Retry queue: nếu API nhà cung cấp lỗi → lưu vào `einvoice_retry_queue`, cron Edge Function mỗi 15 phút retry.
+  - **KPI**: 95% hóa đơn xuất thành công trong < 5s; lỗi API có audit log đầy đủ.
+
+- [ ] **P4-4. Hoàn thiện Khuyến mãi 6 loại + Tích điểm + Voucher** — `~1.5 ngày`
+  - Schema đã có (`promotions`, `loyalty_points`, `vouchers`); chỉ thiếu UI và logic áp dụng.
+  - Trang `/promotions` quản lý CRUD 6 loại KM theo functional spec: (1) Giảm % toàn đơn, (2) Giảm số tiền cố định, (3) Mua X tặng Y, (4) Combo giá, (5) Bậc thang theo số lượng, (6) Hạn mức KM theo customer tier.
+  - Engine áp dụng tự động ở POS + Mobile Order: khi qty/cart thay đổi → check `applies_to` JSONB → calc discount → hiện badge khuyến mãi trên row.
+  - Tích điểm: trigger `after_insert` trên `orders` với status `paid/completed` → cộng điểm vào `loyalty_points` (rate config ở `system_settings`).
+  - Voucher code: generate 6 ký tự alphanumeric, valid_from/valid_to, max_uses, áp dụng ở ô "Mã giảm giá" tại POS.
+  - **KPI**: 6 loại KM chạy được trên POS; tích điểm tự động khi order completed.
+
+- [ ] **P4-5. Chấm công + Lịch tuần sales** — `~1 ngày`
+  - Bảng `attendance` (user_id, check_in_at, check_out_at, gps_lat, gps_lng, location_name).
+  - Trang `/attendance` cho admin xem báo cáo tháng; nút "Chấm công" trên Layout Header cho sales (GPS browser API).
+  - Bảng `sales_weekly_plan` (user_id, week_start, planned_visits JSONB). Sales tự lập kế hoạch thăm trại mỗi tuần (10–15 KH).
+  - Trang `/sales-plan` dạng calendar tuần, drag-drop KH từ danh sách sang ngày. Khi visit xong → log vào `activities`.
+  - Dashboard sales hiện widget "Kế hoạch tuần này: 12/15 KH đã thăm".
+  - **KPI**: sales chấm công + lập kế hoạch tuần trong < 2 phút; admin có báo cáo công nhật toàn đội.
+
+- [ ] **P4-6. Excel export theo template kế toán Việt Nam** — `~1 ngày`
+  - Cài `xlsx` (SheetJS) hoặc `exceljs`.
+  - 4 template chuẩn theo TT200/TT133:
+    - **Sổ quỹ tiền mặt** (Mẫu S07-DN): cột Ngày / Số CT / Diễn giải / Thu / Chi / Tồn.
+    - **Sổ chi tiết công nợ phải thu** (Mẫu S31-DN) theo khách hàng.
+    - **Nhập-Xuất-Tồn kho** (Mẫu S08-DN) theo kho + sản phẩm.
+    - **Bảng kê hóa đơn bán ra** (mẫu BC26-AC): phục vụ kê khai VAT.
+  - Mỗi template có button export trên trang tương ứng (`/cashbook`, `/reports/debt`, `/inventory`, `/reports/revenue`).
+  - Encoding UTF-8 BOM, format số tiền theo locale VN, ngày dd/MM/yyyy.
+  - **KPI**: kế toán xuất Excel + paste thẳng vào file của Misa AMIS / FAST không cần chỉnh tay.
+
+- [ ] **P4-7. 2FA cho Admin + Audit log nâng cao + Session management** — `~0.5 ngày`
+  - Bật Supabase Auth MFA (TOTP) bắt buộc cho user có role `admin` hoặc `branch_director`. Trang `/profile/security` cho user enroll authenticator app.
+  - Nâng cấp `audit_logs` table: thêm cột `ip_address`, `user_agent`, `device_id`. Trigger insert tự động cho mọi UPDATE/DELETE trên `customers/orders/cashbook_transactions/price_lists/users`.
+  - Trang `/admin/audit-log` view với filter theo user/entity/date range; export Excel.
+  - Force logout từ xa: admin có thể revoke session của user bất kỳ qua nút "Đăng xuất phiên này" trong trang nhân viên.
+  - **KPI**: 100% action admin có audit log; admin có thể force logout user trong < 5s.
+
+- [ ] **P4-8. Mobile app native qua Capacitor** — `~1 ngày`
+  - Cài `@capacitor/core`, `@capacitor/android`, `@capacitor/ios`, `@capacitor/camera`, `@capacitor/geolocation`, `@capacitor/push-notifications`.
+  - Capacitor config `capacitor.config.ts` trỏ webDir vào `dist/`.
+  - Bridge bổ sung native API: chụp ảnh sản phẩm/lô qua camera (lưu Supabase Storage); GPS chấm công; push notification cho phiếu chi pending.
+  - Build Android APK ban đầu cho QA team test (ký debug key).
+  - **Production sign + Play Store distribution** dời sang giai đoạn release riêng (cần app icon HD, screenshots, privacy policy, content rating).
+  - **KPI**: APK chạy được trên Android 8+; camera + GPS + push hoạt động.
+
+- [ ] **P4-9. Multi-tenancy preparation (cho SaaS hóa)** — `~1 ngày`
+  - **Lý do**: nếu Sanh Long muốn bán CRM này cho các công ty thú y khác, cần tách biệt dữ liệu cứng. Hiện schema giả định 1 tenant.
+  - Thêm bảng `tenants` (id, name, code, plan, is_active, created_at).
+  - Thêm cột `tenant_id UUID REFERENCES tenants(id)` vào 12 bảng gốc: `customers`, `products`, `orders`, `cashbook_transactions`, `branches`, `warehouses`, `profiles`, `opportunities`, `herd_projects`, `invoices`, `audit_logs`, `notifications`.
+  - Helper function `public.fn_current_tenant_id()` lấy `tenant_id` từ JWT claim (`auth.jwt() -> 'user_metadata' -> 'tenant_id'`).
+  - Cập nhật toàn bộ RLS policy thêm điều kiện `tenant_id = fn_current_tenant_id()`.
+  - Migration backfill: gán `tenant_id` mặc định cho dữ liệu hiện có của Sanh Long.
+  - Onboarding flow: khi tạo tenant mới → seed 1 admin user + roles + permissions + price_lists mặc định.
+  - **KPI**: tạo tenant thứ 2 (demo) + login vào → không thấy data của Sanh Long; switching tenant qua subdomain `sanhlong.crm.example.com` / `democo.crm.example.com`.
+
+- [ ] **P4-10. Onboarding wizard + Admin documentation** — `~0.5 ngày`
+  - Wizard 5 bước cho admin lần đầu setup tenant mới: (1) Chi nhánh đầu tiên, (2) Kho hàng + dải nhiệt độ, (3) Nhóm Sales + nhân viên đầu tiên, (4) Bảng giá + KH/SP mẫu, (5) Cấu hình hiển thị (đơn vị tiền tệ, format ngày, ngôn ngữ).
+  - Wizard skip-được cho user advanced, lưu trạng thái vào `tenant_settings.onboarding_completed_at`.
+  - Tạo `docs/06-ADMIN-HANDBOOK.md` (VN): nghiệp vụ nhập kho, duyệt phiếu chi, tạo phác đồ điều trị, gán role, force logout user.
+  - Tạo `docs/07-DEVELOPER-HANDBOOK.md` (VN): kiến trúc hooks, pattern useQuery, cách thêm 1 page mới, RLS checklist.
+  - Tooltip help icon trên các trang nghiệp vụ phức tạp (POS, Pipeline, Herd Project Detail).
+  - **KPI**: tenant mới hoàn tất onboarding trong < 15 phút mà không cần dev support.
+
+**Tổng thời gian dự kiến P4**: 10–11 ngày làm việc (1 dev full-time).
+
+**KPI tổng sau P4**:
+- Test coverage ≥ 60% module core; CI/CD chạy auto mỗi PR
+- App chạy offline cho sales (Mobile Order Entry hoàn toàn dùng được không sóng)
+- VAT điện tử thành công ≥ 95% (đạt yêu cầu pháp lý VN)
+- Excel kế toán xuất được 4 mẫu chuẩn TT200/TT133
+- Admin 2FA + audit log đầy đủ → đạt mức bảo mật cho hợp đồng B2B
+- APK Android phát hành nội bộ cho QA
+- Multi-tenant ready (nếu muốn SaaS hóa)
+- Tài liệu Admin + Developer Handbook (VN)
+
+**Sau P4, sản phẩm đạt mức**: SaaS B2B chuyên ngành thú y, đủ chất lượng để (a) Sanh Long vận hành lâu dài không lo regression, (b) chào hàng cho 5–20 công ty thú y/phân phối khác như sản phẩm thương mại với giá ~5–15 triệu/tháng/tenant.
+
+---
+
+### 🛣️ Lộ trình tổng (5 sprint)
+
+| Sprint | Trạng thái | Thời gian | Mục tiêu |
+|--------|-----------|-----------|----------|
+| **P0** Quick Wins | ✅ HOÀN THÀNH 2026-05-26 | 1–2 ngày | Bundle ~1MB → 22 KB gz; lazy 28 routes |
+| **P1** Data layer overhaul | ✅ HOÀN THÀNH 2026-05-26 | 3–5 ngày | TanStack Query + views/RPC + refactor 3 page lớn |
+| **P2** UX/UI polish & refactor | ⏳ CHƯA BẮT ĐẦU | 3–4 ngày | Skeleton + virtualize + memo + tách 3 page khổng lồ + ErrorBoundary |
+| **P3** Assets & monitoring | ⏳ CHƯA BẮT ĐẦU | 2–3 ngày | WebP + self-host font + Web Vitals + Realtime |
+| **P4** Enterprise & SaaS readiness | ⏳ CHƯA BẮT ĐẦU | 10–11 ngày | Test + PWA + VAT + KM + Chấm công + Excel + 2FA + Capacitor + Multi-tenant + Docs |
+
+**Tổng còn lại**: ~15–18 ngày làm việc full-time để đưa sản phẩm lên mức enterprise SaaS đầy đủ.
+
+---
+
 ### 📌 Quy ước tối ưu áp dụng cho mọi PR mới sau ngày 2026-05-26
 
 1. **Server-side trước, client-side sau**: bất kỳ `filter/search/sort/paginate` mới đều phải làm qua Supabase `.eq()/.ilike()/.range()/.order()`. Không dùng `array.filter()` cho danh sách > 100 dòng.
