@@ -82,6 +82,7 @@ export default function ActiveIngredientsPage() {
   const [compatibilities, setCompatibilities] = useState<Compatibility[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [hasPharmaGroupsTable, setHasPharmaGroupsTable] = useState(false)
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   
   // Search & Filter
@@ -124,23 +125,49 @@ export default function ActiveIngredientsPage() {
   const loadData = async () => {
     setLoading(true)
     try {
-      // Load Active Ingredients with linked products
-      const { data: ingData, error: ingError } = await supabase
-        .from('active_ingredients')
-        .select(`
+      // 1. Check if pharmacological_groups table exists in the database
+      let useRelationalMode = false
+      try {
+        const { error: checkError } = await supabase
+          .from('pharmacological_groups')
+          .select('id')
+          .limit(1)
+        if (!checkError) {
+          useRelationalMode = true
+        }
+      } catch (e) {
+        // Table doesn't exist
+      }
+      setHasPharmaGroupsTable(useRelationalMode)
+
+      // 2. Load Active Ingredients with linked products
+      let selectQuery = `
+        *,
+        product_active_ingredients(
+          percentage_or_dosage,
+          product:products(id, name, sku)
+        )
+      `
+      if (useRelationalMode) {
+        selectQuery = `
           *,
           pharmacological_groups(id, name),
           product_active_ingredients(
             percentage_or_dosage,
             product:products(id, name, sku)
           )
-        `)
+        `
+      }
+
+      const { data: ingData, error: ingError } = await supabase
+        .from('active_ingredients')
+        .select(selectQuery)
         .order('name')
       
       if (ingError) throw ingError
       if (ingData) setIngredients(ingData as unknown as ActiveIngredient[])
 
-      // Load Compatibility Matrix
+      // 3. Load Compatibility Matrix
       const { data: compData, error: compError } = await supabase
         .from('active_ingredient_compatibility')
         .select(`
@@ -152,21 +179,26 @@ export default function ActiveIngredientsPage() {
       if (compError) throw compError
       if (compData) setCompatibilities(compData as unknown as Compatibility[])
 
-      // Load pharmacological groups
-      const { data: pgData, error: pgError } = await supabase
-        .from('pharmacological_groups')
-        .select('*')
-        .order('name')
-      if (pgError) throw pgError
-      if (pgData) setPharmaGroups(pgData)
+      // 4. Load pharmacological groups if table exists
+      if (useRelationalMode) {
+        const { data: pgData, error: pgError } = await supabase
+          .from('pharmacological_groups')
+          .select('*')
+          .order('name')
+        if (pgError) throw pgError
+        if (pgData) setPharmaGroups(pgData)
+      }
 
-      // Load compatibility interaction types
-      const { data: itData, error: itError } = await supabase
-        .from('compatibility_interaction_types')
-        .select('*')
-        .order('name')
-      if (itError) throw itError
-      if (itData) setInteractionTypes(itData)
+      // 5. Load compatibility interaction types
+      try {
+        const { data: itData, error: itError } = await supabase
+          .from('compatibility_interaction_types')
+          .select('*')
+          .order('name')
+        if (!itError && itData) setInteractionTypes(itData)
+      } catch (e) {
+        // Table doesn't exist
+      }
     } catch (err: any) {
       console.error('Error fetching active ingredients and matrix:', err)
       showToast('error', 'Lỗi tải dữ liệu hoạt chất & ma trận: ' + err.message)
@@ -217,16 +249,19 @@ export default function ActiveIngredientsPage() {
 
     setSaving(true)
     try {
-      const payload = {
+      const payload: any = {
         code: ingCode.trim() ? ingCode.trim().toLowerCase() : null,
         name: ingName.trim(),
         is_active: ingIsActive,
         pharmacological_group: ingPharmaGroup.trim() || null,
-        pharmacological_group_id: ingPharmaGroupId || null,
         standard_dosage: ingStdDosage.trim() || null,
         withdrawal_period_meat: ingWithdrawalMeat !== '' ? Number(ingWithdrawalMeat) : null,
         withdrawal_period_milk_egg: ingWithdrawalMilkEgg !== '' ? Number(ingWithdrawalMilkEgg) : null,
         contraindications: ingContraindications.trim() || null
+      }
+
+      if (hasPharmaGroupsTable) {
+        payload.pharmacological_group_id = ingPharmaGroupId || null
       }
 
       if (!selectedIngredient) {
@@ -303,7 +338,7 @@ export default function ActiveIngredientsPage() {
     setSelectedCompat(comp)
     setCompatIngA(comp.ingredient_a_id)
     setCompatIngB(comp.ingredient_b_id)
-    setCompatType(comp.interaction_type)
+    setCompatType(comp.interaction_type as 'synergy' | 'antagonism')
     setCompatDesc(comp.description || '')
     setShowCompatModal(true)
   }
@@ -781,7 +816,7 @@ export default function ActiveIngredientsPage() {
                                   type="button"
                                   onClick={() => handleToggleIngredientActive(ing)}
                                   className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    ing.is_active ? 'bg-blue-500' : 'bg-gray-250'
+                                    ing.is_active ? 'bg-blue-500' : 'bg-gray-200'
                                   }`}
                                 >
                                   <span
@@ -1371,7 +1406,7 @@ export default function ActiveIngredientsPage() {
                 <h3 className="text-body-lg font-bold text-gray-800">
                   {selectedPharmaGroup ? 'Cập nhật nhóm dược lý' : 'Thêm nhóm dược lý mới'}
                 </h3>
-                <button onClick={() => setShowPharmaModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                <button onClick={() => setShowPharmaModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                   <X size={20} />
                 </button>
               </div>
@@ -1453,7 +1488,7 @@ export default function ActiveIngredientsPage() {
                 <h3 className="text-body-lg font-bold text-gray-800">
                   {selectedInteractionType ? 'Cập nhật loại tương tác' : 'Thêm loại tương tác mới'}
                 </h3>
-                <button onClick={() => setShowInteractionModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                <button onClick={() => setShowInteractionModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                   <X size={20} />
                 </button>
               </div>

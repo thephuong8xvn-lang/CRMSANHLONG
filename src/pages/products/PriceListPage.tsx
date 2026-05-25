@@ -217,7 +217,7 @@ export default function PriceListPage() {
   const renderMarginBadge = (cost: number, selling: number) => {
     if (!selling) {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-gray-50 border border-gray-150 rounded-full text-tiny text-gray-500 font-semibold">
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-gray-50 border border-gray-100 rounded-full text-tiny text-gray-500 font-semibold">
           <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
           N/A
         </span>
@@ -374,7 +374,7 @@ export default function PriceListPage() {
                   <h3 className="text-display-xs font-bold text-gray-800">
                     {selectedList ? selectedList.name : 'Đang tải...'}
                   </h3>
-                  <span className="text-tiny text-gray-400 bg-gray-50 border border-gray-150 rounded px-1.5 py-0.5 font-bold uppercase">
+                  <span className="text-tiny text-gray-400 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 font-bold uppercase">
                     {settings.currency_symbol}
                   </span>
                 </div>
@@ -451,10 +451,10 @@ export default function PriceListPage() {
                 <p className="text-body-md text-gray-400">Đang tải bảng giá sản phẩm...</p>
               </div>
             ) : (
-              <div className="flex-1 overflow-auto border border-gray-150 rounded-xl bg-gray-0 shadow-sm">
+              <div className="flex-1 overflow-auto border border-gray-100 rounded-xl bg-gray-0 shadow-sm">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-150 sticky top-0 z-10">
+                    <tr className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
                       <th className="p-4 text-tiny font-bold text-gray-400 uppercase w-12 text-center">#</th>
                       <th className="p-4 text-tiny font-bold text-gray-400 uppercase">Sản phẩm / Mã SKU</th>
                       <th className="p-4 text-tiny font-bold text-gray-400 uppercase text-center w-24">ĐVT</th>

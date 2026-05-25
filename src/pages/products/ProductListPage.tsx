@@ -383,7 +383,7 @@ export default function ProductListPage() {
         <div className="flex flex-col md:flex-row gap-6 items-start">
           
           {/* 1. Left Filters Sidebar Pane (KiotViet style) */}
-          <aside className="w-full md:w-[22%] bg-white border border-gray-150 rounded-xl p-4 shrink-0 shadow-sm space-y-6">
+          <aside className="w-full md:w-[22%] bg-white border border-gray-100 rounded-xl p-4 shrink-0 shadow-sm space-y-6">
             
             {/* Filter by Nhóm Hàng (Product Categories) */}
             <div className="space-y-2.5">
@@ -514,10 +514,10 @@ export default function ProductListPage() {
           </aside>
 
           {/* 2. Right Products Grid / Table Panel */}
-          <div className="flex-1 w-full bg-white border border-gray-150 rounded-xl overflow-hidden shadow-sm flex flex-col min-w-0">
+          <div className="flex-1 w-full bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex flex-col min-w-0">
             
             {/* Top Toolbar Action Bar */}
-            <div className="p-4 border-b border-gray-150 bg-gray-25 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+            <div className="p-4 border-b border-gray-100 bg-gray-25 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
               {/* Search input: KiotViet text-box search format */}
               <div className="relative w-full sm:max-w-xs text-gray-700">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
@@ -534,14 +534,14 @@ export default function ProductListPage() {
               <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
                 <button
                   onClick={() => setIsImportModalOpen(true)}
-                  className="h-9 px-3 border border-gray-250 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
+                  className="h-9 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
                 >
                   <Upload size={14} className="text-gray-400" />
                   Import file
                 </button>
                 <button
                   onClick={handleExportCSV}
-                  className="h-9 px-3 border border-gray-250 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
+                  className="h-9 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
                 >
                   <Download size={14} className="text-gray-400" />
                   Xuất file
@@ -612,7 +612,7 @@ export default function ProductListPage() {
                         <td className="py-3 px-1 text-center">
                           <button
                             onClick={e => handleToggleStar(prod.id, e)}
-                            className="p-1 hover:bg-gray-150 rounded transition-all text-gray-300 hover:text-amber-500"
+                            className="p-1 hover:bg-gray-100 rounded transition-all text-gray-300 hover:text-amber-500"
                           >
                             <Star
                               size={14}
@@ -667,7 +667,7 @@ export default function ProductListPage() {
                         </td>
                         <td className="py-3 px-4">
                           <span className={`px-1.5 py-0.5 text-[11px] font-bold rounded ${
-                            prod.expiryEstimate === '0 ngày' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-50 text-gray-600 border border-gray-150'
+                            prod.expiryEstimate === '0 ngày' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-50 text-gray-600 border border-gray-100'
                           }`}>
                             {prod.expiryEstimate}
                           </span>
@@ -681,7 +681,7 @@ export default function ProductListPage() {
 
             {/* Pagination Panel */}
             {!loading && displayList.length > 0 && (
-              <div className="p-4 border-t border-gray-150 bg-gray-25 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
+              <div className="p-4 border-t border-gray-100 bg-gray-25 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
                 <span className="text-tiny text-gray-450 font-medium">
                   Hiển thị <span className="font-bold text-gray-600">{indexOfFirstItem + 1}-{Math.min(indexOfLastItem, totalItems)}</span> trên tổng số <span className="font-bold text-gray-600">{totalItems}</span> sản phẩm
                 </span>
@@ -700,7 +700,7 @@ export default function ProductListPage() {
                       className={`w-8 h-8 rounded text-tiny font-bold transition-all shadow-sm ${
                         currentPage === idx + 1
                           ? 'bg-blue-600 text-white border border-blue-600'
-                          : 'bg-white border border-gray-250 text-gray-500 hover:bg-gray-50'
+                          : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
                       }`}
                     >
                       {idx + 1}

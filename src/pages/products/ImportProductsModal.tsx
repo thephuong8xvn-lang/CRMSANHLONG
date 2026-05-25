@@ -210,7 +210,7 @@ export default function ImportProductsModal({
             <h3 className="text-body-lg font-bold text-gray-800">Nhập danh sách hàng hóa</h3>
             <p className="text-tiny text-gray-400">Tải tệp CSV chứa danh sách tên sản phẩm cần nhập vào hệ thống</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-655 transition-colors p-1 rounded-full hover:bg-gray-100">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100">
             <X size={20} />
           </button>
         </div>
@@ -346,7 +346,7 @@ export default function ImportProductsModal({
             type="button"
             disabled={importing}
             onClick={onClose}
-            className="px-5 h-10 border border-gray-150 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
           >
             Đóng lại
           </button>

@@ -263,7 +263,7 @@ export default function ManageUnitsModal({ isOpen, onClose, onSuccess }: ManageU
       <div className="bg-white w-full max-w-2xl rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 shrink-0">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25 shrink-0">
           <div>
             <h3 className="text-body-lg font-bold text-gray-700">Quản lý Đơn vị tính</h3>
             {isFallbackMode && (
@@ -272,7 +272,7 @@ export default function ManageUnitsModal({ isOpen, onClose, onSuccess }: ManageU
               </span>
             )}
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-150 rounded-full text-gray-400">
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400">
             <X size={20} />
           </button>
         </div>
@@ -363,7 +363,7 @@ export default function ManageUnitsModal({ isOpen, onClose, onSuccess }: ManageU
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-gray-800 text-tiny capitalize">{u.name}</span>
                         <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded uppercase ${
-                          u.is_active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-gray-100 text-gray-455 border border-gray-200'
+                          u.is_active ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-gray-100 text-gray-400 border border-gray-200'
                         }`}>
                           {u.is_active ? 'Đang chạy' : 'Ngừng'}
                         </span>

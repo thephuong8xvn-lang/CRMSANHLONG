@@ -82,17 +82,20 @@ function AppRoutes() {
       <Route path="/customers/settings" element={<PrivateRoute><CustomerSettingsPage /></PrivateRoute>} />
       <Route path="/customers/:id" element={<PrivateRoute><CustomerDetailPage /></PrivateRoute>} />
       <Route path="/products" element={<PrivateRoute><ProductListPage /></PrivateRoute>} />
-      <Route path="/products/:id" element={<PrivateRoute><ProductDetailPage /></PrivateRoute>} />
+      {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /products/:id */}
       <Route path="/products/prices" element={<PrivateRoute><PriceListPage /></PrivateRoute>} />
+      <Route path="/products/ingredients" element={<PrivateRoute><ActiveIngredientsPage /></PrivateRoute>} />
+      <Route path="/products/:id" element={<PrivateRoute><ProductDetailPage /></PrivateRoute>} />
       <Route path="/suppliers" element={<PrivateRoute><SupplierListPage /></PrivateRoute>} />
       <Route path="/suppliers/:id" element={<PrivateRoute><SupplierDetailPage /></PrivateRoute>} />
       <Route path="/inventory" element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
       <Route path="/purchase-orders/new" element={<PrivateRoute><PurchaseOrderFormPage /></PrivateRoute>} />
       <Route path="/goods-receipts/new" element={<PrivateRoute><GoodsReceiptFormPage /></PrivateRoute>} />
       <Route path="/orders" element={<PrivateRoute><OrderListPage /></PrivateRoute>} />
-      <Route path="/orders/:id" element={<PrivateRoute><OrderDetailPage /></PrivateRoute>} />
+      {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /orders/:id */}
       <Route path="/orders/pos" element={<PrivateRoute><POSPage /></PrivateRoute>} />
       <Route path="/orders/mobile" element={<PrivateRoute><MobileOrderPage /></PrivateRoute>} />
+      <Route path="/orders/:id" element={<PrivateRoute><OrderDetailPage /></PrivateRoute>} />
       <Route path="/pipeline" element={<PrivateRoute><PipelinePage /></PrivateRoute>} />
       <Route path="/cashbook" element={<PrivateRoute><CashbookPage /></PrivateRoute>} />
       <Route path="/reports" element={<PrivateRoute><ReportsHubPage /></PrivateRoute>} />
@@ -102,9 +105,10 @@ function AppRoutes() {
       <Route path="/reports/staff" element={<PrivateRoute><StaffReportPage /></PrivateRoute>} />
       <Route path="/reports/customer-profile" element={<PrivateRoute><CustomerProfileReportPage /></PrivateRoute>} />
       <Route path="/herd-projects" element={<PrivateRoute><HerdProjectListPage /></PrivateRoute>} />
+      {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /herd-projects/:id */}
       <Route path="/herd-projects/new" element={<PrivateRoute><HerdProjectFormPage /></PrivateRoute>} />
       <Route path="/herd-projects/:id" element={<PrivateRoute><HerdProjectDetailPage /></PrivateRoute>} />
-      <Route path="/products/ingredients" element={<PrivateRoute><ActiveIngredientsPage /></PrivateRoute>} />
+      {/* /products/ingredients đã được khai báo ở trên, không cần lặp lại */}
       <Route path="/diseases" element={<PrivateRoute><DiseasesPage /></PrivateRoute>} />
       <Route path="/system-settings" element={<PrivateRoute><SystemSettingsPage /></PrivateRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, ShieldAlert, Check, Search } from 'lucide-react'
+import { X, ShieldAlert, Check, Search, Info, DollarSign, Activity, FileText, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
@@ -33,6 +33,7 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
   const [selectedDiseaseIds, setSelectedDiseaseIds] = useState<string[]>([])
   const [ingSearch, setIngSearch] = useState('')
   const [disSearch, setDisSearch] = useState('')
+  const [activeTab, setActiveTab] = useState<'basic' | 'pricing' | 'ingredients' | 'technical'>('basic')
 
   // Pricing inputs
   const [costPrice, setCostPrice] = useState<number>(0)
@@ -59,31 +60,48 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
     const loadData = async () => {
       setLoading(true)
       setErrorMsg('')
+      // Đặt fallback units ngay lập tức từ localStorage (giống ManageUnitsModal)
+      const defaultUnits = ['lọ', 'chai', 'gói', 'hộp', 'kg', 'g', 'ml', 'L', 'cái', 'lon', 'túi', 'liều', 'thùng']
+      const savedUnits = localStorage.getItem('product-units')
+      if (savedUnits) {
+        try {
+          const parsed = JSON.parse(savedUnits) as { name: string; is_active: boolean }[]
+          const activeNames = parsed.filter(u => u.is_active).map(u => u.name)
+          setUnits(activeNames.length > 0 ? activeNames : defaultUnits)
+        } catch {
+          setUnits(defaultUnits)
+        }
+      } else {
+        setUnits(defaultUnits)
+      }
+
       try {
         // 1. Fetch categories
-        const { data: catData } = await supabase
+        const { data: catData, error: catErr } = await supabase
           .from('product_categories')
-          .select('id, name')
-          .eq('is_active', true)
-        if (catData) setCategories(catData)
+          .select('id, name, is_active')
+          .order('sort_order', { ascending: true })
+        if (catErr) console.warn('[EditProduct] product_categories:', catErr.message)
+        else if (catData) setCategories(catData.filter((c: any) => c.is_active !== false))
 
         // 2. Fetch brands
-        const { data: brandData } = await supabase
+        const { data: brandData, error: brandErr } = await supabase
           .from('brands')
-          .select('id, name')
-          .eq('is_active', true)
-        if (brandData) setBrands(brandData)
+          .select('id, name, is_active')
+          .order('name', { ascending: true })
+        if (brandErr) console.warn('[EditProduct] brands:', brandErr.message)
+        else if (brandData) setBrands(brandData.filter((b: any) => b.is_active !== false))
 
         // 3. Fetch price lists
         const { data: plData } = await supabase
           .from('price_lists')
-          .select('id, code, name')
-          .eq('is_active', true)
+          .select('id, code, name, is_active')
         
         let loadedPriceLists: PriceList[] = []
         if (plData) {
-          setPriceLists(plData)
-          loadedPriceLists = plData
+          const active = plData.filter((p: any) => p.is_active !== false)
+          setPriceLists(active)
+          loadedPriceLists = active
         }
 
         // 4. Fetch existing product
@@ -127,10 +145,9 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
         // Fetch all active ingredients
         const { data: ingData } = await supabase
           .from('active_ingredients')
-          .select('id, name')
-          .eq('is_active', true)
+          .select('id, name, is_active')
           .order('name')
-        if (ingData) setAllIngredients(ingData)
+        if (ingData) setAllIngredients(ingData.filter((i: any) => i.is_active !== false))
 
         // Fetch all diseases
         const { data: disData } = await supabase
@@ -140,12 +157,16 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
         if (disData) setAllDiseases(disData)
 
         // Fetch linked diseases (indications)
-        const { data: linkedDisData } = await supabase
-          .from('product_indications')
-          .select('disease_id')
-          .eq('product_id', productId)
-        if (linkedDisData) {
-          setSelectedDiseaseIds(linkedDisData.map((item: any) => item.disease_id))
+        try {
+          const { data: linkedDisData, error: linkedDisErr } = await supabase
+            .from('product_indications')
+            .select('disease_id')
+            .eq('product_id', productId)
+          if (!linkedDisErr && linkedDisData) {
+            setSelectedDiseaseIds(linkedDisData.map((item: any) => item.disease_id))
+          }
+        } catch (e: any) {
+          console.warn('Could not load product indications (table may not exist):', e.message)
         }
 
         // 5. Fetch existing price list items
@@ -174,21 +195,18 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
         // 6. Fetch units
         const { data: unitData, error: unitErr } = await supabase
           .from('product_units')
-          .select('name')
-          .eq('is_active', true)
+          .select('name, is_active')
           .order('name', { ascending: true })
 
-        if (!unitErr && unitData && unitData.length > 0) {
-          setUnits(unitData.map((u: any) => u.name))
-        } else {
-          // Fallback to local storage or defaults
-          const saved = localStorage.getItem('product-units')
-          if (saved) {
-            const parsed = JSON.parse(saved) as { name: string; is_active: boolean }[]
-            setUnits(parsed.filter(u => u.is_active).map(u => u.name))
-          } else {
-            setUnits(['lọ', 'kg', 'gói', 'cái', 'lon', 'túi', 'chai'])
-          }
+        if (unitErr) {
+          console.warn('[EditProduct] product_units:', unitErr.message)
+          // Giữ localStorage fallback đã đặt sẵn
+        } else if (unitData && unitData.length > 0) {
+          const names = unitData
+            .filter((u: any) => u.is_active !== false)
+            .map((u: any) => u.name)
+          if (names.length > 0) setUnits(names)
+          // Đảm bảo unit hiện tại của sản phẩm nằm trong danh sách
         }
 
       } catch (err: any) {
@@ -288,24 +306,32 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
       }
 
       // Refresh disease indications links (delete old and insert new)
-      const { error: deleteIndErr } = await supabase
-        .from('product_indications')
-        .delete()
-        .eq('product_id', productId)
-
-      if (deleteIndErr) throw deleteIndErr
-
-      if (selectedDiseaseIds.length > 0) {
-        const indicationItems = selectedDiseaseIds.map(disId => ({
-          product_id: productId,
-          disease_id: disId
-        }))
-
-        const { error: indErr } = await supabase
+      try {
+        const { error: deleteIndErr } = await supabase
           .from('product_indications')
-          .insert(indicationItems)
+          .delete()
+          .eq('product_id', productId)
 
-        if (indErr) throw indErr
+        if (deleteIndErr) {
+          if (deleteIndErr.code === 'PGRST205' || deleteIndErr.message.includes('relation') || deleteIndErr.message.includes('not found')) {
+            console.warn('product_indications table does not exist, skipping indications update')
+          } else {
+            throw deleteIndErr
+          }
+        } else if (selectedDiseaseIds.length > 0) {
+          const indicationItems = selectedDiseaseIds.map(disId => ({
+            product_id: productId,
+            disease_id: disId
+          }))
+
+          const { error: indErr } = await supabase
+            .from('product_indications')
+            .insert(indicationItems)
+
+          if (indErr) throw indErr
+        }
+      } catch (e: any) {
+        console.warn('Could not update product indications:', e.message)
       }
 
       // 2. Refresh price list items (Delete old & Insert new)
@@ -352,26 +378,55 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
   )
 
   return (
-    <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex justify-end transition-opacity duration-300">
-      <div className="bg-gray-0 w-full max-w-4xl h-full shadow-2xl flex flex-col py-6 px-8 animate-in slide-in-from-right duration-250 overflow-hidden">
+    <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300">
+      <div className="bg-white rounded-2xl w-full max-w-5xl h-[85vh] max-h-[750px] shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden border border-gray-100">
         
         {/* Header */}
-        <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-6">
+        <div className="flex justify-between items-center border-b border-gray-100 px-8 py-4 bg-gray-25 shrink-0">
           <div>
             <h3 className="text-body-lg font-bold text-gray-800">Chỉnh sửa chi tiết sản phẩm</h3>
             <p className="text-tiny text-gray-400">Cập nhật thông tin catalog và cấu hình chi tiết</p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 hover:bg-gray-50 rounded-full text-gray-400"
+            className="p-1.5 hover:bg-gray-200 rounded-full text-gray-400 transition-colors"
           >
             <X size={20} />
           </button>
         </div>
 
+        {/* Tab Headers */}
+        <div className="flex border-b border-gray-200 bg-gray-50 px-8 shrink-0">
+          {[
+            { id: 'basic', label: 'Thông tin chung', icon: Info },
+            { id: 'pricing', label: 'Giá & Bảng giá', icon: DollarSign },
+            { id: 'ingredients', label: 'Thành phần & Chỉ định', icon: Activity },
+            { id: 'technical', label: 'Thông số kỹ thuật', icon: FileText },
+          ].map(tab => {
+            const TabIcon = tab.icon
+            const active = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 py-3 px-6 font-bold text-body-md border-b-2 transition-all focus:outline-none ${
+                  active
+                    ? 'border-blue-500 text-blue-600 bg-white -mb-[2px] rounded-t-lg border-t border-x border-gray-200'
+                    : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-100/50'
+                }`}
+              >
+                <TabIcon size={16} />
+                <span>{tab.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
         {/* Error Alert */}
         {errorMsg && (
-          <div className="p-4 bg-danger-50 border border-danger-100 rounded-lg text-danger-600 text-body-md flex items-start gap-2 mb-6">
+          <div className="mx-8 mt-4 p-4 bg-danger-50 border border-danger-100 rounded-lg text-danger-600 text-body-md flex items-start gap-2 shrink-0">
             <ShieldAlert size={18} className="flex-shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>
@@ -386,403 +441,467 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
 
         {/* Form */}
         {!loading && (
-          <form onSubmit={handleSubmit} className="flex-grow flex flex-col justify-between overflow-hidden">
+          <form onSubmit={handleSubmit} className="flex-grow flex flex-col justify-between overflow-hidden p-8">
             <div className="flex-1 overflow-y-auto pr-2 min-h-0 py-2">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
               
-              {/* Left Column: Basic info, prices, lot management */}
-              <div className="space-y-5">
-                <h4 className="text-body-md font-bold text-gray-800 border-b border-gray-100 pb-2">Thông tin cơ bản & Bảng giá</h4>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Mã SKU <span className="text-danger-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold uppercase"
-                      placeholder="VD: VAC-CSF-50"
-                      value={sku}
-                      onChange={e => setSku(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Đơn vị tính <span className="text-danger-500">*</span>
-                    </label>
-                    <select
-                      className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all capitalize"
-                      value={unit}
-                      onChange={e => setUnit(e.target.value)}
-                    >
-                      {units.map(u => (
-                        <option key={u} value={u}>
-                          {u}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                    Tên sản phẩm <span className="text-danger-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
-                    placeholder="VD: Vaccine Dịch tả heo cổ điển"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Phân loại danh mục
-                    </label>
-                    <select
-                      className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
-                      value={categoryId}
-                      onChange={e => setCategoryId(e.target.value)}
-                    >
-                      <option value="">-- Chọn danh mục --</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Thương hiệu
-                    </label>
-                    <select
-                      className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
-                      value={brandId}
-                      onChange={e => setBrandId(e.target.value)}
-                    >
-                      <option value="">-- Chọn thương hiệu --</option>
-                      {brands.map(brand => (
-                        <option key={brand.id} value={brand.id}>
-                          {brand.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                    Số Đăng Ký (SDK)
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all uppercase font-semibold"
-                    placeholder="VD: SDK-SLV-123"
-                    value={registrationNumber}
-                    onChange={e => setRegistrationNumber(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-xl flex items-center justify-between">
+              {/* ────────────────── Tab 1: General Info ────────────────── */}
+              {activeTab === 'basic' && (
+                <div className="space-y-6 max-w-3xl mx-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
-                      <p className="text-body-sm font-bold text-amber-800">Quản lý theo Lô/Hạn</p>
-                      <p className="text-[10px] text-amber-600">Bắt buộc số lô & HSD</p>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Mã SKU <span className="text-danger-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold uppercase"
+                        placeholder="VD: VAC-CSF-50"
+                        value={sku}
+                        onChange={e => setSku(e.target.value)}
+                      />
                     </div>
-                    <input
-                      type="checkbox"
-                      className="w-5 h-5 border-gray-300 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-                      checked={isLotManaged}
-                      onChange={e => setIsLotManaged(e.target.checked)}
-                    />
+                    <div className="md:col-span-2">
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Tên sản phẩm <span className="text-danger-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
+                        placeholder="VD: Vaccine Dịch tả heo cổ điển"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                      />
+                    </div>
                   </div>
 
-                  <div className="p-4 bg-blue-50/40 border border-blue-100 rounded-xl flex items-center justify-between">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
-                      <p className="text-body-sm font-bold text-blue-800">Đang kinh doanh</p>
-                      <p className="text-[10px] text-blue-600">Hiển thị trong danh mục</p>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Đơn vị tính <span className="text-danger-500">*</span>
+                      </label>
+                      <select
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all capitalize"
+                        value={unit}
+                        onChange={e => setUnit(e.target.value)}
+                      >
+                        {unit && !units.includes(unit) && (
+                          <option value={unit}>{unit}</option>
+                        )}
+                        {units.map(u => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <input
-                      type="checkbox"
-                      className="w-5 h-5 border-gray-300 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                      checked={isActive}
-                      onChange={e => setIsActive(e.target.checked)}
-                    />
+                    <div>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Phân loại danh mục
+                      </label>
+                      <select
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
+                        value={categoryId}
+                        onChange={e => setCategoryId(e.target.value)}
+                      >
+                        <option value="">-- Chọn danh mục --</option>
+                        {categories.map(cat => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Thương hiệu
+                      </label>
+                      <select
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
+                        value={brandId}
+                        onChange={e => setBrandId(e.target.value)}
+                      >
+                        <option value="">-- Chọn thương hiệu --</option>
+                        {brands.map(brand => (
+                          <option key={brand.id} value={brand.id}>
+                            {brand.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
 
-                <div className="p-5 bg-gray-50 border border-gray-100 rounded-xl space-y-4">
-                  <p className="text-tiny font-bold text-gray-500 uppercase tracking-wider">
-                    Cài đặt Giá sản phẩm ({settings.currency_symbol})
-                  </p>
-                  
-                  <div>
-                    <label className="block text-tiny font-semibold text-gray-500 mb-1">Giá vốn ({settings.currency_symbol})</label>
-                    <input
-                      type="number"
-                      min={0}
-                      className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold"
-                      value={costPrice || ''}
-                      onChange={e => setCostPrice(Number(e.target.value))}
-                      placeholder="0"
-                    />
-                  </div>
-
-                  <div className="space-y-3 pt-2 border-t border-gray-200/60">
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Giá bán theo bảng giá</label>
-                    <div className="grid grid-cols-1 gap-3">
-                      {priceLists.map(list => (
-                        <div key={list.id} className="flex items-center justify-between gap-4">
-                          <span className="text-body-md text-gray-600 font-medium min-w-[150px]">{list.name}</span>
-                          <div className="relative flex-1 max-w-[220px]">
-                            <input
-                              type="number"
-                              min={0}
-                              className={`w-full h-10 pl-3 pr-8 border border-gray-200 rounded-lg text-body-md focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold ${
-                                list.code === 'GIA-LE' ? 'text-blue-600 border-blue-200 shadow-sm' : 'text-gray-700'
-                              }`}
-                              value={pricesMap[list.id] || ''}
-                              onChange={e => handlePriceChange(list.id, Number(e.target.value))}
-                              placeholder="0"
-                            />
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-455">{settings.currency_symbol}</span>
-                          </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Số Đăng Ký (SDK)
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all uppercase font-semibold"
+                        placeholder="VD: SDK-SLV-123"
+                        value={registrationNumber}
+                        onChange={e => setRegistrationNumber(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <p className="text-body-sm font-bold text-amber-800">Quản lý theo Lô</p>
+                          <p className="text-[10px] text-amber-600">Bắt buộc số lô & HSD</p>
                         </div>
-                      ))}
+                        <input
+                          type="checkbox"
+                          className="w-5 h-5 border-gray-300 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                          checked={isLotManaged}
+                          onChange={e => setIsLotManaged(e.target.checked)}
+                        />
+                      </div>
+                      <div className="p-4 bg-blue-50/40 border border-blue-100 rounded-xl flex items-center justify-between shadow-sm">
+                        <div>
+                          <p className="text-body-sm font-bold text-blue-800">Đang hoạt động</p>
+                          <p className="text-[10px] text-blue-600">Bán trong POS/Đơn hàng</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          className="w-5 h-5 border-gray-300 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          checked={isActive}
+                          onChange={e => setIsActive(e.target.checked)}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <p className="text-[11px] text-gray-400">
-                    💡 Gợi ý: Khi nhập <strong>Giá bán lẻ đề xuất</strong>, hệ thống tự gợi ý giá đại lý (-15%) và giá VIP (-25%), bạn có thể chỉnh sửa tùy ý.
-                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* Right Column: Active ingredients, diseases, technical specs */}
-              <div className="space-y-5">
-                <h4 className="text-body-md font-bold text-gray-800 border-b border-gray-100 pb-2">Thành phần kỹ thuật & Chỉ định</h4>
-                
-                {/* Active Ingredients Checklist */}
-                <div className="space-y-2">
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">
-                    Thành phần hoạt chất
-                  </label>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                    <input
-                      type="text"
-                      placeholder="Tìm hoạt chất..."
-                      className="w-full h-8 pl-8 pr-3 border border-gray-200 rounded-lg text-body-sm focus:outline-none focus:border-blue-500 bg-gray-50"
-                      value={ingSearch}
-                      onChange={e => setIngSearch(e.target.value)}
-                    />
+              {/* ────────────────── Tab 2: Pricing Settings ────────────────── */}
+              {activeTab === 'pricing' && (
+                <div className="space-y-6 max-w-2xl mx-auto animate-in fade-in duration-200">
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 space-y-6 shadow-sm">
+                    <h4 className="text-body-md font-bold text-gray-700 border-b border-gray-200 pb-3 flex items-center gap-2">
+                      <DollarSign size={18} className="text-blue-500" />
+                      Cài đặt Giá vốn & Bảng giá bán lẻ
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 gap-6">
+                      <div>
+                        <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">Giá vốn nhập hàng ({settings.currency_symbol})</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold"
+                            value={costPrice || ''}
+                            onChange={e => setCostPrice(Number(e.target.value))}
+                            placeholder="0"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-tiny font-bold text-gray-400">{settings.currency_symbol}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 pt-4 border-t border-gray-200">
+                        <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">Giá bán đề xuất theo bảng giá</label>
+                        <div className="grid grid-cols-1 gap-4">
+                          {priceLists.map(list => (
+                            <div key={list.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-white border border-gray-100 rounded-xl hover:shadow-sm transition-all">
+                              <span className="text-body-md text-gray-700 font-bold min-w-[150px]">{list.name}</span>
+                              <div className="relative w-full sm:max-w-[250px]">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  className={`w-full h-10 pl-3 pr-10 border border-gray-200 rounded-lg text-body-md focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-bold ${
+                                    list.code === 'GIA-LE' ? 'text-blue-600 border-blue-200 shadow-sm' : 'text-gray-800'
+                                  }`}
+                                  value={pricesMap[list.id] || ''}
+                                  onChange={e => handlePriceChange(list.id, Number(e.target.value))}
+                                  placeholder="0"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-tiny font-bold text-gray-400">{settings.currency_symbol}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl text-body-sm text-blue-700 leading-normal flex items-start gap-2">
+                      <span className="text-base">💡</span>
+                      <p>
+                        Khi nhập <strong>Giá bán lẻ đề xuất</strong>, hệ thống tự động gợi ý giá đại lý (-15%) và giá VIP (-25%). Bạn có thể tùy ý sửa đổi từng mức giá riêng biệt.
+                      </p>
+                    </div>
                   </div>
-                  <div className="h-44 border border-gray-200 rounded-lg overflow-y-auto p-3 space-y-2.5 bg-gray-50/50">
-                    {filteredAllIngredients.length === 0 ? (
-                      <p className="text-tiny text-gray-400 italic">Không tìm thấy hoạt chất nào.</p>
-                    ) : (
-                      filteredAllIngredients.map(ing => {
-                        const isChecked = selectedIngredients[ing.id] !== undefined
-                        return (
-                          <div key={ing.id} className="flex items-center justify-between gap-3 p-1.5 hover:bg-gray-100/50 rounded-md transition-colors">
-                            <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                </div>
+              )}
+
+              {/* ────────────────── Tab 3: Composition & Treatment ────────────────── */}
+              {activeTab === 'ingredients' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start h-full animate-in fade-in duration-200">
+                  {/* Left Column: Active Ingredients */}
+                  <div className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col h-[350px] lg:h-[400px]">
+                    <h4 className="text-body-md font-bold text-gray-700 border-b border-gray-200 pb-3 flex items-center justify-between">
+                      <span>Thành phần hoạt chất</span>
+                      <span className="text-[11px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold">
+                        Đã chọn {Object.keys(selectedIngredients).length}
+                      </span>
+                    </h4>
+                    <div className="relative my-3">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                      <input
+                        type="text"
+                        placeholder="Tìm kiếm nhanh hoạt chất..."
+                        className="w-full h-9 pl-9 pr-3 border border-gray-200 rounded-lg text-body-sm focus:outline-none focus:border-blue-500 bg-gray-50 focus:bg-white transition-all"
+                        value={ingSearch}
+                        onChange={e => setIngSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
+                      {filteredAllIngredients.length === 0 ? (
+                        <p className="text-tiny text-gray-400 italic text-center py-8">Không tìm thấy hoạt chất nào.</p>
+                      ) : (
+                        filteredAllIngredients.map(ing => {
+                          const isChecked = selectedIngredients[ing.id] !== undefined
+                          return (
+                            <div key={ing.id} className={`flex items-center justify-between gap-3 p-2 rounded-xl border transition-all ${
+                              isChecked ? 'border-blue-200 bg-blue-50/20 shadow-sm' : 'border-gray-100 hover:bg-gray-50'
+                            }`}>
+                              <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  className="w-4.5 h-4.5 border-gray-300 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  checked={isChecked}
+                                  onChange={e => {
+                                    setSelectedIngredients(prev => {
+                                      const copy = { ...prev }
+                                      if (e.target.checked) {
+                                        copy[ing.id] = ''
+                                      } else {
+                                        delete copy[ing.id]
+                                      }
+                                      return copy
+                                    })
+                                  }}
+                                />
+                                <span className="text-body-sm font-semibold text-gray-700 truncate" title={ing.name}>
+                                  {ing.name}
+                                </span>
+                              </label>
+                              {isChecked && (
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="Hàm lượng (VD: 500mg, 20%)"
+                                  className="w-32 h-8 px-2 border border-blue-200 rounded-lg text-body-sm focus:outline-none focus:border-blue-500 font-semibold bg-white"
+                                  value={selectedIngredients[ing.id]}
+                                  onChange={e => {
+                                    const val = e.target.value
+                                    setSelectedIngredients(prev => ({
+                                      ...prev,
+                                      [ing.id]: val
+                                    }))
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Disease Indications */}
+                  <div className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm flex flex-col h-[350px] lg:h-[400px]">
+                    <h4 className="text-body-md font-bold text-gray-700 border-b border-gray-200 pb-3 flex items-center justify-between">
+                      <span>Chỉ định điều trị bệnh lý</span>
+                      <span className="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">
+                        Đã chọn {selectedDiseaseIds.length}
+                      </span>
+                    </h4>
+                    <div className="relative my-3">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                      <input
+                        type="text"
+                        placeholder="Tìm kiếm bệnh lý..."
+                        className="w-full h-9 pl-9 pr-3 border border-gray-200 rounded-lg text-body-sm focus:outline-none focus:border-blue-500 bg-gray-50 focus:bg-white transition-all"
+                        value={disSearch}
+                        onChange={e => setDisSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
+                      {filteredAllDiseases.length === 0 ? (
+                        <p className="text-tiny text-gray-400 italic text-center py-8">Không tìm thấy bệnh lý nào.</p>
+                      ) : (
+                        filteredAllDiseases.map(dis => {
+                          const isChecked = selectedDiseaseIds.includes(dis.id)
+                          return (
+                            <label key={dis.id} className={`flex items-center gap-3 cursor-pointer p-2 rounded-xl border transition-all ${
+                              isChecked ? 'border-emerald-200 bg-emerald-50/10 shadow-sm' : 'border-gray-100 hover:bg-gray-50'
+                            }`}>
                               <input
                                 type="checkbox"
-                                className="w-4.5 h-4.5 border-gray-300 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                className="w-4.5 h-4.5 border-gray-300 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                                 checked={isChecked}
                                 onChange={e => {
-                                  setSelectedIngredients(prev => {
-                                    const copy = { ...prev }
-                                    if (e.target.checked) {
-                                      copy[ing.id] = ''
-                                    } else {
-                                      delete copy[ing.id]
-                                    }
-                                    return copy
-                                  })
+                                  if (e.target.checked) {
+                                    setSelectedDiseaseIds(prev => [...prev, dis.id])
+                                  } else {
+                                    setSelectedDiseaseIds(prev => prev.filter(id => id !== dis.id))
+                                  }
                                 }}
                               />
-                              <span className="text-body-sm font-semibold text-gray-700 truncate" title={ing.name}>
-                                {ing.name}
-                              </span>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-body-sm font-semibold text-gray-700 truncate">
+                                  {dis.name}
+                                </span>
+                                <span className="text-[10px] font-mono text-gray-400 font-bold uppercase">{dis.code}</span>
+                              </div>
                             </label>
-                            {isChecked && (
-                              <input
-                                type="text"
-                                required
-                                placeholder="Hàm lượng (VD: 500mg, 20%)"
-                                className="w-36 h-8 px-2 border border-gray-200 rounded-md text-body-sm focus:outline-none focus:border-blue-500 font-semibold bg-white"
-                                value={selectedIngredients[ing.id]}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  setSelectedIngredients(prev => ({
-                                    ...prev,
-                                    [ing.id]: val
-                                  }))
-                                }}
-                              />
-                            )}
-                          </div>
-                        )
-                      })
-                    )}
+                          )
+                        })
+                      )}
+                    </div>
                   </div>
                 </div>
+              )}
 
-                {/* Disease Indications Checklist */}
-                <div className="space-y-2">
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">
-                    Chỉ định điều trị bệnh lý
-                  </label>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                    <input
-                      type="text"
-                      placeholder="Tìm bệnh lý..."
-                      className="w-full h-8 pl-8 pr-3 border border-gray-200 rounded-lg text-body-sm focus:outline-none focus:border-blue-500 bg-gray-50"
-                      value={disSearch}
-                      onChange={e => setDisSearch(e.target.value)}
-                    />
+              {/* ────────────────── Tab 4: Technical & Safety ────────────────── */}
+              {activeTab === 'technical' && (
+                <div className="space-y-6 max-w-3xl mx-auto animate-in fade-in duration-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Điều kiện bảo quản
+                      </label>
+                      <textarea
+                        rows={3}
+                        className="w-full border border-gray-200 rounded-lg text-body-md p-3 focus:outline-none focus:border-blue-500 leading-normal bg-white"
+                        placeholder="VD: Tránh ánh sáng trực tiếp, bảo quản từ 2 - 8°C đối với vaccine..."
+                        value={storageCondition}
+                        onChange={e => setStorageCondition(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Hướng dẫn sử dụng & Liều dùng
+                      </label>
+                      <textarea
+                        rows={3}
+                        className="w-full border border-gray-200 rounded-lg text-body-md p-3 focus:outline-none focus:border-blue-500 leading-normal bg-white"
+                        placeholder="VD: Pha nước uống hoặc trộn thức ăn theo tỷ lệ 1g/10kg thể trọng..."
+                        value={usageInstructions}
+                        onChange={e => setUsageInstructions(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div className="h-44 border border-gray-200 rounded-lg overflow-y-auto p-3 space-y-2 bg-gray-50/50">
-                    {filteredAllDiseases.length === 0 ? (
-                      <p className="text-tiny text-gray-400 italic">Không tìm thấy bệnh lý nào.</p>
-                    ) : (
-                      filteredAllDiseases.map(dis => {
-                        const isChecked = selectedDiseaseIds.includes(dis.id)
-                        return (
-                          <label key={dis.id} className="flex items-center gap-2 cursor-pointer p-1.5 hover:bg-gray-100/50 rounded-md transition-colors">
-                            <input
-                              type="checkbox"
-                              className="w-4.5 h-4.5 border-gray-300 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                              checked={isChecked}
-                              onChange={e => {
-                                if (e.target.checked) {
-                                  setSelectedDiseaseIds(prev => [...prev, dis.id])
-                                } else {
-                                  setSelectedDiseaseIds(prev => prev.filter(id => id !== dis.id))
-                                }
-                              }}
-                            />
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-body-sm font-semibold text-gray-700 truncate">
-                                {dis.name}
-                              </span>
-                              <span className="text-[10px] font-mono text-gray-400 font-bold uppercase">{dis.code}</span>
-                            </div>
-                          </label>
-                        )
-                      })
-                    )}
-                  </div>
-                </div>
 
-                {/* Technical Instructions */}
-                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Điều kiện bảo quản
+                      Chống chỉ định & Cảnh báo an toàn
                     </label>
                     <textarea
-                      rows={2}
-                      className="w-full border border-gray-200 rounded-lg text-body-md p-3 focus:outline-none focus:border-blue-500 resize-none leading-normal"
-                      placeholder="VD: Tránh ánh sáng, 2-8°C..."
-                      value={storageCondition}
-                      onChange={e => setStorageCondition(e.target.value)}
+                      rows={3}
+                      className="w-full border border-gray-200 rounded-lg text-body-md p-3 focus:outline-none focus:border-blue-500 leading-normal bg-white"
+                      placeholder="VD: Không sử dụng cho con vật mẫn cảm với penicillin..."
+                      value={contraindications}
+                      onChange={e => setContraindications(e.target.value)}
                     />
                   </div>
-                  <div>
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Hướng dẫn sử dụng
-                    </label>
-                    <textarea
-                      rows={2}
-                      className="w-full border border-gray-200 rounded-lg text-body-md p-3 focus:outline-none focus:border-blue-500 resize-none leading-normal"
-                      placeholder="VD: Pha nước uống..."
-                      value={usageInstructions}
-                      onChange={e => setUsageInstructions(e.target.value)}
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-tiny font-bold text-gray-455 uppercase tracking-wider mb-2">
-                    Chống chỉ định & Cảnh báo an toàn
-                  </label>
-                  <textarea
-                    rows={2}
-                    className="w-full border border-gray-200 rounded-lg text-body-md p-3 focus:outline-none focus:border-blue-500 resize-none leading-normal"
-                    placeholder="VD: Không sử dụng cho các động vật mẫn cảm..."
-                    value={contraindications}
-                    onChange={e => setContraindications(e.target.value)}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Thời gian ngưng (Thịt - ngày)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500"
-                      placeholder="VD: 7"
-                      value={withdrawalPeriodMeat}
-                      onChange={e => setWithdrawalPeriodMeat(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Thời gian ngưng (Sữa/trứng - ngày)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500"
-                      placeholder="VD: 3"
-                      value={withdrawalPeriodMilkEgg}
-                      onChange={e => setWithdrawalPeriodMilkEgg(e.target.value)}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
+                    <div>
+                      <label className="block text-tiny font-bold text-gray-450 uppercase tracking-wider mb-2">
+                        Thời gian ngưng thuốc khai thác Thịt (ngày)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 font-semibold"
+                        placeholder="VD: 7 (Bỏ trống nếu không có)"
+                        value={withdrawalPeriodMeat}
+                        onChange={e => setWithdrawalPeriodMeat(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                        Thời gian ngưng khai thác Sữa / Trứng (ngày)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 font-semibold"
+                        placeholder="VD: 3 (Bỏ trống nếu không có)"
+                        value={withdrawalPeriodMilkEgg}
+                        onChange={e => setWithdrawalPeriodMilkEgg(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
-          </div>
 
-          {/* Footer Buttons */}
-          <div className="border-t border-gray-100 pt-4 flex items-center justify-end gap-3 mt-4 shrink-0 bg-white z-10">
-              <button
-                type="button"
-                onClick={onClose}
-                className="h-10 px-5 border border-gray-200 rounded-lg text-body-md font-semibold text-gray-600 hover:bg-gray-50 transition-all"
-                disabled={submitting}
-              >
-                Hủy
-              </button>
-              <button
-                type="submit"
-                className="h-10 px-6 bg-blue-500 text-gray-0 rounded-lg text-body-md font-bold hover:bg-blue-600 active:scale-[0.98] transition-all flex items-center gap-2 shadow-sm"
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-gray-0 border-t-transparent rounded-full animate-spin"></div>
-                    Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <Check size={16} />
-                    Lưu sản phẩm
-                  </>
+            {/* Footer Buttons */}
+            <div className="border-t border-gray-100 pt-4 flex items-center justify-between shrink-0 bg-white z-10">
+              <div>
+                {activeTab !== 'basic' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeTab === 'pricing') setActiveTab('basic')
+                      else if (activeTab === 'ingredients') setActiveTab('pricing')
+                      else if (activeTab === 'technical') setActiveTab('ingredients')
+                    }}
+                    className="h-10 px-4 border border-gray-200 text-gray-600 hover:text-gray-800 rounded-lg text-body-md font-bold hover:bg-gray-50 transition-all flex items-center gap-1.5"
+                  >
+                    <ChevronLeft size={16} />
+                    Quay lại
+                  </button>
                 )}
-              </button>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-10 px-5 border border-gray-200 text-gray-500 hover:text-gray-700 rounded-lg text-body-md font-semibold hover:bg-gray-50 transition-all"
+                  disabled={submitting}
+                >
+                  Hủy
+                </button>
+                
+                {activeTab !== 'technical' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeTab === 'basic') setActiveTab('pricing')
+                      else if (activeTab === 'pricing') setActiveTab('ingredients')
+                      else if (activeTab === 'ingredients') setActiveTab('technical')
+                    }}
+                    className="h-10 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-body-md font-bold transition-all flex items-center gap-1.5"
+                  >
+                    Tiếp tục
+                    <ChevronRight size={16} />
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  className="h-10 px-6 bg-blue-600 text-white rounded-lg text-body-md font-bold hover:bg-blue-700 active:scale-[0.98] transition-all flex items-center gap-2 shadow-md"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      Lưu sản phẩm
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
         )}

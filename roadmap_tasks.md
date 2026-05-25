@@ -226,6 +226,17 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **Tích Hợp Dynamic Options vào Khách Hàng**:
   - Tải động danh mục phân loại và hạng từ cơ sở dữ liệu trên trang Danh sách khách hàng, Chi tiết khách hàng và Form thêm mới.
   - Đảm bảo các bộ lọc và form lựa chọn chỉ hiển thị các cấu hình đang hoạt động (`is_active = true`), nhưng hiển thị nhãn cũ đầy đủ cho các bản ghi khách hàng lịch sử.
+  - Sửa lỗi **Đơn vị tính không load**: Đặt danh sách đơn vị mặc định tức thì trước khi gọi API, override khi API thành công, giữ fallback nếu API lỗi. Select `Đơn vị tính` không còn trống.
+  - Sửa lỗi **Danh mục & Thương hiệu không load**: Thêm option `-- Chọn danh mục --` và `-- Chọn thương hiệu --` (value rỗng) làm default để không bị trống select khi data chưa load. Thêm warning log chi tiết cho mỗi bảng bị lỗi khi query.
+  - Sửa `EditProductModal` tương tự: fallback units tức thì, warning logs, hiển thị đơn vị hiện tại của sản phẩm dù không có trong danh sách mới load.
+  - Ghi nhận **cách chạy migration**: Chạy file `20260525000007_seed_product_categories_and_brands.sql` qua Supabase SQL Editor để populate data.
+  - **Root cause fix**: Bỏ `.eq('is_active', true)` ở server-side, thay bằng filter phía client `.filter(x => x.is_active !== false)` để tránh xung đột RLS + column filter.
+  - Đồng bộ `units` với localStorage của `ManageUnitsModal` (đọc `product-units` từ localStorage trước, override khi DB có data).
+- [x] **Bugfix Định tuyến (Routing) - App.tsx (2026-05-25)**:
+  - Phát hiện và sửa lỗi **xung đột thứ tự route** trong [App.tsx](file:///d:/CRMSANHLONGVETCO/src/App.tsx): các route cụ thể (`/products/prices`, `/products/ingredients`) bị khai báo SAU route wildcard `/products/:id` → React Router match nhầm và render `ProductDetailPage` khi truy cập `/products/prices` hoặc `/products/ingredients`.
+  - Áp dụng quy tắc: **Route cụ thể PHẢI đứng TRƯỚC route wildcard `:id`**. Thứ tự đúng: `/products/prices` → `/products/ingredients` → `/products/:id`.
+  - Đồng thời sửa luôn `/orders/pos` và `/orders/mobile` (đặt trước `/orders/:id`) và `/herd-projects/new` (đặt trước `/herd-projects/:id`) để tránh lỗi tương tự.
+  - Xóa route `/products/ingredients` bị khai báo duplicate ở cuối file.
 - [x] **Tính Năng Import & Export Khách Hàng**:
   - Tích hợp tính năng **Export CSV** danh sách khách hàng hiện tại theo bộ lọc, hỗ trợ encoding UTF-8 BOM hiển thị tiếng Việt chuẩn trên Excel.
   - Tối giản hóa quy trình **Import CSV** khách hàng: Chỉ yêu cầu 2 trường Tên khách hàng (bắt buộc) và Số điện thoại (tùy chọn, có thể để trống). Hỗ trợ tải tệp tin mẫu (.csv) trực tiếp từ thư mục tĩnh của máy chủ.
@@ -264,5 +275,22 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **Lịch sử Dịch tễ & Cảnh báo kháng thuốc trên CRM**:
   - [x] Hiển thị trục thời gian lịch sử dịch tễ và các đợt bùng dịch của khách hàng.
   - [x] Cảnh báo kháng thuốc (Drug Resistance alerts) nếu phát hiện trang trại lặp lại cùng một hoạt chất quá nhiều lứa liên tục.
-
-
+- [x] **Bugfix Modal Sản phẩm (2026-05-25)**:
+  - Tạo migration `20260525000007_seed_product_categories_and_brands.sql` bổ sung dữ liệu seed cho `product_categories` (10 nhóm thú y), `brands` (16 thương hiệu), `price_lists` (3 bảng giá chuẩn) và `product_units` (14 đơn vị tính) trên Supabase.
+  - Sửa lỗi **Mã SKU không tự sinh**: SKU nay sinh tự động ngay khi modal mở (không cần chờ chọn category). Khi chọn category thì prefix sẽ cập nhật lại (VAC-, MED-, PAR-, NUT-, SUP-, EQU-, CHM-, FEED-). Có fallback timestamp nếu DB lỗi.
+  - Sửa lỗi **Đơn vị tính không load**: Đặt danh sách đơn vị mặc định tức thì trước khi gọi API, override khi API thành công, giữ fallback nếu API lỗi. Select `Đơn vị tính` không còn trống.
+  - Sửa lỗi **Danh mục & Thương hiệu không load**: Thêm option `-- Chọn danh mục --` và `-- Chọn thương hiệu --` (value rỗng) làm default để không bị trống select khi data chưa load. Thêm warning log chi tiết cho mỗi bảng bị lỗi khi query.
+  - Sửa `EditProductModal` tương tự: fallback units tức thì, warning logs, hiển thị đơn vị hiện tại của sản phẩm dù không có trong danh sách mới load.
+  - Sửa lỗi **Modal tự động hiển thị đè màn hình khi vừa vào trang**: Bổ sung kiểm tra `if (!isOpen) return null` vào [AddProductModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/AddProductModal.tsx) để tránh việc modal luôn render lớp phủ và khung giao diện đè lên danh sách sản phẩm ngay cả khi trạng thái `isAddModalOpen` là `false`.
+  - Ghi nhận **cách chạy migration**: Chạy file `20260525000007_seed_product_categories_and_brands.sql` qua Supabase SQL Editor để populate data.
+- [x] **Bugfix Tải dữ liệu hoạt chất & ma trận (2026-05-25)**:
+  - Sửa lỗi `Could not find a relationship between 'active_ingredients' and 'pharmacological_groups' in the schema cache` khi tải dữ liệu hoạt chất do các migration `20260525000006` và `20260525000007` chưa được thực thi trên môi trường cơ sở dữ liệu từ xa (remote database).
+  - Tích hợp cơ chế dò tìm động và tự động chuyển đổi thông minh (Dynamic Fallback Mode) trong [ActiveIngredientsPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ActiveIngredientsPage.tsx) và [DiseasesPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/DiseasesPage.tsx): Tự động phát hiện xem các bảng cài đặt động (`pharmacological_groups`, `disease_etiologies`, `compatibility_interaction_types`) có tồn tại trong cơ sở dữ liệu hay không.
+  - Nếu có (đã chạy migration), hệ thống hoạt động đầy đủ theo mô hình quan hệ; nếu chưa (chưa chạy migration), hệ thống tự động rơi về chế độ Fallback sử dụng các trường văn bản cũ (`pharmacological_group`, `etiology`) một cách trơn tru, không gây crash trang.
+  - Nâng cấp [EditProductModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/EditProductModal.tsx) bọc cả thao tác tải dữ liệu (load) và chỉnh sửa (update/delete) liên quan đến chỉ định bệnh (`product_indications`) vào các khối try-catch an toàn, bỏ qua lỗi nếu bảng chưa tồn tại trên cơ sở dữ liệu, đảm bảo mở modal, cập nhật thông tin sản phẩm và bảng giá vẫn diễn ra bình thường.
+  - Ghi nhận cách chạy các migration bổ sung: Chạy file `20260525000006_add_product_diseases_and_settings_entities.sql` and `20260525000007_seed_product_categories_and_brands.sql` qua Supabase SQL Editor khi muốn kích hoạt đầy đủ các tính năng quản lý danh mục động này trên cơ sở dữ liệu.
+- [x] **Redesign Modals Sản phẩm & Sửa lỗi biên dịch (2026-05-25)**:
+  - Cải tiến giao diện modal thêm mới (`AddProductModal`) và cập nhật (`EditProductModal`) thành dạng cửa sổ căn giữa rộng rãi (`max-w-5xl h-[85vh]`) phân chia 4 tab tiện lợi (Thông tin chung, Giá & Bảng giá, Thành phần & Chỉ định, Thông số kỹ thuật) giúp giao diện tường minh, rộng rãi và tối ưu hóa diện tích hiển thị.
+  - Sửa lỗi biên dịch do thiếu thẻ đóng `</div>` ở phần cuối mã nguồn của cả hai modal.
+  - Khắc phục lỗi TypeScript type mismatch tại trang [ActiveIngredientsPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ActiveIngredientsPage.tsx) (ép kiểu `comp.interaction_type` thành `'synergy' | 'antagonism'`).
+  - Dọn dẹp và chuẩn hóa toàn bộ các lớp CSS màu Tailwind không tồn tại (ví dụ: `gray-150`, `gray-250`...) trên tất cả các trang liên quan đến phân hệ sản phẩm thành các màu chuẩn của dự án để đảm bảo các thành phần giao diện, nút bấm, ô nhập liệu hiển thị chính xác.

@@ -171,15 +171,19 @@ export default function ProductDetailPage() {
       }
 
       // Fetch disease indications
-      const { data: indData } = await supabase
-        .from('product_indications')
-        .select(`
-          disease:disease_dictionary(id, name, code)
-        `)
-        .eq('product_id', id)
-      
-      if (indData) {
-        setProductIndications(indData as unknown as LinkedDiseaseIndication[])
+      try {
+        const { data: indData, error: indError } = await supabase
+          .from('product_indications')
+          .select(`
+            disease:disease_dictionary(id, name, code)
+          `)
+          .eq('product_id', id)
+        
+        if (!indError && indData) {
+          setProductIndications(indData as unknown as LinkedDiseaseIndication[])
+        }
+      } catch (e: any) {
+        console.warn('Could not load product indications (table may not exist):', e.message)
       }
 
       // 2. Fetch variants
@@ -399,7 +403,7 @@ export default function ProductDetailPage() {
     return (
       <Layout activeMenu="Sản phẩm">
         <div className="py-32 flex flex-col items-center justify-center text-gray-400">
-          <div className="w-12 h-12 border-4 border-gray-150 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+          <div className="w-12 h-12 border-4 border-gray-100 border-t-blue-500 rounded-full animate-spin mb-4"></div>
           <span className="text-body-md">Đang tải chi tiết sản phẩm...</span>
         </div>
       </Layout>
@@ -440,7 +444,7 @@ export default function ProductDetailPage() {
             </button>
             <div className="flex items-center flex-wrap gap-3 mt-1">
               <h2 className="text-display-xs font-bold text-gray-800">{product.name}</h2>
-              <span className="px-2.5 py-0.5 bg-gray-50 border border-gray-150 text-gray-500 text-tiny font-semibold rounded-md uppercase">
+              <span className="px-2.5 py-0.5 bg-gray-50 border border-gray-100 text-gray-500 text-tiny font-semibold rounded-md uppercase">
                 SKU: {product.sku}
               </span>
               <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold ${
@@ -677,10 +681,10 @@ export default function ProductDetailPage() {
                           <span>Không có biến thể phụ. Sản phẩm sử dụng quy cách đóng gói cơ bản: <strong>{product.package_specs || 'Mặc định'}</strong>.</span>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto border border-gray-150 rounded-lg">
+                        <div className="overflow-x-auto border border-gray-100 rounded-lg">
                           <table className="w-full text-left border-collapse bg-gray-0 text-body-md">
                             <thead>
-                              <tr className="bg-gray-50 border-b border-gray-150">
+                              <tr className="bg-gray-50 border-b border-gray-100">
                                 <th className="p-3 text-gray-500 font-semibold">Mã SKU</th>
                                 <th className="p-3 text-gray-500 font-semibold">Tên quy cách</th>
                                 <th className="p-3 text-gray-500 font-semibold">Thuộc tính</th>
@@ -741,7 +745,7 @@ export default function ProductDetailPage() {
                               <div
                                 key={lot.id}
                                 className={`p-4 border rounded-xl shadow-sm relative overflow-hidden bg-gray-0 transition-all hover:border-gray-350 ${
-                                  isExpired ? 'border-red-100 bg-red-50/10' : 'border-gray-150'
+                                  isExpired ? 'border-red-100 bg-red-50/10' : 'border-gray-100'
                                 }`}
                               >
                                 {/* Status badges */}
@@ -838,7 +842,7 @@ export default function ProductDetailPage() {
                               {simulatedAllocation.map((alloc, idx) => {
                                 const lotObj = lots.find(l => l.id === alloc.lotId)
                                 return (
-                                  <div key={alloc.lotId} className="flex items-center justify-between text-body-md p-2.5 bg-gray-0 border border-gray-150 rounded-lg shadow-sm">
+                                  <div key={alloc.lotId} className="flex items-center justify-between text-body-md p-2.5 bg-gray-0 border border-gray-100 rounded-lg shadow-sm">
                                     <div className="flex items-center gap-2">
                                       <span className="w-5 h-5 bg-blue-100 text-blue-600 text-[10px] font-bold rounded-full flex items-center justify-center">
                                         {idx + 1}

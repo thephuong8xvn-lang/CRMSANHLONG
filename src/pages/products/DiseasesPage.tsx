@@ -87,6 +87,7 @@ export default function DiseasesPage() {
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [hasEtiologiesTable, setHasEtiologiesTable] = useState(false)
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // Search & Filter
@@ -133,26 +134,54 @@ export default function DiseasesPage() {
       const { data: ingData } = await supabase.from('active_ingredients').select('id, name, code').eq('is_active', true).order('name')
       if (ingData) setIngredients(ingData)
 
+      // Check if disease_etiologies table exists
+      let useRelationalMode = false
+      try {
+        const { error: checkError } = await supabase
+          .from('disease_etiologies')
+          .select('id')
+          .limit(1)
+        if (!checkError) {
+          useRelationalMode = true
+        }
+      } catch (e) {
+        // Table doesn't exist
+      }
+      setHasEtiologiesTable(useRelationalMode)
+
       // 3. Fetch Diseases with species
-      const { data: disData, error: disError } = await supabase
-        .from('disease_dictionary')
-        .select(`
+      let selectQuery = `
+        *,
+        disease_species(
+          species:species(id, name, category)
+        )
+      `
+      if (useRelationalMode) {
+        selectQuery = `
           *,
           disease_etiologies(id, name, pathogen_type, subgroup),
           disease_species(
             species:species(id, name, category)
           )
-        `)
+        `
+      }
+
+      const { data: disData, error: disError } = await supabase
+        .from('disease_dictionary')
+        .select(selectQuery)
         .order('name')
       
       if (disError) throw disError
-      // Fetch disease etiologies
-      const { data: etData, error: etError } = await supabase
-        .from('disease_etiologies')
-        .select('*')
-        .order('name')
-      if (etError) throw etError
-      if (etData) setEtiologies(etData)
+
+      // Fetch disease etiologies if table exists
+      if (useRelationalMode) {
+        const { data: etData, error: etError } = await supabase
+          .from('disease_etiologies')
+          .select('*')
+          .order('name')
+        if (etError) throw etError
+        if (etData) setEtiologies(etData)
+      }
 
       if (disData) {
         const loadedDiseases = disData as unknown as Disease[]
@@ -252,15 +281,18 @@ export default function DiseasesPage() {
 
     setSaving(true)
     try {
-      const payload = {
+      const payload: any = {
         code: disCode.trim().toUpperCase(),
         name: disName.trim(),
         category: disCategory,
         etiology: disEtiology,
-        etiology_id: disEtiologyId || null,
         description: disDescription.trim() || null,
         is_notifiable: disIsNotifiable,
         symptoms: disSymptoms
+      }
+
+      if (hasEtiologiesTable) {
+        payload.etiology_id = disEtiologyId || null
       }
 
       let diseaseId = ''
@@ -748,7 +780,7 @@ export default function DiseasesPage() {
           
           {/* Left Column: Disease List */}
           <div className="lg:col-span-5 bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden flex flex-col max-h-[650px]">
-            <div className="p-4 border-b border-gray-150 bg-gray-25 shrink-0 flex justify-between items-center">
+            <div className="p-4 border-b border-gray-100 bg-gray-25 shrink-0 flex justify-between items-center">
               <span className="font-bold text-gray-800 text-body-lg">Danh sách bệnh lý ({filteredDiseases.length})</span>
             </div>
             
@@ -875,7 +907,7 @@ export default function DiseasesPage() {
                       <div className="flex flex-wrap gap-1">
                         {currentDisease.symptoms && currentDisease.symptoms.length > 0 ? (
                           currentDisease.symptoms.map((sym, i) => (
-                            <span key={i} className="bg-white border border-gray-150 text-gray-700 text-tiny px-2 py-0.5 rounded font-medium shadow-sm">
+                            <span key={i} className="bg-white border border-gray-100 text-gray-700 text-tiny px-2 py-0.5 rounded font-medium shadow-sm">
                               {sym}
                             </span>
                           ))
@@ -1304,7 +1336,7 @@ export default function DiseasesPage() {
                     <button
                       type="button"
                       onClick={handleAddSymptom}
-                      className="bg-gray-100 hover:bg-gray-200 border border-gray-150 text-gray-700 px-4 rounded-lg font-bold text-body-sm"
+                      className="bg-gray-100 hover:bg-gray-200 border border-gray-100 text-gray-700 px-4 rounded-lg font-bold text-body-sm"
                     >
                       Thêm
                     </button>
@@ -1312,7 +1344,7 @@ export default function DiseasesPage() {
 
                   <div className="flex flex-wrap gap-1.5 border border-gray-100 p-3 rounded-lg min-h-16 bg-gray-25/55">
                     {disSymptoms.map((sym, idx) => (
-                      <span key={idx} className="bg-white border border-gray-150 text-gray-700 text-body-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm font-medium">
+                      <span key={idx} className="bg-white border border-gray-100 text-gray-700 text-body-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-sm font-medium">
                         {sym}
                         <button
                           type="button"
@@ -1502,7 +1534,7 @@ export default function DiseasesPage() {
                 <h3 className="text-body-lg font-bold text-gray-800">
                   {selectedSpecies ? 'Cập nhật loài vật nuôi' : 'Thêm loài vật nuôi mới'}
                 </h3>
-                <button onClick={() => setShowSpeciesModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                <button onClick={() => setShowSpeciesModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                   <X size={20} />
                 </button>
               </div>
@@ -1563,7 +1595,7 @@ export default function DiseasesPage() {
                 <h3 className="text-body-lg font-bold text-gray-800">
                   {selectedEtiology ? 'Cập nhật phân nhóm nguyên nhân' : 'Thêm phân nhóm nguyên nhân mới'}
                 </h3>
-                <button onClick={() => setShowEtiologyModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                <button onClick={() => setShowEtiologyModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
                   <X size={20} />
                 </button>
               </div>

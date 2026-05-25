@@ -174,9 +174,9 @@ export default function ManageBrandsModal({ isOpen, onClose, onSuccess }: Manage
       <div className="bg-white w-full max-w-2xl rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 shrink-0">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25 shrink-0">
           <h3 className="text-body-lg font-bold text-gray-700">Quản lý Thương hiệu</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-150 rounded-full text-gray-400">
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400">
             <X size={20} />
           </button>
         </div>
