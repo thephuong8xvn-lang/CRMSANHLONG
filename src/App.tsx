@@ -30,6 +30,9 @@ import HerdProjectListPage from './pages/herd-projects/HerdProjectListPage'
 import HerdProjectFormPage from './pages/herd-projects/HerdProjectFormPage'
 import HerdProjectDetailPage from './pages/herd-projects/HerdProjectDetailPage'
 import SystemSettingsPage from './pages/system/SystemSettingsPage'
+import ActiveIngredientsPage from './pages/products/ActiveIngredientsPage'
+import CustomerSettingsPage from './pages/customers/CustomerSettingsPage'
+import DiseasesPage from './pages/products/DiseasesPage'
 import { DisplaySettingsProvider } from './contexts/DisplaySettingsContext'
 
 
@@ -76,6 +79,7 @@ function AppRoutes() {
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
       <Route path="/customers" element={<PrivateRoute><CustomerListPage /></PrivateRoute>} />
+      <Route path="/customers/settings" element={<PrivateRoute><CustomerSettingsPage /></PrivateRoute>} />
       <Route path="/customers/:id" element={<PrivateRoute><CustomerDetailPage /></PrivateRoute>} />
       <Route path="/products" element={<PrivateRoute><ProductListPage /></PrivateRoute>} />
       <Route path="/products/:id" element={<PrivateRoute><ProductDetailPage /></PrivateRoute>} />
@@ -100,6 +104,8 @@ function AppRoutes() {
       <Route path="/herd-projects" element={<PrivateRoute><HerdProjectListPage /></PrivateRoute>} />
       <Route path="/herd-projects/new" element={<PrivateRoute><HerdProjectFormPage /></PrivateRoute>} />
       <Route path="/herd-projects/:id" element={<PrivateRoute><HerdProjectDetailPage /></PrivateRoute>} />
+      <Route path="/products/ingredients" element={<PrivateRoute><ActiveIngredientsPage /></PrivateRoute>} />
+      <Route path="/diseases" element={<PrivateRoute><DiseasesPage /></PrivateRoute>} />
       <Route path="/system-settings" element={<PrivateRoute><SystemSettingsPage /></PrivateRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

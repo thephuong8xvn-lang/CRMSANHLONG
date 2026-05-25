@@ -19,7 +19,8 @@ import {
   Filter,
   UserCheck,
   Upload,
-  Download
+  Download,
+  Settings
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import AddCustomerModal from './AddCustomerModal'
@@ -383,6 +384,14 @@ export default function CustomerListPage() {
             <p className="text-body-md text-gray-400 mt-1">Quản lý và theo dõi thông tin đối tác kinh doanh</p>
           </div>
           <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
+            <button
+              onClick={() => navigate('/customers/settings')}
+              className="bg-white border border-gray-200 text-gray-600 px-4 h-11 rounded-lg font-semibold text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 active:scale-95 transition-all shadow-sm"
+              title="Cấu hình nhóm & phân loại khách hàng"
+            >
+              <Settings size={16} />
+              <span>Thiết lập</span>
+            </button>
             <button
               onClick={() => setIsImportModalOpen(true)}
               className="bg-white border border-gray-200 text-gray-600 px-4 h-11 rounded-lg font-semibold text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 active:scale-95 transition-all shadow-sm"

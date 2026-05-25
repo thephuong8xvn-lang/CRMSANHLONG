@@ -13,7 +13,13 @@ import {
   Smartphone,
   ChevronDown,
   User,
-  Receipt
+  Receipt,
+  HeartPulse,
+  Activity,
+  ShieldAlert,
+  Sparkles,
+  Stethoscope,
+  Check
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -26,6 +32,16 @@ interface Customer {
   credit_limit: number
   price_list_id: string | null
   value_tier: string
+}
+
+interface ProductActiveIngredient {
+  active_ingredient_id: string
+  percentage_or_dosage: string
+  active_ingredient: {
+    id: string
+    name: string
+    code: string | null
+  } | null
 }
 
 interface Product {
@@ -46,6 +62,7 @@ interface Product {
     selling_price: number
     price_list: { id: string; code: string; name: string } | null
   }[]
+  product_active_ingredients?: ProductActiveIngredient[]
 }
 
 interface CartItem {
@@ -64,6 +81,44 @@ interface PriceList {
   is_default: boolean
 }
 
+interface Compatibility {
+  id: string
+  ingredient_a_id: string
+  ingredient_b_id: string
+  interaction_type: 'synergy' | 'antagonism'
+  description: string | null
+}
+
+interface Species {
+  id: string
+  name: string
+  category: string | null
+}
+
+interface Disease {
+  id: string
+  code: string
+  name: string
+  category: string | null
+  description: string | null
+  etiology: string | null
+  symptoms: string[]
+  disease_species?: { species_id: string }[]
+}
+
+interface Protocol {
+  id: string
+  active_ingredient_id: string
+  treatment_role: 'treatment' | 'support' | 'resistance'
+  treatment_line: number
+  notes: string | null
+  active_ingredient: {
+    id: string
+    name: string
+    code: string | null
+  }
+}
+
 interface InvoiceTab {
   id: string
   name: string
@@ -75,6 +130,8 @@ interface InvoiceTab {
   paymentAmount: number
   notes: string
   selectedPriceListId: string
+  selectedDiseaseId: string
+  treatmentPurpose: string
 }
 
 // Helpers for input masking and currency format
@@ -100,6 +157,21 @@ export default function POSPage() {
   const [categories, setCategories] = useState<{ id: string; code: string; name: string }[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
   const [priceLists, setPriceLists] = useState<PriceList[]>([])
+  const [compatibilities, setCompatibilities] = useState<Compatibility[]>([])
+  const [species, setSpecies] = useState<Species[]>([])
+  const [diseases, setDiseases] = useState<Disease[]>([])
+
+  // Antagonism Warnings State
+  const [antagonismWarnings, setAntagonismWarnings] = useState<string[]>([])
+
+  // Diagnosis Modal State
+  const [showDiagModal, setShowDiagModal] = useState(false)
+  const [diagSpeciesId, setDiagSpeciesId] = useState('')
+  const [diagSelectedSymptoms, setDiagSelectedSymptoms] = useState<string[]>([])
+  const [diagDiseaseSearch, setDiagDiseaseSearch] = useState('')
+  const [diagSelectedDiseaseId, setDiagSelectedDiseaseId] = useState('')
+  const [diagProtocols, setDiagProtocols] = useState<Protocol[]>([])
+  const [diagLoadingProtocols, setDiagLoadingProtocols] = useState(false)
 
   // Tabs management state
   const [tabs, setTabs] = useState<InvoiceTab[]>([
@@ -113,7 +185,9 @@ export default function POSPage() {
       customerSearchQuery: '',
       paymentAmount: 0,
       notes: '',
-      selectedPriceListId: ''
+      selectedPriceListId: '',
+      selectedDiseaseId: '',
+      treatmentPurpose: ''
     }
   ])
   const [activeTabId, setActiveTabId] = useState<string>('1')
@@ -145,6 +219,8 @@ export default function POSPage() {
   const paymentAmount = activeTab.paymentAmount
   const notes = activeTab.notes
   const selectedPriceListId = activeTab.selectedPriceListId
+  const selectedDiseaseId = activeTab.selectedDiseaseId || ''
+  const treatmentPurpose = activeTab.treatmentPurpose || ''
 
   const updateActiveTab = (fields: Partial<InvoiceTab>) => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, ...fields } : t))
@@ -184,6 +260,14 @@ export default function POSPage() {
     updateActiveTab({ paymentAmount: amount })
   }
 
+  const setSelectedDiseaseId = (diseaseId: string) => {
+    updateActiveTab({ selectedDiseaseId: diseaseId })
+  }
+
+  const setTreatmentPurpose = (purpose: string) => {
+    updateActiveTab({ treatmentPurpose: purpose })
+  }
+
   const setNotes = (notesText: string) => {
     updateActiveTab({ notes: notesText })
   }
@@ -202,6 +286,10 @@ export default function POSPage() {
       if (e.key === 'F4') {
         e.preventDefault()
         setPaymentMethod('bank_transfer')
+      }
+      if (e.key === 'F7') {
+        e.preventDefault()
+        setShowDiagModal(true)
       }
       if (e.key === 'F8') {
         e.preventDefault()
@@ -259,10 +347,30 @@ export default function POSPage() {
             image_urls,
             product_categories(id, code, name),
             brands(name),
-            price_list_items(price_list_id, cost_price, selling_price, price_list:price_lists(id, code, name))
+            price_list_items(price_list_id, cost_price, selling_price, price_list:price_lists(id, code, name)),
+            product_active_ingredients(active_ingredient_id, percentage_or_dosage, active_ingredient:active_ingredients(id, name, code))
           `)
           .eq('is_active', true)
         if (prodData) setProducts(prodData as unknown as Product[])
+
+        const { data: compatData } = await supabase
+          .from('active_ingredient_compatibility')
+          .select('*')
+        if (compatData) setCompatibilities(compatData as unknown as Compatibility[])
+
+        const { data: specData } = await supabase
+          .from('species')
+          .select('*')
+        if (specData) setSpecies(specData as unknown as Species[])
+
+        const { data: disData } = await supabase
+          .from('disease_dictionary')
+          .select(`
+            *,
+            disease_species(species_id)
+          `)
+        if (disData) setDiseases(disData as unknown as Disease[])
+
       } catch (err) {
         console.error('Error fetching data:', err)
       }
@@ -294,6 +402,69 @@ export default function POSPage() {
     }
     fetchDebt()
   }, [selectedCustomerId])
+
+  // Check for Antagonism in the cart
+  useEffect(() => {
+    if (cart.length < 2 || compatibilities.length === 0) {
+      setAntagonismWarnings([])
+      return
+    }
+
+    const activeIngMap: { [ingId: string]: string[] } = {}
+    cart.forEach(item => {
+      if (item.product.product_active_ingredients) {
+        item.product.product_active_ingredients.forEach(link => {
+          if (link.active_ingredient_id) {
+            const ingId = link.active_ingredient_id
+            if (!activeIngMap[ingId]) {
+              activeIngMap[ingId] = []
+            }
+            if (!activeIngMap[ingId].includes(item.product.name)) {
+              activeIngMap[ingId].push(item.product.name)
+            }
+          }
+        })
+      }
+    })
+
+    const warnings: string[] = []
+    const checkedPairs = new Set<string>()
+
+    compatibilities.forEach(rule => {
+      if (rule.interaction_type === 'antagonism') {
+        const hasA = activeIngMap[rule.ingredient_a_id]
+        const hasB = activeIngMap[rule.ingredient_b_id]
+
+        if (hasA && hasB) {
+          const pairKey1 = `${rule.ingredient_a_id}-${rule.ingredient_b_id}`
+          const pairKey2 = `${rule.ingredient_b_id}-${rule.ingredient_a_id}`
+
+          if (!checkedPairs.has(pairKey1) && !checkedPairs.has(pairKey2)) {
+            checkedPairs.add(pairKey1)
+            
+            const ingAName = cart
+              .flatMap(item => item.product.product_active_ingredients || [])
+              .find(link => link.active_ingredient_id === rule.ingredient_a_id)
+              ?.active_ingredient?.name || 'Hoạt chất A'
+
+            const ingBName = cart
+              .flatMap(item => item.product.product_active_ingredients || [])
+              .find(link => link.active_ingredient_id === rule.ingredient_b_id)
+              ?.active_ingredient?.name || 'Hoạt chất B'
+
+            const productsA = hasA.join(', ')
+            const productsB = hasB.join(', ')
+
+            warnings.push(
+              `Cảnh báo đối kháng thuốc: Hoạt chất "${ingAName}" (trong: ${productsA}) đối kháng với hoạt chất "${ingBName}" (trong: ${productsB}). ${rule.description || ''}`
+            )
+          }
+        }
+      }
+    })
+
+    setAntagonismWarnings(warnings)
+  }, [cart, compatibilities])
 
   // Update selected price list when customer changes
   useEffect(() => {
@@ -554,7 +725,9 @@ export default function POSPage() {
       customerSearchQuery: '',
       paymentAmount: 0,
       notes: '',
-      selectedPriceListId: defPlId
+      selectedPriceListId: defPlId,
+      selectedDiseaseId: '',
+      treatmentPurpose: ''
     }
     setTabs([...tabs, newTab])
     setActiveTabId(newId)
@@ -576,7 +749,9 @@ export default function POSPage() {
           customerSearchQuery: '',
           paymentAmount: 0,
           notes: '',
-          selectedPriceListId: defPlId
+          selectedPriceListId: defPlId,
+          selectedDiseaseId: '',
+          treatmentPurpose: ''
         }
       ])
       return
@@ -633,7 +808,9 @@ export default function POSPage() {
         grand_total: grandTotal,
         paid_amount: paymentMethod === 'credit' ? 0 : grandTotal,
         delivery_address: 'Giao trực tiếp tại quầy POS',
-        notes: notes || 'Đơn hàng bán lẻ từ hệ thống POS desktop.'
+        notes: notes || 'Đơn hàng bán lẻ từ hệ thống POS desktop.',
+        disease_id: selectedDiseaseId || null,
+        treatment_purpose: treatmentPurpose || null
       }
 
       const { data: orderData, error: orderErr } = await supabase
@@ -702,7 +879,9 @@ export default function POSPage() {
         customerSearchQuery: '',
         paymentAmount: 0,
         notes: '',
-        selectedPriceListId: defPlId
+        selectedPriceListId: defPlId,
+        selectedDiseaseId: '',
+        treatmentPurpose: ''
       })
       setAlertMsg({ type: 'success', text: `Hóa đơn ${orderCode} đã thanh toán thành công.` })
 
@@ -842,6 +1021,14 @@ export default function POSPage() {
           {/* Grid Toggle and Account Info */}
           <div className="flex items-center gap-3 shrink-0 ml-4">
             <button
+              onClick={() => setShowDiagModal(true)}
+              className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-tiny font-bold flex items-center gap-1.5 transition-colors border border-emerald-700 shadow-sm"
+              title="Chẩn đoán nhanh và tự động gợi ý sản phẩm theo phác đồ [F7]"
+            >
+              <Stethoscope size={13} />
+              <span>Chẩn đoán &amp; Gợi ý (F7)</span>
+            </button>
+            <button
               onClick={() => setShowGrid(prev => !prev)}
               className="px-3 py-1 rounded bg-[#006cc0] hover:bg-[#005ba3] text-tiny font-bold flex items-center gap-1.5 transition-colors border border-[#005ba3]"
             >
@@ -861,6 +1048,46 @@ export default function POSPage() {
           <div className={`flex flex-col p-3 border-r border-gray-150 overflow-hidden ${
             showGrid ? 'w-[45%]' : 'w-[80%]'
           } transition-all duration-300`}>
+
+            {/* Antagonism Warnings Alert Bar */}
+            {antagonismWarnings.length > 0 && (
+              <div className="mb-3 space-y-1.5 shrink-0 animate-in fade-in slide-in-from-top duration-300">
+                {antagonismWarnings.map((warn, i) => (
+                  <div key={i} className="flex items-start gap-2 p-2.5 bg-red-50 text-red-900 border border-red-200 rounded-lg text-body-sm font-semibold leading-relaxed shadow-sm">
+                    <ShieldAlert className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <span>{warn}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Disease Diagnosed Badge (if any) */}
+            {selectedDiseaseId && (
+              <div className="mb-3 shrink-0 flex items-center justify-between bg-blue-50/50 border border-blue-100 p-2.5 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Stethoscope size={16} className="text-blue-600 font-bold" />
+                  <span className="text-body-sm text-gray-700 font-medium">
+                    Chẩn đoán: <strong className="text-blue-800 font-bold">{diseases.find(d => d.id === selectedDiseaseId)?.name}</strong>
+                  </span>
+                  {treatmentPurpose && (
+                    <span className="text-tiny bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-semibold font-mono">
+                      Mục đích: {treatmentPurpose}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDiseaseId('')
+                    setTreatmentPurpose('')
+                  }}
+                  className="text-gray-400 hover:text-gray-650"
+                  title="Xóa liên kết bệnh lý"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
             
             {/* Table Container */}
             <div className="flex-1 overflow-y-auto bg-white border border-gray-150 rounded shadow-sm">
@@ -1434,6 +1661,348 @@ export default function POSPage() {
                 Gửi Zalo/SMS
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diagnosis & Smart Cart Suggestion Modal */}
+      {showDiagModal && (
+        <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl overflow-hidden border border-gray-100 flex flex-col h-[85vh]">
+            <div className="p-5 border-b border-gray-150 flex justify-between items-center bg-[#007edb] text-white shrink-0">
+              <h3 className="font-bold text-body-lg flex items-center gap-2">
+                <Stethoscope size={20} />
+                Chẩn đoán nhanh &amp; Gợi ý phác đồ giỏ hàng
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowDiagModal(false)
+                  setDiagSpeciesId('')
+                  setDiagSelectedSymptoms([])
+                  setDiagSelectedDiseaseId('')
+                  setDiagProtocols([])
+                }} 
+                className="text-white hover:text-blue-100 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden flex flex-col md:flex-row text-[13px]">
+              
+              {/* Left Column: Species & Symptom Selection */}
+              <div className="w-full md:w-[45%] border-r border-gray-200 p-4 overflow-y-auto flex flex-col gap-4">
+                {/* Species Selector */}
+                <div className="space-y-1.5 shrink-0">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">1. Đối tượng vật nuôi</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {species.map(sp => {
+                      const isSelected = diagSpeciesId === sp.id
+                      return (
+                        <button
+                          key={sp.id}
+                          type="button"
+                          onClick={() => {
+                            setDiagSpeciesId(sp.id)
+                            setDiagSelectedSymptoms([])
+                            setDiagSelectedDiseaseId('')
+                            setDiagProtocols([])
+                          }}
+                          className={`px-3 py-1 rounded text-tiny font-bold border transition-all ${
+                            isSelected 
+                              ? 'bg-blue-600 border-blue-600 text-white shadow'
+                              : 'bg-white border-gray-250 text-gray-650 hover:bg-gray-50'
+                          }`}
+                        >
+                          {sp.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Symptom Checklist */}
+                {diagSpeciesId && (
+                  <div className="space-y-2 flex-1 flex flex-col min-h-0">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">2. Tích chọn triệu chứng lâm sàng</span>
+                    
+                    <div className="flex-1 overflow-y-auto border border-gray-200 rounded p-2.5 bg-gray-50/50 space-y-1.5 max-h-[30vh] md:max-h-none">
+                      {Array.from(new Set(
+                        diseases
+                          .filter(d => d.disease_species?.some(ds => ds.species_id === diagSpeciesId))
+                          .flatMap(d => d.symptoms || [])
+                      )).map((sym, idx) => {
+                        const isChecked = diagSelectedSymptoms.includes(sym)
+                        return (
+                          <label key={idx} className="flex items-start gap-2 p-1.5 hover:bg-white rounded cursor-pointer select-none transition-colors border border-transparent hover:border-gray-100 text-gray-700">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                setDiagSelectedSymptoms(prev =>
+                                  isChecked ? prev.filter(s => s !== sym) : [...prev, sym]
+                                )
+                              }}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 shrink-0"
+                            />
+                            <span className="font-medium text-body-sm leading-normal">{sym}</span>
+                          </label>
+                        )
+                      })}
+                      {Array.from(new Set(
+                        diseases
+                          .filter(d => d.disease_species?.some(ds => ds.species_id === diagSpeciesId))
+                          .flatMap(d => d.symptoms || [])
+                      )).length === 0 && (
+                        <p className="text-gray-400 italic text-center py-6">Không có dữ liệu triệu chứng cho đối tượng này.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {!diagSpeciesId && (
+                  <div className="flex-1 flex items-center justify-center text-center text-gray-400 italic">
+                    Vui lòng chọn loài vật nuôi để hiển thị triệu chứng.
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Diseases Matches & Protocols */}
+              <div className="w-full md:w-[55%] p-4 overflow-y-auto flex flex-col gap-4 bg-gray-50/20">
+                {diagSpeciesId ? (
+                  <>
+                    {/* Matching Diseases List */}
+                    <div className="space-y-1.5 shrink-0">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">3. Kết quả chẩn đoán nghi ngờ</span>
+                      
+                      <div className="max-h-[150px] overflow-y-auto border border-gray-200 rounded bg-white divide-y divide-gray-100">
+                        {diseases
+                          .filter(d => d.disease_species?.some(ds => ds.species_id === diagSpeciesId))
+                          .map(d => {
+                            const totalSyms = d.symptoms?.length || 0
+                            const matches = d.symptoms.filter(s => diagSelectedSymptoms.includes(s)).length
+                            const score = totalSyms === 0 ? 0 : Math.round((matches / totalSyms) * 100)
+                            return { ...d, score }
+                          })
+                          .filter(d => diagSelectedSymptoms.length === 0 ? true : d.score > 0)
+                          .sort((a, b) => b.score - a.score)
+                          .map(d => {
+                            const isSelected = diagSelectedDiseaseId === d.id
+                            return (
+                              <div
+                                key={d.id}
+                                onClick={async () => {
+                                  setDiagSelectedDiseaseId(d.id)
+                                  setDiagLoadingProtocols(true)
+                                  try {
+                                    const { data, error } = await supabase
+                                      .from('disease_treatment_protocols')
+                                      .select(`
+                                        *,
+                                        active_ingredient:active_ingredients(id, name, code)
+                                      `)
+                                      .eq('disease_id', d.id)
+                                    if (error) throw error
+                                    if (data) setDiagProtocols(data as unknown as Protocol[])
+                                  } catch (err) {
+                                    console.error('Error fetching protocols:', err)
+                                  } finally {
+                                    setDiagLoadingProtocols(false)
+                                  }
+                                }}
+                                className={`p-2.5 cursor-pointer flex justify-between items-center transition-colors ${
+                                  isSelected 
+                                    ? 'bg-blue-50 text-blue-900 font-bold border-l-4 border-blue-500' 
+                                    : 'hover:bg-gray-50 text-gray-700'
+                                }`}
+                              >
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="font-semibold text-body-md">{d.name}</span>
+                                  <span className="text-[10px] text-gray-400 font-mono">Tác nhân: {d.category}</span>
+                                </div>
+                                {diagSelectedSymptoms.length > 0 && (
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                    d.score > 70 ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    Trùng khớp {d.score}%
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        {diseases.filter(d => d.disease_species?.some(ds => ds.species_id === diagSpeciesId)).length === 0 && (
+                          <p className="p-3 text-center text-gray-400 italic">Không tìm thấy bệnh lý liên kết với đối tượng.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Protocol Detail display */}
+                    <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-200 rounded p-4 space-y-4">
+                      <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                        <h4 className="font-bold text-gray-800 text-body-md flex items-center gap-1.5">
+                          <Layers className="text-emerald-500" size={16} />
+                          Phác đồ đề xuất tương ứng
+                        </h4>
+                      </div>
+
+                      {diagLoadingProtocols ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-gray-450 gap-2">
+                          <RefreshCw className="animate-spin text-blue-500 w-6 h-6" />
+                          <span>Đang tải phác đồ...</span>
+                        </div>
+                      ) : diagSelectedDiseaseId && diagProtocols.length === 0 ? (
+                        <div className="flex-1 flex items-center justify-center text-center text-gray-400 italic">
+                          Bệnh này chưa cấu hình phác đồ hoạt chất điều trị.
+                        </div>
+                      ) : diagSelectedDiseaseId ? (
+                        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                          
+                          {/* Render Line 1 Protocols */}
+                          {diagProtocols.some(p => p.treatment_line === 1) && (
+                            <div className="bg-emerald-50/15 border border-emerald-100 rounded-lg p-3 space-y-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">Phác đồ Line 1 (Ưu tiên)</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Apply Line 1 ingredients to cart
+                                    const line1 = diagProtocols.filter(p => p.treatment_line === 1)
+                                    let addedCount = 0
+                                    line1.forEach(protoItem => {
+                                      const bestProduct = products.find(p => 
+                                        p.product_active_ingredients?.some(link => link.active_ingredient_id === protoItem.active_ingredient_id)
+                                      )
+                                      if (bestProduct) {
+                                        addToCart(bestProduct)
+                                        addedCount++
+                                      }
+                                    })
+                                    if (addedCount > 0) {
+                                      setSelectedDiseaseId(diagSelectedDiseaseId)
+                                      const disObj = diseases.find(d => d.id === diagSelectedDiseaseId)
+                                      setTreatmentPurpose(`Điều trị ${disObj?.name || ''} (Line 1)`)
+                                      showToast('success', `Đã tự động thêm ${addedCount} sản phẩm phác đồ Line 1 vào giỏ hàng!`)
+                                      setShowDiagModal(false)
+                                    } else {
+                                      showToast('error', 'Không tìm thấy sản phẩm thương mại nào chứa các hoạt chất phác đồ này trong kho.')
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-tiny font-bold flex items-center gap-1 active:scale-95 transition-all shadow-sm"
+                                >
+                                  <Plus size={12} />
+                                  Áp dụng Line 1
+                                </button>
+                              </div>
+
+                              <div className="space-y-1.5 divide-y divide-emerald-50">
+                                {diagProtocols.filter(p => p.treatment_line === 1).map((p, idx) => (
+                                  <div key={p.id} className="pt-1.5 first:pt-0 flex justify-between items-start text-body-sm">
+                                    <div className="space-y-0.5">
+                                      <span className="font-bold text-emerald-950">{p.active_ingredient.name}</span>
+                                      <p className="text-[10px] text-gray-500">{p.notes}</p>
+                                    </div>
+                                    <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded border shrink-0 ${
+                                      p.treatment_role === 'treatment' ? 'bg-rose-50 border-rose-100 text-rose-700' :
+                                      p.treatment_role === 'support' ? 'bg-amber-50 border-amber-100 text-amber-700' :
+                                      'bg-emerald-50 border-emerald-100 text-emerald-700'
+                                    }`}>
+                                      {p.treatment_role === 'treatment' ? 'Đặc trị' : p.treatment_role === 'support' ? 'Bổ trợ' : 'Đề kháng'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Render Line 2 Protocols */}
+                          {diagProtocols.some(p => p.treatment_line === 2) && (
+                            <div className="bg-blue-50/15 border border-blue-100 rounded-lg p-3 space-y-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-[11px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded">Phác đồ Line 2 (Thay thế)</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const line2 = diagProtocols.filter(p => p.treatment_line === 2)
+                                    let addedCount = 0
+                                    line2.forEach(protoItem => {
+                                      const bestProduct = products.find(p => 
+                                        p.product_active_ingredients?.some(link => link.active_ingredient_id === protoItem.active_ingredient_id)
+                                      )
+                                      if (bestProduct) {
+                                        addToCart(bestProduct)
+                                        addedCount++
+                                      }
+                                    })
+                                    if (addedCount > 0) {
+                                      setSelectedDiseaseId(diagSelectedDiseaseId)
+                                      const disObj = diseases.find(d => d.id === diagSelectedDiseaseId)
+                                      setTreatmentPurpose(`Điều trị ${disObj?.name || ''} (Line 2)`)
+                                      showToast('success', `Đã tự động thêm ${addedCount} sản phẩm phác đồ Line 2 vào giỏ hàng!`)
+                                      setShowDiagModal(false)
+                                    } else {
+                                      showToast('error', 'Không tìm thấy sản phẩm thương mại nào chứa các hoạt chất phác đồ này trong kho.')
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-tiny font-bold flex items-center gap-1 active:scale-95 transition-all shadow-sm"
+                                >
+                                  <Plus size={12} />
+                                  Áp dụng Line 2
+                                </button>
+                              </div>
+
+                              <div className="space-y-1.5 divide-y divide-blue-50">
+                                {diagProtocols.filter(p => p.treatment_line === 2).map((p, idx) => (
+                                  <div key={p.id} className="pt-1.5 first:pt-0 flex justify-between items-start text-body-sm">
+                                    <div className="space-y-0.5">
+                                      <span className="font-bold text-blue-950">{p.active_ingredient.name}</span>
+                                      <p className="text-[10px] text-gray-500">{p.notes}</p>
+                                    </div>
+                                    <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded border shrink-0 ${
+                                      p.treatment_role === 'treatment' ? 'bg-rose-50 border-rose-100 text-rose-700' :
+                                      p.treatment_role === 'support' ? 'bg-amber-50 border-amber-100 text-amber-700' :
+                                      'bg-blue-50 border-blue-100 text-blue-700'
+                                    }`}>
+                                      {p.treatment_role === 'treatment' ? 'Đặc trị' : p.treatment_role === 'support' ? 'Bổ trợ' : 'Đề kháng'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center justify-center text-center text-gray-400 italic">
+                          Chọn một bệnh nghi ngờ ở danh sách trên để xem chi tiết phác đồ đề xuất.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-center text-gray-450 italic">
+                    Chưa chọn loài vật nuôi.
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            <div className="p-4 bg-gray-25 border-t border-gray-100 flex justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDiagModal(false)
+                  setDiagSpeciesId('')
+                  setDiagSelectedSymptoms([])
+                  setDiagSelectedDiseaseId('')
+                  setDiagProtocols([])
+                }}
+                className="px-5 h-9 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors font-semibold"
+              >
+                Đóng lại
+              </button>
+            </div>
+
           </div>
         </div>
       )}

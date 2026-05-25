@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 interface PriceList {
   id: string
@@ -51,6 +52,14 @@ interface Product {
 
 export default function PriceListPage() {
   const navigate = useNavigate()
+  const { settings } = useDisplaySettings()
+
+  const formatNumber = (val: number) => {
+    if (val === null || val === undefined || isNaN(val)) return '0'
+    const parts = val.toFixed(settings.decimal_places_currency).split('.')
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, settings.thousands_separator)
+    return parts.join(settings.decimal_separator)
+  }
 
   // State
   const [priceLists, setPriceLists] = useState<PriceList[]>([])
@@ -366,7 +375,7 @@ export default function PriceListPage() {
                     {selectedList ? selectedList.name : 'Đang tải...'}
                   </h3>
                   <span className="text-tiny text-gray-400 bg-gray-50 border border-gray-150 rounded px-1.5 py-0.5 font-bold uppercase">
-                    VND
+                    {settings.currency_symbol}
                   </span>
                 </div>
                 <p className="text-body-md text-gray-500 mt-1">
@@ -449,9 +458,9 @@ export default function PriceListPage() {
                       <th className="p-4 text-tiny font-bold text-gray-400 uppercase w-12 text-center">#</th>
                       <th className="p-4 text-tiny font-bold text-gray-400 uppercase">Sản phẩm / Mã SKU</th>
                       <th className="p-4 text-tiny font-bold text-gray-400 uppercase text-center w-24">ĐVT</th>
-                      <th className="p-4 text-tiny font-bold text-gray-400 uppercase text-right w-36">Giá vốn (₫)</th>
-                      <th className="p-4 text-tiny font-bold text-gray-400 uppercase text-right w-36">Giá hiện tại (₫)</th>
-                      <th className="p-4 text-tiny font-bold text-blue-500 uppercase text-right w-44 bg-blue-50/20">Giá mới (₫)</th>
+                      <th className="p-4 text-tiny font-bold text-gray-400 uppercase text-right w-36">Giá vốn ({settings.currency_symbol})</th>
+                      <th className="p-4 text-tiny font-bold text-gray-400 uppercase text-right w-36">Giá hiện tại ({settings.currency_symbol})</th>
+                      <th className="p-4 text-tiny font-bold text-blue-500 uppercase text-right w-44 bg-blue-50/20">Giá mới ({settings.currency_symbol})</th>
                       <th className="p-4 text-tiny font-bold text-gray-400 uppercase text-center w-36">Biên lợi nhuận</th>
                     </tr>
                   </thead>
@@ -495,17 +504,17 @@ export default function PriceListPage() {
                               </span>
                             </td>
                             <td className="p-4 text-right text-body-md font-medium text-gray-600 tabular-nums">
-                              {cost ? cost.toLocaleString('vi-VN') : '0'}
+                              {formatNumber(cost)}
                             </td>
                             <td className="p-4 text-right text-body-md font-medium text-gray-600 tabular-nums">
-                              {currentSelling ? currentSelling.toLocaleString('vi-VN') : '0'}
+                              {formatNumber(currentSelling)}
                             </td>
                             <td className="p-4 text-right bg-blue-50/10">
                               <div className="flex justify-end">
                                 <input
                                   type="text"
                                   className="w-36 h-9 px-3 text-right border border-gray-200 rounded-lg text-body-md font-bold text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all bg-gray-0"
-                                  value={isEdited ? dirtyPrices[prod.id].toLocaleString('vi-VN') : (currentSelling ? currentSelling.toLocaleString('vi-VN') : '')}
+                                  value={isEdited ? formatNumber(dirtyPrices[prod.id]) : (currentSelling ? formatNumber(currentSelling) : '')}
                                   onChange={e => handlePriceEdit(prod.id, e.target.value)}
                                   placeholder="Nhập giá..."
                                 />

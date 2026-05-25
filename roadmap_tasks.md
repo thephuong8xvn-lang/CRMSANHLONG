@@ -39,6 +39,11 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Tích hợp tính năng Dự kiến hết hàng tự động tính số ngày sắp cạn kho dựa trên lịch sử xuất bán thực tế.
   - Xây dựng hai modal CRUD động quản lý Nhóm sản phẩm ([ManageCategoriesModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ManageCategoriesModal.tsx)) và Thương hiệu ([ManageBrandsModal.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ManageBrandsModal.tsx)) cho phép thêm/sửa/xóa và bật/tắt trạng thái hoạt động độc lập của từng thực thể trực tiếp từ màn hình chính.
   - [x] Tích hợp tính năng **Import & Export hàng hóa**: Xuất danh sách sản phẩm sang CSV (UTF-8 BOM), nhập danh sách sản phẩm hàng loạt từ CSV chỉ với cột Tên sản phẩm, tự động sinh mã SKU và tạo các dòng bảng giá khởi tạo tự động.
+- [x] **Thông tin chi tiết sản phẩm nâng cao & Hoạt chất**:
+  - Hỗ trợ lưu trữ và quản lý **Thông tin pháp lý** (`registration_number`), **Thông số & Hướng dẫn** (`contraindications` - Chống chỉ định, `withdrawal_period_meat` - Ngày ngừng thịt, `withdrawal_period_milk_egg` - Ngày ngừng sữa/trứng).
+  - Tích hợp **Thành phần hoạt chất** (`active_ingredients`) liên kết đa-đa với sản phẩm kèm theo nồng độ/hàm lượng tương ứng.
+  - Xây dựng trang quản lý danh mục **Hoạt chất** chuyên biệt ([ActiveIngredientsPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/products/ActiveIngredientsPage.tsx)) độc lập và đưa lên Menu chính **Kho & Hàng hóa** giúp tối ưu hóa luồng nghiệp vụ chẩn đoán & điều trị.
+  - Tích hợp các trường thông tin và liên kết hoạt chất này vào luồng Thêm mới (`AddProductModal`), Cập nhật (`EditProductModal`) và hiển thị trực quan thông tin chi tiết trên trang Chi tiết sản phẩm (`ProductDetailPage`).
 
 ---
 
@@ -214,9 +219,10 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Chuyển đổi cột `customer_type` và `value_tier` trong bảng `customers` từ dạng Postgres ENUM sang `TEXT` để hỗ trợ CRUD động.
   - Tạo bảng `customer_classifications` và `customer_tiers` lưu trữ danh mục động phân loại & hạng khách hàng.
   - Cấu hình chính sách RLS đầy đủ (Select cho mọi user đã login, CRUD dành riêng cho vai trò Admin).
-- [x] **Giao Diện CRUD & Bật Tắt Hiển Thị (System Settings)**:
-  - Tích hợp thêm tab "Phân loại khách hàng" và "Hạng khách hàng" trong trang Cấu hình hệ thống `/system-settings`.
-  - Cho phép thêm mới, sửa tên/mã, xóa, và bật/tắt (is_active) trạng thái hoạt động của từng dòng cấu hình.
+- [x] **Giao Diện CRUD & Tích Hợp Cấu Hình Khách Hàng Chuyên Biệt**:
+  - Di chuyển các tab quản lý "Nhóm Sales" (Teams), "Phân loại khách hàng" (Customer Classifications), và "Hạng khách hàng" (Customer Tiers) từ cấu hình hệ thống chung (`/system-settings`) sang trang cấu hình khách hàng chuyên biệt (`/customers/settings`) thuộc module Khách hàng.
+  - Tích hợp liên kết điều hướng "Cấu hình KH" trên thanh menu chính của Layout (dưới nhóm Kinh doanh, có phân quyền quản trị) và thêm nút biểu tượng bánh răng "Thiết lập" trong tiêu đề danh sách khách hàng (`/customers`) để truy cập nhanh.
+  - Hỗ trợ đầy đủ tính năng CRUD (Thêm mới, Chỉnh sửa, Xóa) và bật/tắt (is_active) trạng thái hoạt động độc lập của từng cấu hình (Nhóm, Phân loại, Hạng).
 - [x] **Tích Hợp Dynamic Options vào Khách Hàng**:
   - Tải động danh mục phân loại và hạng từ cơ sở dữ liệu trên trang Danh sách khách hàng, Chi tiết khách hàng và Form thêm mới.
   - Đảm bảo các bộ lọc và form lựa chọn chỉ hiển thị các cấu hình đang hoạt động (`is_active = true`), nhưng hiển thị nhãn cũ đầy đủ cho các bản ghi khách hàng lịch sử.
@@ -230,4 +236,26 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **Chuyển hàng giữa các kho & chi nhánh (Stock Transfers)**: Thiết lập giao diện điều chuyển và quản lý các trạng thái `draft`, `in_transit`, `received`, `cancelled` trong tab Chuyển kho của màn hình quản lý kho.
 - [x] **Trả hàng nhập (Purchase Returns)**: Xây dựng bảng và trigger tự động xuất kho đối với phiếu trả hàng nhà cung cấp trong tab Trả hàng NCC của màn hình quản lý kho.
 - [x] **Hàng trả theo hóa đơn đã bán (Sales Returns)**: Tích hợp nút Trả hàng tại trang Chi tiết đơn hàng, tự động nhập lại kho và cập nhật trạng thái đơn hàng thông qua trigger database.
+
+---
+
+### 14. Phân Hệ Quản Lý Hoạt Chất & Bệnh Thú Y (Active Ingredients & Pathology Module) - `[HOÀN THÀNH]`
+- [x] **Bổ sung Schema & RLS**:
+  - [x] Nâng cấp bảng `active_ingredients` bổ sung các trường thông tin lý lịch hoạt chất (nhóm dược lý, liều dùng, ngày ngừng thịt/sữa/trứng, độc tính).
+  - [x] Thiết lập bảng ma trận tương thích hoạt chất `active_ingredient_compatibility` (hiệp lực, đối kháng/kỵ thuốc).
+  - [x] Thêm các trường triệu chứng (`symptoms`), nguyên nhân dịch tễ (`etiology`) và bảng liên kết loài (`disease_species`) cho từ điển bệnh.
+  - [x] Bổ sung bảng cấu hình phác đồ điều trị đa tầng `disease_treatment_protocols` liên kết Bệnh lý -> Hoạt chất theo vai trò (Đặc trị, Bổ trợ, Đề kháng) và Dòng điều trị (Line 1, Line 2).
+  - [x] Liên kết `disease_id` và `treatment_purpose` vào bảng `orders` để lưu trữ dữ liệu dịch tễ khi tạo hóa đơn bán hàng.
+- [x] **Trang Quản lý Hoạt chất nâng cao & Tương thích**:
+  - [x] Tích hợp 2 tab trên màn hình hoạt chất: Danh sách hoạt chất lý lịch nâng cao và Trình cấu hình ma trận tương thích thuốc (Synergy & Antagonism).
+- [x] **Trang Quản lý Bệnh lý & Phác đồ điều trị (`/diseases`)**:
+  - [x] Xây dựng giao diện Danh mục bệnh thú y kèm theo công cụ quản lý danh sách triệu chứng động dạng tag.
+  - [x] Thiết kế form xây dựng Phác đồ điều trị đa tầng cho từng bệnh, liên kết vai trò và độ ưu tiên hoạt chất.
+- [x] **Tích hợp Giỏ hàng thông minh (Smart Cart) & Tương kỵ thuốc tại POS**:
+  - [x] Phát triển công cụ chẩn đoán nhanh tại POS: Chọn Loài -> Tích chọn Triệu chứng -> Đề xuất bệnh lý -> Áp dụng phác đồ tự động điền các sản phẩm phù hợp trong kho (theo FEFO) vào giỏ hàng.
+  - [x] Tự động đối chiếu tương kỵ thuốc: Hiển thị cảnh báo đỏ nổi bật ngay tại giỏ hàng nếu phát hiện sản phẩm đối kháng dùng chung cho vật nuôi.
+- [x] **Lịch sử Dịch tễ & Cảnh báo kháng thuốc trên CRM**:
+  - [x] Hiển thị trục thời gian lịch sử dịch tễ và các đợt bùng dịch của khách hàng.
+  - [x] Cảnh báo kháng thuốc (Drug Resistance alerts) nếu phát hiện trang trại lặp lại cùng một hoạt chất quá nhiều lứa liên tục.
+
 

@@ -129,6 +129,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
       label: 'Kinh doanh',
       items: [
         { label: 'Khách hàng', icon: Users, path: '/customers', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
+        { label: 'Cấu hình KH', icon: Settings, path: '/customers/settings', perms: ['users.manage'] },
         { label: 'Chăn nuôi', icon: PawPrint, path: '/herd-projects', perms: ['herd_projects.view_all', 'herd_projects.create'] },
         { label: 'Pipeline', icon: Stethoscope, path: '/pipeline', perms: ['opportunities.view_all', 'opportunities.create'] },
         { label: 'Đơn hàng', icon: Receipt, path: '/orders', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create'] }
@@ -138,6 +139,8 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
       label: 'Kho & Hàng hóa',
       items: [
         { label: 'Sản phẩm', icon: Package, path: '/products', perms: ['products.view', 'products.manage', 'pricing.manage', 'promotions.manage'] },
+        { label: 'Hoạt chất', icon: Activity, path: '/products/ingredients', perms: ['products.view', 'products.manage'] },
+        { label: 'Bệnh & Phác đồ', icon: Stethoscope, path: '/diseases', perms: ['herd_projects.view_all', 'herd_projects.create'] },
         { label: 'Kho hàng', icon: Warehouse, path: '/inventory', perms: ['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer'] },
         { label: 'Nhà cung cấp', icon: Truck, path: '/suppliers', perms: ['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive'] }
       ]

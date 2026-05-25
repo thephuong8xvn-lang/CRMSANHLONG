@@ -20,6 +20,8 @@ import AddProductModal from './AddProductModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
 import ManageBrandsModal from './ManageBrandsModal'
 import ImportProductsModal from './ImportProductsModal'
+import ManageUnitsModal from './ManageUnitsModal'
+import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 interface ProductCategory {
   id: string
@@ -75,6 +77,7 @@ interface Product {
 
 export default function ProductListPage() {
   const navigate = useNavigate()
+  const { formatCurrency } = useDisplaySettings()
 
   // Base Data States
   const [products, setProducts] = useState<Product[]>([])
@@ -87,6 +90,7 @@ export default function ProductListPage() {
   const [isManageCatsOpen, setIsManageCatsOpen] = useState(false)
   const [isManageBrandsOpen, setIsManageBrandsOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [isManageUnitsOpen, setIsManageUnitsOpen] = useState(false)
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState('')
@@ -202,10 +206,7 @@ export default function ProductListPage() {
     setCurrentPage(1)
   }, [searchTerm, selectedCategory, selectedBrand, selectedStatus])
 
-  // Helper to format currency
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
-  }
+  // Currency formatting is retrieved from useDisplaySettings() context
 
   // Helper calculations for product item
   const getRetailPrice = (product: Product) => {
@@ -464,6 +465,24 @@ export default function ProductListPage() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Đơn vị tính CRUD */}
+            <div className="space-y-2.5">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Settings size={14} className="text-gray-400" />
+                  Đơn vị tính
+                </span>
+                <button
+                  onClick={() => setIsManageUnitsOpen(true)}
+                  className="p-1 text-blue-500 hover:bg-blue-50 rounded transition-all"
+                  title="Quản lý đơn vị tính"
+                >
+                  <Settings size={14} />
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400">Cấu hình các đơn vị đo lường (lọ, chai, gói, cái...).</p>
             </div>
 
             {/* Filter by Trạng thái kinh doanh */}
@@ -729,6 +748,13 @@ export default function ProductListPage() {
       <ImportProductsModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
+        onSuccess={loadMetadataAndProducts}
+      />
+
+      {/* Manage Units Modal */}
+      <ManageUnitsModal
+        isOpen={isManageUnitsOpen}
+        onClose={() => setIsManageUnitsOpen(false)}
         onSuccess={loadMetadataAndProducts}
       />
 

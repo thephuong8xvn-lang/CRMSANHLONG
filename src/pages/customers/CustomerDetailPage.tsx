@@ -145,6 +145,25 @@ interface DiseaseHistory {
     name: string
     category: string
   } | null
+  herd?: {
+    id: string
+    name: string
+  } | null
+}
+
+interface ResistanceWarning {
+  ingredientName: string
+  alternativeName: string
+  ordersCount: number
+}
+
+const INGREDIENT_ALTERNATIVES: Record<string, string> = {
+  'Amoxicillin Trihydrate': 'Doxycycline Hyclate hoặc Florfenicol',
+  'Colistin Sulfate': 'Apramycin hoặc Neomycin',
+  'Tylosin Tartrate': 'Enrofloxacin hoặc Doxycycline Hyclate',
+  'Enrofloxacin': 'Amoxicillin Trihydrate hoặc Florfenicol',
+  'Florfenicol': 'Doxycycline Hyclate hoặc Amoxicillin Trihydrate',
+  'Doxycycline Hyclate': 'Amoxicillin Trihydrate hoặc Florfenicol'
 }
 
 interface Customer {
@@ -211,7 +230,22 @@ export default function CustomerDetailPage() {
   const [speciesList, setSpeciesList] = useState<Species[]>([])
   const [diseaseDict, setDiseaseDict] = useState<{ id: string; name: string; code: string }[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'tong-quan' | 'trai-dan' | 'don-hang' | 'chan-dung'>('tong-quan')
+  const [activeTab, setActiveTab] = useState<'tong-quan' | 'trai-dan' | 'don-hang' | 'chan-dung' | 'benh-an'>('tong-quan')
+
+  // Drug resistance alerts state
+  const [resistanceWarnings, setResistanceWarnings] = useState<ResistanceWarning[]>([])
+
+  // State for Logging Disease
+  const [isDiseaseModalOpen, setIsDiseaseModalOpen] = useState(false)
+  const [diseaseHerdId, setDiseaseHerdId] = useState('')
+  const [diseaseId, setDiseaseId] = useState('')
+  const [diseaseOnsetDate, setDiseaseOnsetDate] = useState(new Date().toISOString().split('T')[0])
+  const [diseaseResolvedDate, setDiseaseResolvedDate] = useState('')
+  const [diseaseAffectedHeads, setDiseaseAffectedHeads] = useState('')
+  const [diseaseMortalityHeads, setDiseaseMortalityHeads] = useState('0')
+  const [diseaseTreatment, setDiseaseTreatment] = useState('')
+  const [diseaseNotes, setDiseaseNotes] = useState('')
+  const [submittingDisease, setSubmittingDisease] = useState(false)
 
   // Profiling States
   const [activities, setActivities] = useState<any[]>([])
@@ -364,6 +398,7 @@ export default function CustomerDetailPage() {
           
           if (herdsData) {
             setHerds(herdsData as unknown as Herd[])
+            if (herdsData.length > 0) setDiseaseHerdId(herdsData[0].id)
             
             // 4. Fetch disease history for those herds
             if (herdsData.length > 0) {
@@ -372,7 +407,8 @@ export default function CustomerDetailPage() {
                 .from('disease_history')
                 .select(`
                   *,
-                  disease:disease_dictionary(id, code, name, category)
+                  disease:disease_dictionary(id, code, name, category),
+                  herd:herds(id, name)
                 `)
                 .in('herd_id', herdIds)
                 .order('onset_date', { ascending: false })
@@ -400,6 +436,7 @@ export default function CustomerDetailPage() {
         .select('id, code, name')
       if (diseaseDictData) {
         setDiseaseDict(diseaseDictData)
+        if (diseaseDictData.length > 0) setDiseaseId(diseaseDictData[0].id)
       }
 
       // 7. Fetch activities
@@ -430,23 +467,35 @@ export default function CustomerDetailPage() {
         .eq('is_active', true)
       if (promos) setPromotions(promos)
 
-      // 10. Fetch order lines for product profiling
+      // 10. Fetch order lines for product profiling and drug resistance checking
       if (custData && custData.orders && custData.orders.length > 0) {
         const orderIds = custData.orders.map((o: any) => o.id)
         const { data: orderLinesData } = await supabase
           .from('order_lines')
           .select(`
+            order_id,
             product_id,
             quantity,
             line_total,
-            product:products(name, sku, unit)
+            product:products(
+              id,
+              name,
+              sku,
+              unit,
+              product_active_ingredients(
+                active_ingredient_id,
+                percentage_or_dosage,
+                active_ingredient:active_ingredients(id, name, code)
+              )
+            )
           `)
           .in('order_id', orderIds)
         
         if (orderLinesData) {
+          // 10.1 Top Products calculation
           const aggregation: Record<string, { name: string; sku: string; unit: string; qty: number; total: number }> = {}
           orderLinesData.forEach((line: any) => {
-            const prod = line.product
+            const prod = line.product as any
             const prodId = line.product_id
             if (!prod) return
             if (!aggregation[prodId]) {
@@ -466,9 +515,58 @@ export default function CustomerDetailPage() {
             .sort((a, b) => b.qty - a.qty)
             .slice(0, 5)
           setTopProducts(sorted)
+
+          // 10.2 Drug Resistance Warning check
+          // Get unique non-cancelled orders of the customer
+          const validOrders = custData.orders
+            .filter((o: any) => o.status !== 'cancelled')
+            .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) // Descending (latest first)
+          
+          if (validOrders.length >= 3) {
+            // Get the last 3 orders
+            const last3Orders = validOrders.slice(0, 3)
+            
+            // Map each order to its set of active ingredient IDs/names
+            const orderIngredients: Array<Set<string>> = last3Orders.map((ord: any) => {
+              const ingSet = new Set<string>()
+              const lines = orderLinesData.filter((l: any) => l.order_id === ord.id)
+              lines.forEach((l: any) => {
+                const prod = l.product as any
+                if (prod && prod.product_active_ingredients) {
+                  prod.product_active_ingredients.forEach((pa: any) => {
+                    if (pa.active_ingredient) {
+                      ingSet.add(pa.active_ingredient.name)
+                    }
+                  })
+                }
+              })
+              return ingSet
+            })
+
+            // Find intersection of ingredients in last 3 orders
+            const warnings: ResistanceWarning[] = []
+            if (orderIngredients.length === 3) {
+              const firstSet = orderIngredients[0]
+              firstSet.forEach((ingName) => {
+                if (orderIngredients[1].has(ingName) && orderIngredients[2].has(ingName)) {
+                  // Found an ingredient used in all 3 latest orders!
+                  const alt = INGREDIENT_ALTERNATIVES[ingName] || 'hoạt chất thay thế thuộc nhóm khác'
+                  warnings.push({
+                    ingredientName: ingName,
+                    alternativeName: alt,
+                    ordersCount: 3
+                  })
+                }
+              })
+            }
+            setResistanceWarnings(warnings)
+          } else {
+            setResistanceWarnings([])
+          }
         }
       } else {
         setTopProducts([])
+        setResistanceWarnings([])
       }
 
     } catch (err) {
@@ -798,6 +896,54 @@ export default function CustomerDetailPage() {
     }
   }
 
+  // Add Disease History Event Handler
+  const handleAddDiseaseHistory = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!diseaseHerdId || !diseaseId || !diseaseOnsetDate) return
+
+    // Get current profile
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      alert('Vui lòng đăng nhập lại.')
+      return
+    }
+
+    setSubmittingDisease(true)
+    try {
+      const { error } = await supabase
+        .from('disease_history')
+        .insert({
+          herd_id: diseaseHerdId,
+          disease_id: diseaseId,
+          onset_date: diseaseOnsetDate,
+          resolved_date: diseaseResolvedDate || null,
+          affected_heads: diseaseAffectedHeads ? Number(diseaseAffectedHeads) : null,
+          mortality_heads: Number(diseaseMortalityHeads || 0),
+          treatment: diseaseTreatment.trim() || null,
+          notes: diseaseNotes.trim() || null,
+          recorded_by: user.id
+        })
+
+      if (error) throw error
+
+      // Reset
+      setDiseaseResolvedDate('')
+      setDiseaseAffectedHeads('')
+      setDiseaseMortalityHeads('0')
+      setDiseaseTreatment('')
+      setDiseaseNotes('')
+      setIsDiseaseModalOpen(false)
+
+      // Reload
+      loadCustomerData()
+    } catch (err: any) {
+      console.error('Error adding disease history:', err)
+      alert('Không thể lưu bệnh án: ' + err.message)
+    } finally {
+      setSubmittingDisease(false)
+    }
+  }
+
   // Edit Customer Detail Handler
   const handleEditCustomer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1046,6 +1192,16 @@ export default function CustomerDetailPage() {
               }`}
             >
               Chân dung khách hàng
+            </button>
+            <button
+              onClick={() => setActiveTab('benh-an')}
+              className={`px-6 py-4 text-body-md font-semibold border-b-2 transition-all ${
+                activeTab === 'benh-an'
+                  ? 'border-blue-500 text-blue-700 bg-gray-0'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              Bệnh án &amp; Dịch tễ
             </button>
           </div>
 
@@ -2118,6 +2274,181 @@ export default function CustomerDetailPage() {
               );
             })()}
 
+            {activeTab === 'benh-an' && (
+              <div className="space-y-8">
+                {/* Pathology Timeline & Drug Resistance Warning Dashboard */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Left Column: Alerts & Stats */}
+                  <div className="space-y-6">
+                    {/* Drug Resistance Alert */}
+                    <div className="bg-gray-0 border border-gray-100 rounded-xl p-6 shadow-sm">
+                      <h3 className="text-body-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
+                        <ShieldAlert className="text-amber-500" size={18} />
+                        Cảnh báo an toàn dược lý
+                      </h3>
+                      
+                      {resistanceWarnings.length > 0 ? (
+                        <div className="space-y-4">
+                          {resistanceWarnings.map((warning, index) => (
+                            <div key={index} className="p-4 bg-red-50 border border-red-150 rounded-xl text-body-md text-red-950 space-y-3 shadow-inner">
+                              <div className="flex gap-2">
+                                <AlertCircle size={20} className="text-danger-500 shrink-0 mt-0.5" />
+                                <div>
+                                  <span className="font-extrabold text-danger-600 block text-body-md uppercase tracking-wider">Cảnh báo lờn thuốc</span>
+                                  <p className="mt-1 font-semibold leading-relaxed">
+                                    Khách hàng đã dùng <strong className="font-extrabold text-red-700">{warning.ingredientName}</strong> liên tiếp {warning.ordersCount} lứa nuôi / đơn hàng gần đây.
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="bg-white/80 border border-red-100 p-3 rounded-lg text-tiny leading-relaxed">
+                                <span className="font-bold text-gray-700 block mb-0.5">Khuyến nghị chuyên môn:</span>
+                                Tư vấn chuyển sang sử dụng các thuốc chứa <strong className="text-blue-600 font-extrabold">{warning.alternativeName}</strong> để cắt đứt chuỗi lờn thuốc và đảm bảo hiệu quả điều trị tối ưu.
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl text-body-md text-emerald-950 space-y-2 flex gap-2">
+                          <CheckCircle size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-extrabold text-emerald-700 block uppercase tracking-wider text-tiny">An toàn dịch tễ</span>
+                            <p className="mt-0.5 text-tiny text-emerald-900 leading-normal">
+                              Chưa phát hiện dấu hiệu lờn thuốc hoặc sử dụng lặp lại liên tục một hoạt chất kháng sinh trong các đơn hàng gần đây.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pathology Stats */}
+                    <div className="bg-gray-0 border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
+                      <h3 className="text-body-lg font-bold text-gray-700 flex items-center gap-2 pb-2 border-b border-gray-100">
+                        <Activity className="text-blue-500" size={18} />
+                        Thống kê Bệnh án
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4 text-body-md">
+                        <div className="p-3 bg-gray-25/50 border border-gray-100 rounded-lg">
+                          <span className="text-tiny text-gray-400 font-bold uppercase tracking-wider block">Tổng số ca bệnh</span>
+                          <span className="text-body-lg font-bold text-gray-750">{diseases.length} ca</span>
+                        </div>
+                        <div className="p-3 bg-gray-25/50 border border-gray-100 rounded-lg">
+                          <span className="text-tiny text-gray-400 font-bold uppercase tracking-wider block">Thiệt hại tích lũy</span>
+                          <span className="text-body-lg font-bold text-danger-600">
+                            {diseases.reduce((sum, d) => sum + d.mortality_heads, 0)} con
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Log New Disease Button/Card */}
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 border border-blue-100 rounded-xl p-6 shadow-sm space-y-4">
+                      <div className="space-y-1">
+                        <span className="font-bold text-blue-900 block text-body-md">Ghi nhận dịch bệnh mới</span>
+                        <p className="text-tiny text-blue-600 leading-normal">
+                          Lưu lại nhật ký bệnh án thú y mới phát hiện trên đàn nuôi của khách hàng để tối ưu hóa gợi ý giỏ hàng và theo dõi sức khỏe vật nuôi.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (herds.length === 0) {
+                            alert('Khách hàng này chưa có đàn nuôi nào để ghi nhận bệnh án!')
+                            return
+                          }
+                          setIsDiseaseModalOpen(true)
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95"
+                      >
+                        <PlusCircle size={16} />
+                        Khai báo bệnh án mới
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Disease History Timeline */}
+                  <div className="lg:col-span-2 space-y-6">
+                    <div className="bg-gray-0 border border-gray-100 rounded-xl p-6 md:p-8 shadow-sm">
+                      <h3 className="text-body-lg font-bold text-gray-700 mb-6 flex items-center gap-2">
+                        <Calendar className="text-blue-500" size={18} />
+                        Dòng thời gian Dịch tễ (Epidemiological Timeline)
+                      </h3>
+
+                      <div className="relative pl-6 border-l-2 border-gray-150 space-y-8">
+                        {diseases.length === 0 ? (
+                          <div className="py-12 text-center text-gray-400 italic">
+                            Chưa ghi nhận sự cố dịch bệnh nào trên các đàn nuôi của trang trại này.
+                          </div>
+                        ) : (
+                          diseases.map(d => {
+                            const mortalityRate = d.affected_heads && d.affected_heads > 0
+                              ? Math.round((d.mortality_heads / d.affected_heads) * 100)
+                              : 0
+                            return (
+                              <div key={d.id} className="relative group">
+                                {/* Bullet indicator */}
+                                <div className="absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-4 border-white bg-red-500 group-hover:scale-110 transition-transform shadow-sm"></div>
+                                
+                                <div className="bg-gray-25/50 border border-gray-100 hover:border-gray-200 rounded-xl p-5 space-y-3 transition-all">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <span className="px-2.5 py-0.5 rounded bg-rose-50 border border-rose-100 text-rose-700 font-extrabold text-[10px] uppercase">
+                                      {d.disease?.category || 'Bệnh lý'}
+                                    </span>
+                                    <span className="text-tiny text-gray-400 font-semibold tabular-nums flex items-center gap-1">
+                                      <Calendar size={12} />
+                                      Phát bệnh: {d.onset_date ? new Date(d.onset_date).toLocaleDateString('vi-VN') : 'N/A'} 
+                                      {d.resolved_date ? ` - Khỏi bệnh: ${new Date(d.resolved_date).toLocaleDateString('vi-VN')}` : ' (Chưa khỏi)'}
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <h4 className="font-extrabold text-body-lg text-gray-700">
+                                      {d.disease?.name} <span className="text-body-md font-semibold text-gray-400">({d.disease?.code})</span>
+                                    </h4>
+                                    <p className="text-tiny text-gray-400 mt-0.5">
+                                      Đàn vật nuôi: <strong className="text-gray-600">{d.herd?.name || 'Đàn không xác định'}</strong>
+                                    </p>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-body-md text-gray-500 border-t border-gray-100/50">
+                                    <div>
+                                      <span className="text-tiny text-gray-400 block font-semibold uppercase tracking-wider">Số con nhiễm</span>
+                                      <span className="font-bold text-gray-700">{d.affected_heads || 'N/A'} con</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-tiny text-gray-400 block font-semibold uppercase tracking-wider">Số con chết</span>
+                                      <span className="font-bold text-danger-500">{d.mortality_heads} con ({mortalityRate}%)</span>
+                                    </div>
+                                    <div className="col-span-1">
+                                      <span className="text-tiny text-gray-400 block font-semibold uppercase tracking-wider">Tỷ lệ tử vong</span>
+                                      <div className="w-full bg-gray-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                                        <div className="bg-danger-500 h-full rounded-full" style={{ width: `${Math.min(100, mortalityRate)}%` }}></div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {d.treatment && (
+                                    <div className="bg-blue-50/15 border border-blue-100/30 p-3 rounded-lg text-body-md">
+                                      <strong className="text-blue-900 block mb-0.5 text-tiny font-bold uppercase tracking-wider">Phác đồ đã sử dụng:</strong>
+                                      <p className="text-blue-950 font-medium leading-relaxed">{d.treatment}</p>
+                                    </div>
+                                  )}
+
+                                  {d.notes && (
+                                    <div className="text-body-md text-gray-500 italic bg-gray-50 p-2.5 rounded-lg">
+                                      Ghi chú lâm sàng: {d.notes}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
 
@@ -2674,6 +3005,138 @@ export default function CustomerDetailPage() {
                 </button>
                 <button type="submit" className="px-5 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600">
                   Tạo đàn
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. ADD DISEASE HISTORY EVENT MODAL */}
+      {isDiseaseModalOpen && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-gray-0 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-250">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
+              <h3 className="text-body-lg font-bold text-gray-700">Khai báo Bệnh án / Sự cố dịch tễ</h3>
+              <button 
+                onClick={() => setIsDiseaseModalOpen(false)} 
+                className="text-gray-400 hover:text-gray-600"
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleAddDiseaseHistory} className="p-6 space-y-4 text-body-md">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-gray-600 block">Đàn vật nuôi *</label>
+                  <select
+                    value={diseaseHerdId}
+                    onChange={(e) => setDiseaseHerdId(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-gray-600 focus:border-blue-500 focus:outline-none"
+                    required
+                  >
+                    {herds.map(h => (
+                      <option key={h.id} value={h.id}>{h.name} ({h.species?.name})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-gray-600 block">Bệnh lý chẩn đoán *</label>
+                  <select
+                    value={diseaseId}
+                    onChange={(e) => setDiseaseId(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-gray-600 focus:border-blue-500 focus:outline-none"
+                    required
+                  >
+                    {diseaseDict.map(d => (
+                      <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-gray-600 block">Ngày bắt đầu bệnh *</label>
+                  <input
+                    type="date"
+                    value={diseaseOnsetDate}
+                    onChange={(e) => setDiseaseOnsetDate(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-gray-600 focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-gray-600 block">Ngày khỏi bệnh (nếu có)</label>
+                  <input
+                    type="date"
+                    value={diseaseResolvedDate}
+                    onChange={(e) => setDiseaseResolvedDate(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-gray-600 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-gray-600 block">Số con bị ảnh hưởng</label>
+                  <input
+                    type="number"
+                    value={diseaseAffectedHeads}
+                    onChange={(e) => setDiseaseAffectedHeads(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="VD: 50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-semibold text-gray-600 block">Số con chết (tử vong)</label>
+                  <input
+                    type="number"
+                    value={diseaseMortalityHeads}
+                    onChange={(e) => setDiseaseMortalityHeads(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg focus:border-blue-500 focus:outline-none"
+                    placeholder="VD: 5"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-gray-600 block">Phác đồ điều trị áp dụng</label>
+                <textarea
+                  value={diseaseTreatment}
+                  onChange={(e) => setDiseaseTreatment(e.target.value)}
+                  className="w-full p-3 bg-gray-25 border border-gray-100 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                  rows={2}
+                  placeholder="Nhập tên thuốc và hoạt chất hoặc phác đồ đã sử dụng..."
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-gray-600 block">Ghi chú lâm sàng</label>
+                <textarea
+                  value={diseaseNotes}
+                  onChange={(e) => setDiseaseNotes(e.target.value)}
+                  className="w-full p-3 bg-gray-25 border border-gray-100 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+                  rows={2}
+                  placeholder="Ghi chú thêm về triệu chứng hoặc thông tin xét nghiệm..."
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsDiseaseModalOpen(false)}
+                  className="px-4 py-2 border border-gray-150 text-gray-400 rounded-lg font-semibold"
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={submittingDisease}
+                  className="px-5 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50"
+                >
+                  {submittingDisease ? 'Đang lưu...' : 'Ghi nhận bệnh án'}
                 </button>
               </div>
             </form>

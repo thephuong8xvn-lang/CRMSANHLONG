@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, ShieldAlert, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 interface AddProductModalProps {
   isOpen: boolean
@@ -9,8 +10,11 @@ interface AddProductModalProps {
 }
 
 export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProductModalProps) {
+  const { settings } = useDisplaySettings()
+
   // Form States
   const [sku, setSku] = useState('')
+  const [isSkuManuallyEdited, setIsSkuManuallyEdited] = useState(false)
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('lọ')
   const [categoryId, setCategoryId] = useState('')
@@ -19,6 +23,12 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
   const [usageInstructions, setUsageInstructions] = useState('')
   const [isLotManaged, setIsLotManaged] = useState(false)
   const [isActive, setIsActive] = useState(true)
+  const [registrationNumber, setRegistrationNumber] = useState('')
+  const [contraindications, setContraindications] = useState('')
+  const [withdrawalPeriodMeat, setWithdrawalPeriodMeat] = useState<string>('')
+  const [withdrawalPeriodMilkEgg, setWithdrawalPeriodMilkEgg] = useState<string>('')
+  const [selectedIngredients, setSelectedIngredients] = useState<{ ingredientId: string; percentageOrDosage: string }[]>([])
+  const [allIngredients, setAllIngredients] = useState<{ id: string; name: string }[]>([])
 
   // Pricing inputs
   const [costPrice, setCostPrice] = useState<number>(0)
@@ -31,8 +41,9 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
   const [pricesMap, setPricesMap] = useState<Record<string, number>>({})
 
   // Lookup lists
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [categories, setCategories] = useState<{ id: string; code: string; name: string }[]>([])
   const [brands, setBrands] = useState<{ id: string; name: string }[]>([])
+  const [units, setUnits] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
@@ -48,11 +59,11 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
         // Fetch categories
         const { data: catData, error: catErr } = await supabase
           .from('product_categories')
-          .select('id, name')
+          .select('id, code, name')
           .eq('is_active', true)
         
         if (!catErr && catData) {
-          setCategories(catData)
+          setCategories(catData as any)
           if (catData.length > 0) setCategoryId(catData[0].id)
         }
 
@@ -76,13 +87,50 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
         if (!plErr && plData) {
           setPriceLists(plData)
           const initialMap: Record<string, number> = {}
-          plData.forEach(list => {
+          plData.forEach((list: any) => {
             initialMap[list.id] = 0
           })
           setPricesMap(initialMap)
         }
+
+        // Fetch active ingredients
+        const { data: ingData, error: ingErr } = await supabase
+          .from('active_ingredients')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name')
+        
+        if (!ingErr && ingData) {
+          setAllIngredients(ingData)
+        }
+
+        // Fetch units
+        const { data: unitData, error: unitErr } = await supabase
+          .from('product_units')
+          .select('name')
+          .eq('is_active', true)
+          .order('name', { ascending: true })
+
+        if (!unitErr && unitData && unitData.length > 0) {
+          const unitNames = unitData.map((u: any) => u.name)
+          setUnits(unitNames)
+          setUnit(unitNames[0])
+        } else {
+          // Fallback to local storage or defaults
+          const saved = localStorage.getItem('product-units')
+          if (saved) {
+            const parsed = JSON.parse(saved) as { name: string; is_active: boolean }[]
+            const activeNames = parsed.filter(u => u.is_active).map(u => u.name)
+            setUnits(activeNames)
+            if (activeNames.length > 0) setUnit(activeNames[0])
+          } else {
+            const defaultNames = ['lọ', 'kg', 'gói', 'cái', 'lon', 'túi', 'chai']
+            setUnits(defaultNames)
+            setUnit(defaultNames[0])
+          }
+        }
       } catch (err) {
-        console.error('Error fetching categories/brands:', err)
+        console.error('Error fetching lookup data:', err)
       } finally {
         setLoading(false)
       }
@@ -91,9 +139,49 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
     loadLookupData()
   }, [isOpen])
 
+  // Auto SKU generation
+  useEffect(() => {
+    if (!categoryId || isSkuManuallyEdited || !isOpen || categories.length === 0) return
+
+    const generateSku = async () => {
+      try {
+        const cat = categories.find(c => c.id === categoryId)
+        if (!cat) return
+
+        let prefix = 'PROD'
+        if (cat.code) {
+          const rawCode = cat.code.toLowerCase()
+          if (rawCode.includes('med')) prefix = 'MED'
+          else if (rawCode.includes('vac')) prefix = 'VAC'
+          else if (rawCode.includes('feed') || rawCode.includes('supp')) prefix = 'SUP'
+          else if (rawCode.includes('equ')) prefix = 'EQU'
+          else if (rawCode.includes('chem')) prefix = 'CHM'
+          else if (rawCode.includes('tool')) prefix = 'TOL'
+          else prefix = cat.code.substring(0, 3).toUpperCase()
+        }
+
+        const { count, error } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('category_id', categoryId)
+
+        if (!error) {
+          const nextIndex = (count || 0) + 1
+          const generatedSku = `${prefix}-${String(nextIndex).padStart(5, '0')}`
+          setSku(generatedSku)
+        }
+      } catch (err) {
+        console.error('Error generating SKU:', err)
+      }
+    }
+
+    generateSku()
+  }, [categoryId, categories, isSkuManuallyEdited, isOpen])
+
   // Clear form
   const resetForm = () => {
     setSku('')
+    setIsSkuManuallyEdited(false)
     setName('')
     setUnit('lọ')
     setStorageCondition('')
@@ -106,6 +194,11 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
       initialMap[list.id] = 0
     })
     setPricesMap(initialMap)
+    setRegistrationNumber('')
+    setContraindications('')
+    setWithdrawalPeriodMeat('')
+    setWithdrawalPeriodMilkEgg('')
+    setSelectedIngredients([])
     setErrorMsg('')
   }
 
@@ -156,7 +249,11 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
           usage_instructions: usageInstructions.trim() || null,
           is_lot_managed: isLotManaged,
           is_active: isActive,
-          image_urls: []
+          image_urls: [],
+          registration_number: registrationNumber.trim() || null,
+          contraindications: contraindications.trim() || null,
+          withdrawal_period_meat: withdrawalPeriodMeat ? parseInt(withdrawalPeriodMeat) : null,
+          withdrawal_period_milk_egg: withdrawalPeriodMilkEgg ? parseInt(withdrawalPeriodMilkEgg) : null
         })
         .select('id')
         .single()
@@ -185,6 +282,23 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
 
         if (priceErr) {
           console.error('Error inserting default prices:', priceErr)
+        }
+
+        // Insert active ingredients links if any
+        if (selectedIngredients.length > 0) {
+          const ingredientItems = selectedIngredients.map(item => ({
+            product_id: newProd.id,
+            active_ingredient_id: item.ingredientId,
+            percentage_or_dosage: item.percentageOrDosage.trim()
+          }))
+
+          const { error: ingLinkErr } = await supabase
+            .from('product_active_ingredients')
+            .insert(ingredientItems)
+
+          if (ingLinkErr) {
+            console.error('Error inserting product ingredients:', ingLinkErr)
+          }
         }
 
         // Complete
@@ -255,7 +369,10 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                     className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold uppercase"
                     placeholder="VD: VAC-CSF-50"
                     value={sku}
-                    onChange={e => setSku(e.target.value)}
+                    onChange={e => {
+                      setSku(e.target.value)
+                      setIsSkuManuallyEdited(true)
+                    }}
                   />
                 </div>
                 <div>
@@ -263,17 +380,15 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                     Đơn vị tính <span className="text-danger-500">*</span>
                   </label>
                   <select
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
+                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all capitalize"
                     value={unit}
                     onChange={e => setUnit(e.target.value)}
                   >
-                    <option value="lọ">lọ</option>
-                    <option value="kg">kg</option>
-                    <option value="gói">gói</option>
-                    <option value="cái">cái</option>
-                    <option value="lon">lon</option>
-                    <option value="túi">túi</option>
-                    <option value="chai">chai</option>
+                    {units.map(u => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -328,6 +443,19 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                 </div>
               </div>
 
+              <div>
+                <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                  Số Đăng Ký (SDK)
+                </label>
+                <input
+                  type="text"
+                  className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all uppercase font-semibold"
+                  placeholder="VD: SDK-SLV-123"
+                  value={registrationNumber}
+                  onChange={e => setRegistrationNumber(e.target.value)}
+                />
+              </div>
+
               {/* Lot Management Checkbox */}
               <div className="p-4 bg-amber-50/50 border border-amber-100 rounded-xl flex items-center justify-between">
                 <div>
@@ -345,11 +473,11 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
               {/* Pricing section */}
               <div className="p-5 bg-gray-50 border border-gray-100 rounded-xl space-y-4">
                 <p className="text-tiny font-bold text-gray-500 uppercase tracking-wider">
-                  Cài đặt Giá khởi tạo (VND)
+                  Cài đặt Giá khởi tạo ({settings.currency_symbol})
                 </p>
                 
                 <div>
-                  <label className="block text-tiny font-semibold text-gray-500 mb-1">Giá vốn (Nhập chung cho sản phẩm)</label>
+                  <label className="block text-tiny font-semibold text-gray-500 mb-1">Giá vốn ({settings.currency_symbol})</label>
                   <input
                     type="number"
                     min={0}
@@ -377,7 +505,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                             onChange={e => handlePriceChange(list.id, Number(e.target.value))}
                             placeholder="0"
                           />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-450">VND</span>
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-450">{settings.currency_symbol}</span>
                         </div>
                       </div>
                     ))}
@@ -386,6 +514,92 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                 <p className="text-[11px] text-gray-400">
                   💡 Gợi ý: Khi nhập <strong>Giá bán lẻ đề xuất</strong>, hệ thống tự gợi ý giá đại lý (-15%) và giá VIP (-25%), bạn có thể chỉnh sửa đè tùy ý.
                 </p>
+              </div>
+
+              {/* Active Ingredients Section */}
+              <div className="p-5 bg-gray-50 border border-gray-100 rounded-xl space-y-4">
+                <div className="flex justify-between items-center">
+                  <p className="text-tiny font-bold text-gray-500 uppercase tracking-wider">
+                    Thành phần hoạt chất
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const unused = allIngredients.find(
+                        ing => !selectedIngredients.some(si => si.ingredientId === ing.id)
+                      )
+                      if (unused) {
+                        setSelectedIngredients([
+                          ...selectedIngredients,
+                          { ingredientId: unused.id, percentageOrDosage: '' }
+                        ])
+                      } else if (allIngredients.length > 0) {
+                        setSelectedIngredients([
+                          ...selectedIngredients,
+                          { ingredientId: allIngredients[0].id, percentageOrDosage: '' }
+                        ])
+                      }
+                    }}
+                    className="text-blue-500 hover:text-blue-600 text-tiny font-bold flex items-center gap-1"
+                  >
+                    + Thêm hoạt chất
+                  </button>
+                </div>
+
+                {selectedIngredients.length === 0 ? (
+                  <p className="text-tiny text-gray-400 italic">Chưa liên kết hoạt chất nào.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedIngredients.map((item, index) => (
+                      <div key={index} className="flex items-center gap-3">
+                        <select
+                          className="flex-1 h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500"
+                          value={item.ingredientId}
+                          onChange={e => {
+                            const updated = [...selectedIngredients]
+                            updated[index].ingredientId = e.target.value
+                            setSelectedIngredients(updated)
+                          }}
+                        >
+                          {allIngredients.map(ing => {
+                            const isUsed = selectedIngredients.some(
+                              (si, idx) => si.ingredientId === ing.id && idx !== index
+                            )
+                            if (isUsed) return null
+                            return (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name}
+                              </option>
+                            )
+                          })}
+                        </select>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Hàm lượng (VD: 500 mg, 20%)"
+                          className="w-48 h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 font-semibold"
+                          value={item.percentageOrDosage}
+                          onChange={e => {
+                            const updated = [...selectedIngredients]
+                            updated[index].percentageOrDosage = e.target.value
+                            setSelectedIngredients(updated)
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedIngredients(
+                              selectedIngredients.filter((_, idx) => idx !== index)
+                            )
+                          }}
+                          className="p-1 hover:bg-red-50 hover:text-red-500 rounded text-gray-400"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Technical instructions */}
@@ -415,6 +629,49 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                  Chống chỉ định & Cảnh báo an toàn
+                </label>
+                <textarea
+                  rows={2}
+                  className="w-full border border-gray-200 rounded-lg text-body-md p-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all resize-none"
+                  placeholder="VD: Không sử dụng cho các động vật mẫn cảm với thành phần của thuốc/vaccine..."
+                  value={contraindications}
+                  onChange={e => setContraindications(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                    Thời gian ngưng thuốc (Khai thác thịt - ngày)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500"
+                    placeholder="VD: 7"
+                    value={withdrawalPeriodMeat}
+                    onChange={e => setWithdrawalPeriodMeat(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                    Thời gian ngưng thuốc (Khai thác sữa/trứng - ngày)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500"
+                    placeholder="VD: 3"
+                    value={withdrawalPeriodMilkEgg}
+                    onChange={e => setWithdrawalPeriodMilkEgg(e.target.value)}
+                  />
+                </div>
+              </div>
+
             </div>
 
             {/* Footer Buttons */}

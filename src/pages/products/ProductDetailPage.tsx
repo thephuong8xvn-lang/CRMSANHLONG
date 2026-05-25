@@ -21,6 +21,7 @@ import {
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import EditProductModal from './EditProductModal'
+import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 interface ProductCategory {
   id: string
@@ -49,6 +50,10 @@ interface Product {
   brand_id: string | null
   product_categories?: ProductCategory | null
   brands?: Brand | null
+  registration_number?: string | null
+  contraindications?: string | null
+  withdrawal_period_meat?: number | null
+  withdrawal_period_milk_egg?: number | null
 }
 
 interface ProductVariant {
@@ -84,6 +89,7 @@ interface StockLot {
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { settings, formatCurrency } = useDisplaySettings()
 
   // State
   const [product, setProduct] = useState<Product | null>(null)
@@ -92,6 +98,15 @@ export default function ProductDetailPage() {
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'instructions' | 'inventory'>('instructions')
+
+  interface LinkedActiveIngredient {
+    percentage_or_dosage: string
+    active_ingredient: {
+      id: string
+      name: string
+    }
+  }
+  const [productIngredients, setProductIngredients] = useState<LinkedActiveIngredient[]>([])
 
   // Edit Modal & Pricing State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -131,6 +146,19 @@ export default function ProductDetailPage() {
       if (prodErr) throw prodErr
       if (prodData) {
         setProduct(prodData as unknown as Product)
+      }
+
+      // Fetch active ingredients
+      const { data: ingData } = await supabase
+        .from('product_active_ingredients')
+        .select(`
+          percentage_or_dosage,
+          active_ingredient:active_ingredients(id, name)
+        `)
+        .eq('product_id', id)
+      
+      if (ingData) {
+        setProductIngredients(ingData as unknown as LinkedActiveIngredient[])
       }
 
       // 2. Fetch variants
@@ -239,10 +267,7 @@ export default function ProductDetailPage() {
     }
   }, [lots, simulateQty])
 
-  // Format Currency
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val)
-  }
+  // Currency formatting is retrieved from useDisplaySettings() context
 
   // Handle Quick Add Lot
   const handleAddLotSubmit = async (e: React.FormEvent) => {
@@ -462,7 +487,7 @@ export default function ProductDetailPage() {
               <div className="space-y-3.5 text-body-md">
                 <div>
                   <span className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Số Đăng Ký (SDK)</span>
-                  <span className="font-semibold text-gray-700">SDK-SLV-{product.sku}</span>
+                  <span className="font-semibold text-gray-700">{product.registration_number || 'Chưa đăng ký'}</span>
                 </div>
                 <div>
                   <span className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Nhà sản xuất</span>
@@ -486,32 +511,15 @@ export default function ProductDetailPage() {
                 <h3 className="font-bold text-body-lg text-gray-700">Thành phần hoạt chất</h3>
               </div>
               <div className="space-y-2">
-                {product.product_categories?.code === 'VACCINE' ? (
-                  <>
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <span className="font-semibold text-gray-700 text-body-md">Kháng nguyên vô hoạt</span>
-                      <span className="font-bold text-blue-500 text-body-md">&ge; 10^7.0 TCID50</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <span className="font-semibold text-gray-700 text-body-md">Chất bổ trợ nhũ dầu</span>
-                      <span className="font-bold text-blue-500 text-body-md">vừa đủ 1 liều</span>
-                    </div>
-                  </>
+                {productIngredients.length === 0 ? (
+                  <p className="text-tiny text-gray-400 italic py-2">Không có thành phần hoạt chất cụ thể.</p>
                 ) : (
-                  <>
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <span className="font-semibold text-gray-700 text-body-md">Amoxicillin Trihydrate</span>
-                      <span className="font-bold text-blue-500 text-body-md">500 mg</span>
+                  productIngredients.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <span className="font-semibold text-gray-700 text-body-md">{item.active_ingredient?.name}</span>
+                      <span className="font-bold text-blue-500 text-body-md">{item.percentage_or_dosage}</span>
                     </div>
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <span className="font-semibold text-gray-700 text-body-md">Colistin Sulfate</span>
-                      <span className="font-bold text-blue-500 text-body-md">2,500,000 UI</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <span className="font-semibold text-gray-700 text-body-md">Tá dược vừa đủ</span>
-                      <span className="font-bold text-blue-500 text-body-md">1 g</span>
-                    </div>
-                  </>
+                  ))
                 )}
               </div>
             </div>
@@ -562,9 +570,7 @@ export default function ProductDetailPage() {
                         Chống chỉ định & Cảnh báo an toàn
                       </h4>
                       <div className="p-4 bg-red-50/50 border border-red-100 rounded-lg text-red-700 text-body-md leading-relaxed">
-                        Không sử dụng cho các động vật mẫn cảm với thành phần của thuốc/vaccine.
-                        Tránh để thuốc tiếp xúc trực tiếp với da, mắt. Đối với các sản phẩm dạng tiêm,
-                        đảm bảo tuân thủ nghiêm ngặt kỹ thuật vô trùng.
+                        {product.contraindications || 'Không sử dụng cho các động vật mẫn cảm với thành phần của thuốc/vaccine. Tránh để thuốc tiếp xúc trực tiếp với da, mắt. Đối với các sản phẩm dạng tiêm, đảm bảo tuân thủ nghiêm ngặt kỹ thuật vô trùng.'}
                       </div>
                     </div>
 
@@ -596,11 +602,19 @@ export default function ProductDetailPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="p-4 bg-amber-50/20 border border-amber-100 rounded-lg flex items-center justify-between text-body-md">
                           <span className="text-gray-500">Khai thác thịt:</span>
-                          <span className="font-bold text-amber-700">07 ngày</span>
+                          <span className="font-bold text-amber-700">
+                            {product.withdrawal_period_meat !== null && product.withdrawal_period_meat !== undefined 
+                              ? `${String(product.withdrawal_period_meat).padStart(2, '0')} ngày` 
+                              : '00 ngày'}
+                          </span>
                         </div>
                         <div className="p-4 bg-amber-50/20 border border-amber-100 rounded-lg flex items-center justify-between text-body-md">
                           <span className="text-gray-500">Khai thác sữa/trứng:</span>
-                          <span className="font-bold text-amber-700">03 ngày</span>
+                          <span className="font-bold text-amber-700">
+                            {product.withdrawal_period_milk_egg !== null && product.withdrawal_period_milk_egg !== undefined 
+                              ? `${String(product.withdrawal_period_milk_egg).padStart(2, '0')} ngày` 
+                              : '00 ngày'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -907,7 +921,7 @@ export default function ProductDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Giá vốn nhập (VND)</label>
+                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Giá vốn nhập ({settings.currency_symbol})</label>
                   <input
                     type="number"
                     min={0}

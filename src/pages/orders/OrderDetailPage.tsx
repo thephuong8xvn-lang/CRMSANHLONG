@@ -223,7 +223,7 @@ export default function OrderDetailPage() {
         order_line_id: line.lineId,
         product_id: line.productId,
         quantity: line.currentReturnQty,
-        unit_price: line.unit_price,
+        unit_price: line.unitPrice,
         lot_id: line.lotId,
         return_to_warehouse_id: returnWarehouseId || null
       }))
