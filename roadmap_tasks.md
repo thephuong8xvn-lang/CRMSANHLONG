@@ -1,6 +1,6 @@
-# Lộ Trình Phát Triển Hệ Thống CRM Sanh Long Vetco (Phase 1)
+# Lộ Trình Phát Triển Hệ Thống CRM/ERP Sanh Long Vetco (Phases 1, 2 & 3) - [HOÀN THÀNH TOÀN BỘ]
 
-Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công việc xây dựng hệ thống ERP/CRM bán hàng tối thiểu (Phase 1).
+Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công việc xây dựng hệ thống ERP/CRM của Sanh Long Vetco, bao gồm cả 3 giai đoạn (Phase 1, Phase 2, và Phase 3) đã hoàn thành xuất sắc.
 
 ---
 
