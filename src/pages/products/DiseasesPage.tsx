@@ -45,6 +45,8 @@ interface Disease {
   symptoms: string[]
   created_at: string
   disease_species?: { species: Species }[]
+  etiology_id?: string | null
+  disease_etiologies?: { id: string; name: string; pathogen_type: string; subgroup: string } | null
 }
 
 interface Protocol {
@@ -63,6 +65,25 @@ export default function DiseasesPage() {
   const [ingredients, setIngredients] = useState<ActiveIngredient[]>([])
   const [protocols, setProtocols] = useState<Protocol[]>([])
   const [selectedDiseaseId, setSelectedDiseaseId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'diseases' | 'species' | 'etiologies'>('diseases')
+  const [etiologies, setEtiologies] = useState<any[]>([])
+
+  // Species form state
+  const [showSpeciesModal, setShowSpeciesModal] = useState(false)
+  const [selectedSpecies, setSelectedSpecies] = useState<any | null>(null)
+  const [specName, setSpecName] = useState('')
+  const [specCategory, setSpecCategory] = useState('livestock')
+
+  // Etiologies form state
+  const [showEtiologyModal, setShowEtiologyModal] = useState(false)
+  const [selectedEtiology, setSelectedEtiology] = useState<any | null>(null)
+  const [etName, setEtName] = useState('')
+  const [etCode, setEtCode] = useState('')
+  const [etType, setEtType] = useState('bacteria')
+  const [etSubgroup, setEtSubgroup] = useState('')
+  const [etDesc, setEtDesc] = useState('')
+
+  const [disEtiologyId, setDisEtiologyId] = useState('')
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -117,6 +138,7 @@ export default function DiseasesPage() {
         .from('disease_dictionary')
         .select(`
           *,
+          disease_etiologies(id, name, pathogen_type, subgroup),
           disease_species(
             species:species(id, name, category)
           )
@@ -124,6 +146,14 @@ export default function DiseasesPage() {
         .order('name')
       
       if (disError) throw disError
+      // Fetch disease etiologies
+      const { data: etData, error: etError } = await supabase
+        .from('disease_etiologies')
+        .select('*')
+        .order('name')
+      if (etError) throw etError
+      if (etData) setEtiologies(etData)
+
       if (disData) {
         const loadedDiseases = disData as unknown as Disease[]
         setDiseases(loadedDiseases)
@@ -172,6 +202,7 @@ export default function DiseasesPage() {
     setDisName('')
     setDisCategory('Vi khuẩn')
     setDisEtiology('bacteria')
+    setDisEtiologyId('')
     setDisDescription('')
     setDisIsNotifiable(false)
     setDisSymptoms([])
@@ -186,6 +217,7 @@ export default function DiseasesPage() {
     setDisName(dis.name)
     setDisCategory(dis.category || 'Vi khuẩn')
     setDisEtiology(dis.etiology || 'bacteria')
+    setDisEtiologyId(dis.etiology_id || '')
     setDisDescription(dis.description || '')
     setDisIsNotifiable(dis.is_notifiable)
     setDisSymptoms(dis.symptoms || [])
@@ -225,6 +257,7 @@ export default function DiseasesPage() {
         name: disName.trim(),
         category: disCategory,
         etiology: disEtiology,
+        etiology_id: disEtiologyId || null,
         description: disDescription.trim() || null,
         is_notifiable: disIsNotifiable,
         symptoms: disSymptoms
@@ -382,6 +415,144 @@ export default function DiseasesPage() {
     }
   }
 
+  // CRUD Species
+  const openNewSpecies = () => {
+    setSelectedSpecies(null)
+    setSpecName('')
+    setSpecCategory('livestock')
+    setShowSpeciesModal(true)
+  }
+
+  const openEditSpecies = (sp: any) => {
+    setSelectedSpecies(sp)
+    setSpecName(sp.name)
+    setSpecCategory(sp.category || 'livestock')
+    setShowSpeciesModal(true)
+  }
+
+  const handleSaveSpecies = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!specName.trim()) {
+      showToast('error', 'Tên loài là bắt buộc.')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = {
+        name: specName.trim(),
+        category: specCategory
+      }
+
+      if (!selectedSpecies) {
+        const { error } = await supabase.from('species').insert([payload])
+        if (error) throw error
+        showToast('success', 'Thêm loài vật nuôi mới thành công!')
+      } else {
+        const { error } = await supabase
+          .from('species')
+          .update(payload)
+          .eq('id', selectedSpecies.id)
+        if (error) throw error
+        showToast('success', 'Cập nhật loài vật nuôi thành công!')
+      }
+      setShowSpeciesModal(false)
+      loadData()
+    } catch (err: any) {
+      console.error('Error saving species:', err)
+      showToast('error', 'Lỗi lưu loài vật nuôi: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteSpecies = async (sp: any) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa loài "${sp.name}"?`)) return
+    try {
+      const { error } = await supabase.from('species').delete().eq('id', sp.id)
+      if (error) throw error
+      showToast('success', 'Xóa loài thành công.')
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi xóa loài: ' + err.message)
+    }
+  }
+
+  // CRUD Etiologies
+  const openNewEtiology = () => {
+    setSelectedEtiology(null)
+    setEtName('')
+    setEtCode('')
+    setEtType('bacteria')
+    setEtSubgroup('')
+    setEtDesc('')
+    setShowEtiologyModal(true)
+  }
+
+  const openEditEtiology = (et: any) => {
+    setSelectedEtiology(et)
+    setEtName(et.name)
+    setEtCode(et.code || '')
+    setEtType(et.pathogen_type)
+    setEtSubgroup(et.subgroup || '')
+    setEtDesc(et.description || '')
+    setShowEtiologyModal(true)
+  }
+
+  const handleSaveEtiology = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!etName.trim()) {
+      showToast('error', 'Tên nguyên nhân là bắt buộc.')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = {
+        name: etName.trim(),
+        code: etCode.trim() ? etCode.trim().toLowerCase() : null,
+        pathogen_type: etType,
+        subgroup: etSubgroup.trim() || null,
+        description: etDesc.trim() || null
+      }
+
+      if (!selectedEtiology) {
+        const { error } = await supabase.from('disease_etiologies').insert([payload])
+        if (error) throw error
+        showToast('success', 'Thêm nguyên nhân bệnh mới thành công!')
+      } else {
+        const { error } = await supabase
+          .from('disease_etiologies')
+          .update(payload)
+          .eq('id', selectedEtiology.id)
+        if (error) throw error
+        showToast('success', 'Cập nhật nguyên nhân bệnh thành công!')
+      }
+      setShowEtiologyModal(false)
+      loadData()
+    } catch (err: any) {
+      console.error('Error saving etiology:', err)
+      showToast('error', 'Lỗi lưu nguyên nhân bệnh: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteEtiology = async (et: any) => {
+    const linkedCount = diseases.filter(d => d.etiology_id === et.id).length
+    if (linkedCount > 0) {
+      showToast('error', `Không thể xóa nguyên nhân này vì đang có ${linkedCount} bệnh lý liên kết.`)
+      return
+    }
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa nguyên nhân "${et.name}"?`)) return
+    try {
+      const { error } = await supabase.from('disease_etiologies').delete().eq('id', et.id)
+      if (error) throw error
+      showToast('success', 'Xóa nguyên nhân bệnh thành công.')
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi xóa nguyên nhân: ' + err.message)
+    }
+  }
+
   // Filter diseases
   const filteredDiseases = diseases.filter(dis => {
     const matchesSearch = 
@@ -464,16 +635,74 @@ export default function DiseasesPage() {
             </p>
           </div>
           
+          {activeTab === 'diseases' && (
+            <button
+              onClick={openNewDisease}
+              className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
+            >
+              <Plus size={16} />
+              <span>Khai báo bệnh mới</span>
+            </button>
+          )}
+          {activeTab === 'species' && (
+            <button
+              onClick={openNewSpecies}
+              className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
+            >
+              <Plus size={16} />
+              <span>Thêm loài vật nuôi</span>
+            </button>
+          )}
+          {activeTab === 'etiologies' && (
+            <button
+              onClick={openNewEtiology}
+              className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
+            >
+              <Plus size={16} />
+              <span>Thêm nguyên nhân bệnh</span>
+            </button>
+          )}
+        </div>
+
+        {/* Tabs switcher */}
+        <div className="flex border-b border-gray-200 flex-wrap">
           <button
-            onClick={openNewDisease}
-            className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
+            onClick={() => setActiveTab('diseases')}
+            className={`px-6 py-3 font-semibold text-body-md transition-all flex items-center gap-2 border-b-2 -mb-[2px] ${
+              activeTab === 'diseases'
+                ? 'border-blue-500 text-blue-600 font-bold'
+                : 'border-transparent text-gray-400 hover:text-gray-650'
+            }`}
           >
-            <Plus size={16} />
-            <span>Khai báo bệnh mới</span>
+            <HeartPulse size={16} />
+            Bệnh lý & Phác đồ
+          </button>
+          <button
+            onClick={() => setActiveTab('species')}
+            className={`px-6 py-3 font-semibold text-body-md transition-all flex items-center gap-2 border-b-2 -mb-[2px] ${
+              activeTab === 'species'
+                ? 'border-blue-500 text-blue-600 font-bold'
+                : 'border-transparent text-gray-400 hover:text-gray-650'
+            }`}
+          >
+            <Activity size={16} />
+            Loài vật nuôi
+          </button>
+          <button
+            onClick={() => setActiveTab('etiologies')}
+            className={`px-6 py-3 font-semibold text-body-md transition-all flex items-center gap-2 border-b-2 -mb-[2px] ${
+              activeTab === 'etiologies'
+                ? 'border-blue-500 text-blue-600 font-bold'
+                : 'border-transparent text-gray-400 hover:text-gray-650'
+            }`}
+          >
+            <HelpCircle size={16} />
+            Phân nhóm nguyên nhân
           </button>
         </div>
 
         {/* Search & Filters */}
+        {activeTab === 'diseases' && (
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="relative w-full md:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
@@ -511,8 +740,10 @@ export default function DiseasesPage() {
             </select>
           </div>
         </div>
+        )}
 
         {/* Main Workspace Layout (Split screen 40% list - 60% detail) */}
+        {activeTab === 'diseases' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* Left Column: Disease List */}
@@ -549,8 +780,10 @@ export default function DiseasesPage() {
                       </div>
                       
                       <div className="flex flex-wrap gap-1 items-center">
-                        <span className={`text-[10px] px-2 py-0.5 border rounded-full font-bold uppercase shrink-0 ${getEtiologyBadgeColor(dis.etiology)}`}>
-                          {getEtiologyLabel(dis.etiology)}
+                        <span className={`text-[10px] px-2 py-0.5 border rounded-full font-bold uppercase shrink-0 ${
+                          dis.disease_etiologies?.pathogen_type ? getEtiologyBadgeColor(dis.disease_etiologies.pathogen_type) : getEtiologyBadgeColor(dis.etiology)
+                        }`}>
+                          {dis.disease_etiologies?.name || getEtiologyLabel(dis.etiology)}
                         </span>
                         
                         {dis.disease_species?.map((ds, i) => (
@@ -600,8 +833,10 @@ export default function DiseasesPage() {
                     </div>
                     
                     <div className="flex gap-2">
-                      <span className={`px-3 py-1 border rounded-full text-tiny font-bold uppercase ${getEtiologyBadgeColor(currentDisease.etiology)}`}>
-                        {getEtiologyLabel(currentDisease.etiology)}
+                      <span className={`px-3 py-1 border rounded-full text-tiny font-bold uppercase ${
+                        currentDisease.disease_etiologies?.pathogen_type ? getEtiologyBadgeColor(currentDisease.disease_etiologies.pathogen_type) : getEtiologyBadgeColor(currentDisease.etiology)
+                      }`}>
+                        {currentDisease.disease_etiologies?.name || getEtiologyLabel(currentDisease.etiology)}
                       </span>
                       {currentDisease.is_notifiable && (
                         <span className="bg-red-50 border border-red-100 text-red-700 px-3 py-1 rounded-full text-tiny font-bold uppercase flex items-center gap-1">
@@ -847,6 +1082,118 @@ export default function DiseasesPage() {
           </div>
 
         </div>
+        )}
+
+        {/* TAB 2: Loài vật nuôi */}
+        {activeTab === 'species' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
+                      <th className="px-6 py-4">Tên loài vật nuôi</th>
+                      <th className="px-6 py-4">Phân nhóm chính</th>
+                      <th className="px-6 py-4 text-center">Bệnh lý liên kết</th>
+                      <th className="px-6 py-4 w-28 text-center">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-body-md text-gray-650">
+                    {species.map((sp) => {
+                      const linkedCount = diseases.filter(d => d.disease_species?.some(ds => ds.species.id === sp.id)).length
+                      return (
+                        <tr key={sp.id} className="hover:bg-gray-25/50 transition-colors">
+                          <td className="px-6 py-4 font-bold text-gray-800">{sp.name}</td>
+                          <td className="px-6 py-4 capitalize text-gray-600">{sp.category || 'livestock'}</td>
+                          <td className="px-6 py-4 text-center font-bold text-blue-500">{linkedCount}</td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex justify-center gap-2">
+                              <button
+                                onClick={() => openEditSpecies(sp)}
+                                className="text-gray-450 hover:text-blue-650 transition-colors p-1"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSpecies(sp)}
+                                className="text-gray-450 hover:text-red-500 transition-colors p-1"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: Phân nhóm nguyên nhân */}
+        {activeTab === 'etiologies' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
+                      <th className="px-6 py-4">Tên nguyên nhân</th>
+                      <th className="px-6 py-4">Mã phân nhóm</th>
+                      <th className="px-6 py-4">Loại tác nhân</th>
+                      <th className="px-6 py-4">Phân nhóm (Gram/Hệ Gen)</th>
+                      <th className="px-6 py-4">Mô tả tác nhân</th>
+                      <th className="px-6 py-4 text-center">Bệnh lý gán</th>
+                      <th className="px-6 py-4 w-28 text-center">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-body-md text-gray-650">
+                    {etiologies.map((et) => {
+                      const linkedCount = diseases.filter(d => d.etiology_id === et.id).length
+                      return (
+                        <tr key={et.id} className="hover:bg-gray-25/50 transition-colors">
+                          <td className="px-6 py-4 font-bold text-gray-800">{et.name}</td>
+                          <td className="px-6 py-4 font-mono text-tiny text-gray-500 font-bold">{et.code || '---'}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border capitalize ${
+                              et.pathogen_type === 'virus' ? 'bg-rose-50 border-rose-100 text-rose-700' :
+                              et.pathogen_type === 'bacteria' ? 'bg-blue-50 border-blue-100 text-blue-700' :
+                              et.pathogen_type === 'parasite' ? 'bg-amber-50 border-amber-100 text-amber-700' :
+                              'bg-slate-50 border-slate-100 text-slate-700'
+                            }`}>
+                              {getEtiologyLabel(et.pathogen_type)}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-gray-700">{et.subgroup || '---'}</td>
+                          <td className="px-6 py-4 max-w-xs truncate" title={et.description}>{et.description || '---'}</td>
+                          <td className="px-6 py-4 text-center font-bold text-blue-500">{linkedCount}</td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex justify-center gap-2">
+                              <button
+                                onClick={() => openEditEtiology(et)}
+                                className="text-gray-450 hover:text-blue-650 transition-colors p-1"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteEtiology(et)}
+                                className="text-gray-450 hover:text-red-500 transition-colors p-1"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal: Add/Edit Disease Definition */}
         {showDiseaseModal && (
@@ -1140,6 +1487,163 @@ export default function DiseasesPage() {
                         Lưu vào phác đồ
                       </>
                     )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add/Edit Species */}
+        {showSpeciesModal && (
+          <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-25">
+                <h3 className="text-body-lg font-bold text-gray-800">
+                  {selectedSpecies ? 'Cập nhật loài vật nuôi' : 'Thêm loài vật nuôi mới'}
+                </h3>
+                <button onClick={() => setShowSpeciesModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSpecies} className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Tên loài vật nuôi *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: Heo thịt, Gà đẻ, Bò sữa..."
+                    value={specName}
+                    onChange={(e) => setSpecName(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Nhóm ngành chăn nuôi</label>
+                  <select
+                    value={specCategory}
+                    onChange={(e) => setSpecCategory(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="livestock">Gia súc (livestock)</option>
+                    <option value="poultry">Gia cầm (poultry)</option>
+                    <option value="aquatic">Thủy hải sản (aquatic)</option>
+                    <option value="other">Khác</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowSpeciesModal(false)}
+                    className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md"
+                  >
+                    Lưu lại
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add/Edit Disease Etiology */}
+        {showEtiologyModal && (
+          <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-25">
+                <h3 className="text-body-lg font-bold text-gray-800">
+                  {selectedEtiology ? 'Cập nhật phân nhóm nguyên nhân' : 'Thêm phân nhóm nguyên nhân mới'}
+                </h3>
+                <button onClick={() => setShowEtiologyModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEtiology} className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Tên nguyên nhân / Tác nhân *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: Vi khuẩn Gram-âm, Virus RNA..."
+                    value={etName}
+                    onChange={(e) => setEtName(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mã phân nhóm (Tự sinh)</label>
+                  <input
+                    type="text"
+                    placeholder="VD: gram_neg, rna_virus..."
+                    value={etCode}
+                    onChange={(e) => setEtCode(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 lowercase font-mono"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Tác nhân chính</label>
+                    <select
+                      value={etType}
+                      onChange={(e) => setEtType(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    >
+                      <option value="bacteria">Vi khuẩn 🧫</option>
+                      <option value="virus">Virus 🦠</option>
+                      <option value="parasite">Ký sinh trùng 🐛</option>
+                      <option value="environment_nutrition">Môi trường / Dinh dưỡng ☀️</option>
+                      <option value="other">Khác</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Gram / Phân nhóm hệ Gen</label>
+                    <input
+                      type="text"
+                      placeholder="Gram-âm, RNA..."
+                      value={etSubgroup}
+                      onChange={(e) => setEtSubgroup(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mô tả tác nhân</label>
+                  <textarea
+                    rows={3}
+                    placeholder="VD: Vi khuẩn bắt màu hồng/đỏ khi nhuộm Gram..."
+                    value={etDesc}
+                    onChange={(e) => setEtDesc(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 leading-normal"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowEtiologyModal(false)}
+                    className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md"
+                  >
+                    Lưu lại
                   </button>
                 </div>
               </form>

@@ -248,9 +248,15 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - [x] Liên kết `disease_id` và `treatment_purpose` vào bảng `orders` để lưu trữ dữ liệu dịch tễ khi tạo hóa đơn bán hàng.
 - [x] **Trang Quản lý Hoạt chất nâng cao & Tương thích**:
   - [x] Tích hợp 2 tab trên màn hình hoạt chất: Danh sách hoạt chất lý lịch nâng cao và Trình cấu hình ma trận tương thích thuốc (Synergy & Antagonism).
+  - [x] Tích hợp cấu hình động CRUD cho Nhóm dược lý (`pharmacological_groups`) và Loại tương tác thuốc (`compatibility_interaction_types`) hỗ trợ thiết lập từ điển danh mục nâng cao trực quan.
 - [x] **Trang Quản lý Bệnh lý & Phác đồ điều trị (`/diseases`)**:
   - [x] Xây dựng giao diện Danh mục bệnh thú y kèm theo công cụ quản lý danh sách triệu chứng động dạng tag.
   - [x] Thiết kế form xây dựng Phác đồ điều trị đa tầng cho từng bệnh, liên kết vai trò và độ ưu tiên hoạt chất.
+  - [x] Cấu hình động CRUD cho Loài vật nuôi (`species`) và Phân nhóm nguyên nhân gây bệnh (`disease_etiologies`) hỗ trợ chỉ định bệnh nâng cao và phân loại tác nhân Gram-âm/Gram-dương, virus RNA/DNA trực quan.
+- [x] **Cải tiến Catalog Sản Phẩm & Chỉ định bệnh lý**:
+  - [x] Nâng cấp Modals Thêm mới (`AddProductModal`) và Cập nhật (`EditProductModal`) hàng hóa lên giao diện 2 cột rộng rãi (`max-w-4xl`).
+  - [x] Hỗ trợ tìm kiếm & tick chọn nhiều hoạt chất kèm nhập nồng độ/hàm lượng trực tiếp, cùng với checklist chỉ định điều trị bệnh lý gán thẳng vào sản phẩm.
+  - [x] Đồng bộ lưu trữ và hiển thị các bệnh lý chỉ định điều trị dạng tag tag-badges trực quan trên thanh thông tin bổ sung của trang Chi tiết sản phẩm (`ProductDetailPage`).
 - [x] **Tích hợp Giỏ hàng thông minh (Smart Cart) & Tương kỵ thuốc tại POS**:
   - [x] Phát triển công cụ chẩn đoán nhanh tại POS: Chọn Loài -> Tích chọn Triệu chứng -> Đề xuất bệnh lý -> Áp dụng phác đồ tự động điền các sản phẩm phù hợp trong kho (theo FEFO) vào giỏ hàng.
   - [x] Tự động đối chiếu tương kỵ thuốc: Hiển thị cảnh báo đỏ nổi bật ngay tại giỏ hàng nếu phát hiện sản phẩm đối kháng dùng chung cho vật nuôi.

@@ -40,13 +40,15 @@ interface ActiveIngredient {
   contraindications: string | null
   created_at: string
   product_active_ingredients?: ProductActiveIngredientLink[]
+  pharmacological_group_id?: string | null
+  pharmacological_groups?: { id: string; name: string } | null
 }
 
 interface Compatibility {
   id: string
   ingredient_a_id: string
   ingredient_b_id: string
-  interaction_type: 'synergy' | 'antagonism'
+  interaction_type: string
   description: string | null
   created_at: string
   ingredient_a: { id: string; name: string; code: string | null }
@@ -54,7 +56,28 @@ interface Compatibility {
 }
 
 export default function ActiveIngredientsPage() {
-  const [activeTab, setActiveTab] = useState<'list' | 'compatibility'>('list')
+  const [activeTab, setActiveTab] = useState<'list' | 'compatibility' | 'pharma_groups' | 'interaction_types'>('list')
+  const [pharmaGroups, setPharmaGroups] = useState<any[]>([])
+  const [interactionTypes, setInteractionTypes] = useState<any[]>([])
+
+  // Pharmacological group form state
+  const [showPharmaModal, setShowPharmaModal] = useState(false)
+  const [selectedPharmaGroup, setSelectedPharmaGroup] = useState<any | null>(null)
+  const [pgName, setPgName] = useState('')
+  const [pgCode, setPgCode] = useState('')
+  const [pgDesc, setPgDesc] = useState('')
+  const [pgIsActive, setPgIsActive] = useState(true)
+  const [pharmaSearch, setPharmaSearch] = useState('')
+
+  // Interaction type form state
+  const [showInteractionModal, setShowInteractionModal] = useState(false)
+  const [selectedInteractionType, setSelectedInteractionType] = useState<any | null>(null)
+  const [itCode, setItCode] = useState('')
+  const [itName, setItName] = useState('')
+  const [itDesc, setItDesc] = useState('')
+  const [itColor, setItColor] = useState('gray')
+
+  const [ingPharmaGroupId, setIngPharmaGroupId] = useState('')
   const [ingredients, setIngredients] = useState<ActiveIngredient[]>([])
   const [compatibilities, setCompatibilities] = useState<Compatibility[]>([])
   const [loading, setLoading] = useState(true)
@@ -106,6 +129,7 @@ export default function ActiveIngredientsPage() {
         .from('active_ingredients')
         .select(`
           *,
+          pharmacological_groups(id, name),
           product_active_ingredients(
             percentage_or_dosage,
             product:products(id, name, sku)
@@ -127,6 +151,22 @@ export default function ActiveIngredientsPage() {
       
       if (compError) throw compError
       if (compData) setCompatibilities(compData as unknown as Compatibility[])
+
+      // Load pharmacological groups
+      const { data: pgData, error: pgError } = await supabase
+        .from('pharmacological_groups')
+        .select('*')
+        .order('name')
+      if (pgError) throw pgError
+      if (pgData) setPharmaGroups(pgData)
+
+      // Load compatibility interaction types
+      const { data: itData, error: itError } = await supabase
+        .from('compatibility_interaction_types')
+        .select('*')
+        .order('name')
+      if (itError) throw itError
+      if (itData) setInteractionTypes(itData)
     } catch (err: any) {
       console.error('Error fetching active ingredients and matrix:', err)
       showToast('error', 'Lỗi tải dữ liệu hoạt chất & ma trận: ' + err.message)
@@ -146,6 +186,7 @@ export default function ActiveIngredientsPage() {
     setIngName('')
     setIngIsActive(true)
     setIngPharmaGroup('')
+    setIngPharmaGroupId('')
     setIngStdDosage('')
     setIngWithdrawalMeat('')
     setIngWithdrawalMilkEgg('')
@@ -159,6 +200,7 @@ export default function ActiveIngredientsPage() {
     setIngName(ing.name)
     setIngIsActive(ing.is_active)
     setIngPharmaGroup(ing.pharmacological_group || '')
+    setIngPharmaGroupId(ing.pharmacological_group_id || '')
     setIngStdDosage(ing.standard_dosage || '')
     setIngWithdrawalMeat(ing.withdrawal_period_meat !== null ? ing.withdrawal_period_meat : '')
     setIngWithdrawalMilkEgg(ing.withdrawal_period_milk_egg !== null ? ing.withdrawal_period_milk_egg : '')
@@ -180,6 +222,7 @@ export default function ActiveIngredientsPage() {
         name: ingName.trim(),
         is_active: ingIsActive,
         pharmacological_group: ingPharmaGroup.trim() || null,
+        pharmacological_group_id: ingPharmaGroupId || null,
         standard_dosage: ingStdDosage.trim() || null,
         withdrawal_period_meat: ingWithdrawalMeat !== '' ? Number(ingWithdrawalMeat) : null,
         withdrawal_period_milk_egg: ingWithdrawalMilkEgg !== '' ? Number(ingWithdrawalMilkEgg) : null,
@@ -333,6 +376,152 @@ export default function ActiveIngredientsPage() {
     }
   }
 
+  // CRUD Pharmacological Groups
+  const openNewPharmaGroup = () => {
+    setSelectedPharmaGroup(null)
+    setPgName('')
+    setPgCode('')
+    setPgDesc('')
+    setPgIsActive(true)
+    setShowPharmaModal(true)
+  }
+
+  const openEditPharmaGroup = (pg: any) => {
+    setSelectedPharmaGroup(pg)
+    setPgName(pg.name)
+    setPgCode(pg.code || '')
+    setPgDesc(pg.description || '')
+    setPgIsActive(pg.is_active)
+    setShowPharmaModal(true)
+  }
+
+  const handleSavePharmaGroup = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pgName.trim()) {
+      showToast('error', 'Tên nhóm dược lý là bắt buộc.')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = {
+        name: pgName.trim(),
+        code: pgCode.trim() ? pgCode.trim().toLowerCase() : null,
+        description: pgDesc.trim() || null,
+        is_active: pgIsActive
+      }
+
+      if (!selectedPharmaGroup) {
+        const { error } = await supabase.from('pharmacological_groups').insert([payload])
+        if (error) throw error
+        showToast('success', 'Thêm nhóm dược lý thành công!')
+      } else {
+        const { error } = await supabase
+          .from('pharmacological_groups')
+          .update(payload)
+          .eq('id', selectedPharmaGroup.id)
+        if (error) throw error
+        showToast('success', 'Cập nhật nhóm dược lý thành công!')
+      }
+      setShowPharmaModal(false)
+      loadData()
+    } catch (err: any) {
+      console.error('Error saving pharma group:', err)
+      showToast('error', 'Lỗi lưu nhóm dược lý: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeletePharmaGroup = async (pg: any) => {
+    const linkedCount = ingredients.filter(ing => ing.pharmacological_group_id === pg.id).length
+    if (linkedCount > 0) {
+      showToast('error', `Không thể xóa nhóm dược lý này vì đang có ${linkedCount} hoạt chất liên kết.`)
+      return
+    }
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa nhóm dược lý "${pg.name}"?`)) return
+    try {
+      const { error } = await supabase.from('pharmacological_groups').delete().eq('id', pg.id)
+      if (error) throw error
+      showToast('success', 'Xóa nhóm dược lý thành công.')
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi xóa nhóm dược lý: ' + err.message)
+    }
+  }
+
+  // CRUD Interaction Types
+  const openNewInteractionType = () => {
+    setSelectedInteractionType(null)
+    setItCode('')
+    setItName('')
+    setItDesc('')
+    setItColor('gray')
+    setShowInteractionModal(true)
+  }
+
+  const openEditInteractionType = (it: any) => {
+    setSelectedInteractionType(it)
+    setItCode(it.code)
+    setItName(it.name)
+    setItDesc(it.description || '')
+    setItColor(it.color_code || 'gray')
+    setShowInteractionModal(true)
+  }
+
+  const handleSaveInteractionType = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!itCode.trim() || !itName.trim()) {
+      showToast('error', 'Mã và tên loại tương tác là bắt buộc.')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = {
+        code: itCode.trim().toLowerCase(),
+        name: itName.trim(),
+        description: itDesc.trim() || null,
+        color_code: itColor
+      }
+
+      if (!selectedInteractionType) {
+        const { error } = await supabase.from('compatibility_interaction_types').insert([payload])
+        if (error) throw error
+        showToast('success', 'Thêm loại tương tác thành công!')
+      } else {
+        const { error } = await supabase
+          .from('compatibility_interaction_types')
+          .update(payload)
+          .eq('id', selectedInteractionType.id)
+        if (error) throw error
+        showToast('success', 'Cập nhật loại tương tác thành công!')
+      }
+      setShowInteractionModal(false)
+      loadData()
+    } catch (err: any) {
+      console.error('Error saving interaction type:', err)
+      showToast('error', 'Lỗi lưu loại tương tác: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteInteractionType = async (it: any) => {
+    const linkedCount = compatibilities.filter(c => c.interaction_type === it.code).length
+    if (linkedCount > 0) {
+      showToast('error', `Không thể xóa loại tương tác này vì đang có ${linkedCount} quy tắc tương hợp liên kết.`)
+      return
+    }
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa loại tương tác "${it.name}"?`)) return
+    try {
+      const { error } = await supabase.from('compatibility_interaction_types').delete().eq('id', it.id)
+      if (error) throw error
+      showToast('success', 'Xóa loại tương tác thành công.')
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi xóa loại tương tác: ' + err.message)
+    }
+  }
+
   // Filters logic
   const uniqueGroups = Array.from(new Set(ingredients.map(ing => ing.pharmacological_group).filter(Boolean))) as string[]
 
@@ -397,7 +586,7 @@ export default function ActiveIngredientsPage() {
             </p>
           </div>
           
-          {activeTab === 'list' ? (
+          {activeTab === 'list' && (
             <button
               onClick={openNewIngredient}
               className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
@@ -405,7 +594,8 @@ export default function ActiveIngredientsPage() {
               <Plus size={16} />
               <span>Thêm hoạt chất</span>
             </button>
-          ) : (
+          )}
+          {activeTab === 'compatibility' && (
             <button
               onClick={openNewCompat}
               className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
@@ -414,10 +604,28 @@ export default function ActiveIngredientsPage() {
               <span>Thiết lập tương tác</span>
             </button>
           )}
+          {activeTab === 'pharma_groups' && (
+            <button
+              onClick={openNewPharmaGroup}
+              className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
+            >
+              <Plus size={16} />
+              <span>Thêm nhóm dược lý</span>
+            </button>
+          )}
+          {activeTab === 'interaction_types' && (
+            <button
+              onClick={openNewInteractionType}
+              className="bg-blue-500 text-white px-5 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all self-start sm:self-auto"
+            >
+              <Plus size={16} />
+              <span>Thêm loại tương tác</span>
+            </button>
+          )}
         </div>
 
         {/* Tabs switcher */}
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-gray-200 flex-wrap">
           <button
             onClick={() => setActiveTab('list')}
             className={`px-6 py-3 font-semibold text-body-md transition-all flex items-center gap-2 border-b-2 -mb-[2px] ${
@@ -438,7 +646,29 @@ export default function ActiveIngredientsPage() {
             }`}
           >
             <ShieldAlert size={16} />
-            Ma trận tương tác (Hiệp lực / Đối kháng)
+            Ma trận tương kỵ
+          </button>
+          <button
+            onClick={() => setActiveTab('pharma_groups')}
+            className={`px-6 py-3 font-semibold text-body-md transition-all flex items-center gap-2 border-b-2 -mb-[2px] ${
+              activeTab === 'pharma_groups'
+                ? 'border-blue-500 text-blue-600 font-bold'
+                : 'border-transparent text-gray-400 hover:text-gray-650'
+            }`}
+          >
+            <Activity size={16} />
+            Nhóm dược lý
+          </button>
+          <button
+            onClick={() => setActiveTab('interaction_types')}
+            className={`px-6 py-3 font-semibold text-body-md transition-all flex items-center gap-2 border-b-2 -mb-[2px] ${
+              activeTab === 'interaction_types'
+                ? 'border-blue-500 text-blue-600 font-bold'
+                : 'border-transparent text-gray-400 hover:text-gray-650'
+            }`}
+          >
+            <Info size={16} />
+            Loại tương tác
           </button>
         </div>
 
@@ -535,7 +765,7 @@ export default function ActiveIngredientsPage() {
                                 </div>
                               </td>
                               <td className="px-6 py-4 font-medium text-gray-700">
-                                {ing.pharmacological_group || '---'}
+                                {(ing as any).pharmacological_groups?.name || ing.pharmacological_group || '---'}
                               </td>
                               <td className="px-6 py-4">
                                 {ing.standard_dosage || '---'}
@@ -629,6 +859,138 @@ export default function ActiveIngredientsPage() {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: Nhóm dược lý */}
+        {activeTab === 'pharma_groups' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Tìm theo tên hoặc mã..."
+                  value={pharmaSearch}
+                  onChange={(e) => setPharmaSearch(e.target.value)}
+                  className="w-full h-10 pl-10 pr-4 bg-gray-25 border border-gray-100 rounded-lg text-body-md placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
+                      <th className="px-6 py-4">Tên nhóm</th>
+                      <th className="px-6 py-4">Mã nhóm</th>
+                      <th className="px-6 py-4">Mô tả</th>
+                      <th className="px-6 py-4 text-center">Hoạt chất gán</th>
+                      <th className="px-6 py-4 text-center">Trạng thái</th>
+                      <th className="px-6 py-4 w-28 text-center">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-body-md text-gray-650">
+                    {pharmaGroups
+                      .filter(pg => 
+                        pg.name.toLowerCase().includes(pharmaSearch.toLowerCase()) ||
+                        (pg.code || '').toLowerCase().includes(pharmaSearch.toLowerCase())
+                      )
+                      .map((pg) => {
+                        const linkedCount = ingredients.filter(ing => ing.pharmacological_group_id === pg.id).length
+                        return (
+                          <tr key={pg.id} className="hover:bg-gray-25/50 transition-colors">
+                            <td className="px-6 py-4 font-bold text-gray-800">{pg.name}</td>
+                            <td className="px-6 py-4 font-mono text-tiny uppercase text-gray-500 font-bold">{pg.code || '---'}</td>
+                            <td className="px-6 py-4 max-w-xs truncate" title={pg.description}>{pg.description || '---'}</td>
+                            <td className="px-6 py-4 text-center font-bold text-blue-500">{linkedCount}</td>
+                            <td className="px-6 py-4 text-center">
+                              <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-bold ${
+                                pg.is_active ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-danger-500'
+                              }`}>
+                                {pg.is_active ? 'Kích hoạt' : 'Khóa'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <div className="flex justify-center gap-2">
+                                <button
+                                  onClick={() => openEditPharmaGroup(pg)}
+                                  className="text-gray-450 hover:text-blue-650 transition-colors p-1"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeletePharmaGroup(pg)}
+                                  className="text-gray-450 hover:text-red-500 transition-colors p-1"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: Loại tương tác */}
+        {activeTab === 'interaction_types' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
+                      <th className="px-6 py-4">Tên loại tương tác</th>
+                      <th className="px-6 py-4">Mã tương tác</th>
+                      <th className="px-6 py-4">Mô tả tác động</th>
+                      <th className="px-6 py-4 text-center">Màu sắc</th>
+                      <th className="px-6 py-4 text-center">Quy tắc liên kết</th>
+                      <th className="px-6 py-4 w-28 text-center">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-body-md text-gray-650">
+                    {interactionTypes.map((it) => {
+                      const linkedCount = compatibilities.filter(c => c.interaction_type === it.code).length
+                      return (
+                        <tr key={it.id} className="hover:bg-gray-25/50 transition-colors">
+                          <td className="px-6 py-4 font-bold text-gray-800">{it.name}</td>
+                          <td className="px-6 py-4 font-mono text-tiny text-gray-500 font-bold">{it.code}</td>
+                          <td className="px-6 py-4 max-w-xs truncate" title={it.description}>{it.description || '---'}</td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border capitalize bg-${it.color_code}-50 text-${it.color_code}-700 border-${it.color_code}-100`}>
+                              {it.color_code}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center font-bold text-blue-500">{linkedCount}</td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex justify-center gap-2">
+                              <button
+                                onClick={() => openEditInteractionType(it)}
+                                className="text-gray-450 hover:text-blue-650 transition-colors p-1"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteInteractionType(it)}
+                                className="text-gray-450 hover:text-red-500 transition-colors p-1"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -782,13 +1144,20 @@ export default function ActiveIngredientsPage() {
 
                   <div className="space-y-1.5">
                     <label className="block text-body-md font-semibold text-gray-700">Nhóm dược lý</label>
-                    <input
-                      type="text"
-                      placeholder="VD: Kháng sinh (Beta-lactam), Hạ sốt..."
-                      value={ingPharmaGroup}
-                      onChange={(e) => setIngPharmaGroup(e.target.value)}
-                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
-                    />
+                    <select
+                      value={ingPharmaGroupId}
+                      onChange={(e) => {
+                        setIngPharmaGroupId(e.target.value)
+                        const matched = pharmaGroups.find(g => g.id === e.target.value)
+                        setIngPharmaGroup(matched ? matched.name : '')
+                      }}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    >
+                      <option value="">Chọn nhóm dược lý</option>
+                      {pharmaGroups.map(pg => (
+                        <option key={pg.id} value={pg.id}>{pg.name}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1.5">
@@ -987,6 +1356,175 @@ export default function ActiveIngredientsPage() {
                         Lưu quy tắc
                       </>
                     )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add/Edit Pharmacological Group */}
+        {showPharmaModal && (
+          <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-25">
+                <h3 className="text-body-lg font-bold text-gray-800">
+                  {selectedPharmaGroup ? 'Cập nhật nhóm dược lý' : 'Thêm nhóm dược lý mới'}
+                </h3>
+                <button onClick={() => setShowPharmaModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSavePharmaGroup} className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Tên nhóm dược lý *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: Kháng sinh (Beta-lactam)..."
+                    value={pgName}
+                    onChange={(e) => setPgName(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mã định danh nhóm (Tự chọn)</label>
+                  <input
+                    type="text"
+                    placeholder="VD: beta_lactam..."
+                    value={pgCode}
+                    onChange={(e) => setPgCode(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 lowercase font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mô tả tác dụng kỹ thuật</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Nhập mô tả chi tiết tác động của nhóm..."
+                    value={pgDesc}
+                    onChange={(e) => setPgDesc(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 leading-normal"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="pgIsActive"
+                    checked={pgIsActive}
+                    onChange={(e) => setPgIsActive(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                  />
+                  <label htmlFor="pgIsActive" className="text-body-md font-medium text-gray-700 cursor-pointer">
+                    Trạng thái hoạt động
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowPharmaModal(false)}
+                    className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md"
+                  >
+                    Lưu lại
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add/Edit Compatibility Interaction Type */}
+        {showInteractionModal && (
+          <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-25">
+                <h3 className="text-body-lg font-bold text-gray-800">
+                  {selectedInteractionType ? 'Cập nhật loại tương tác' : 'Thêm loại tương tác mới'}
+                </h3>
+                <button onClick={() => setShowInteractionModal(false)} className="text-gray-400 hover:text-gray-655 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveInteractionType} className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mã tương tác *</label>
+                  <input
+                    type="text"
+                    required
+                    disabled={!!selectedInteractionType}
+                    placeholder="VD: synergy, antagonism..."
+                    value={itCode}
+                    onChange={(e) => setItCode(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 lowercase font-mono disabled:bg-gray-50 disabled:text-gray-400"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Tên hiển thị *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: Hiệp lực..."
+                    value={itName}
+                    onChange={(e) => setItName(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mô tả chi tiết</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Nhập mô tả tác động..."
+                    value={itDesc}
+                    onChange={(e) => setItDesc(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 leading-normal"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mã màu (Tailwind color name) *</label>
+                  <select
+                    value={itColor}
+                    onChange={(e) => setItColor(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white capitalize"
+                  >
+                    <option value="red">Màu đỏ (Cảnh báo/Đối kháng)</option>
+                    <option value="emerald">Màu xanh lục (Hiệp lực/Ưu tiên)</option>
+                    <option value="amber">Màu vàng (Thận trọng/Có điều kiện)</option>
+                    <option value="blue">Màu xanh dương</option>
+                    <option value="purple">Màu tím</option>
+                    <option value="gray">Màu xám</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowInteractionModal(false)}
+                    className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-5 h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md"
+                  >
+                    Lưu lại
                   </button>
                 </div>
               </form>

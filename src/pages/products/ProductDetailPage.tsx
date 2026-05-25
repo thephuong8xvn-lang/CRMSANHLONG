@@ -108,6 +108,15 @@ export default function ProductDetailPage() {
   }
   const [productIngredients, setProductIngredients] = useState<LinkedActiveIngredient[]>([])
 
+  interface LinkedDiseaseIndication {
+    disease: {
+      id: string
+      name: string
+      code: string
+    } | null
+  }
+  const [productIndications, setProductIndications] = useState<LinkedDiseaseIndication[]>([])
+
   // Edit Modal & Pricing State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [priceListItems, setPriceListItems] = useState<any[]>([])
@@ -159,6 +168,18 @@ export default function ProductDetailPage() {
       
       if (ingData) {
         setProductIngredients(ingData as unknown as LinkedActiveIngredient[])
+      }
+
+      // Fetch disease indications
+      const { data: indData } = await supabase
+        .from('product_indications')
+        .select(`
+          disease:disease_dictionary(id, name, code)
+        `)
+        .eq('product_id', id)
+      
+      if (indData) {
+        setProductIndications(indData as unknown as LinkedDiseaseIndication[])
       }
 
       // 2. Fetch variants
@@ -519,6 +540,28 @@ export default function ProductDetailPage() {
                       <span className="font-semibold text-gray-700 text-body-md">{item.active_ingredient?.name}</span>
                       <span className="font-bold text-blue-500 text-body-md">{item.percentage_or_dosage}</span>
                     </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Disease Indications */}
+            <div className="bg-gray-0 border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                <Bookmark className="text-emerald-500" size={18} />
+                <h3 className="font-bold text-body-lg text-gray-700">Chỉ định điều trị</h3>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {productIndications.length === 0 ? (
+                  <p className="text-tiny text-gray-400 italic py-2">Chưa gán chỉ định điều trị.</p>
+                ) : (
+                  productIndications.map((item, idx) => (
+                    <span
+                      key={idx}
+                      className="px-3 py-1 bg-emerald-50 border border-emerald-100 text-emerald-700 text-body-sm font-semibold rounded-lg shadow-sm"
+                    >
+                      {item.disease?.name} ({item.disease?.code})
+                    </span>
                   ))
                 )}
               </div>
