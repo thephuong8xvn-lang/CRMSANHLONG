@@ -1,79 +1,90 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import AuthCallback from './pages/AuthCallback'
 import { isSupabaseConfigured } from './lib/supabase'
-import LoginPage from './pages/auth/LoginPage'
-import DashboardPage from './pages/dashboard/DashboardPage'
-import CustomerListPage from './pages/customers/CustomerListPage'
-import CustomerDetailPage from './pages/customers/CustomerDetailPage'
-import ProductListPage from './pages/products/ProductListPage'
-import ProductDetailPage from './pages/products/ProductDetailPage'
-import PriceListPage from './pages/products/PriceListPage'
-import SupplierListPage from './pages/suppliers/SupplierListPage'
-import SupplierDetailPage from './pages/suppliers/SupplierDetailPage'
-import InventoryPage from './pages/inventory/InventoryPage'
-import PurchaseOrderFormPage from './pages/purchase-orders/PurchaseOrderFormPage'
-import GoodsReceiptFormPage from './pages/goods-receipts/GoodsReceiptFormPage'
-import OrderListPage from './pages/orders/OrderListPage'
-import OrderDetailPage from './pages/orders/OrderDetailPage'
-import POSPage from './pages/orders/POSPage'
-import MobileOrderPage from './pages/orders/MobileOrderPage'
-import PipelinePage from './pages/pipeline/PipelinePage'
-import CashbookPage from './pages/cashbook/CashbookPage'
-import ReportsHubPage from './pages/reports/ReportsHubPage'
-import RevenueReportPage from './pages/reports/RevenueReportPage'
-import DebtReportPage from './pages/reports/DebtReportPage'
-import InventoryReportPage from './pages/reports/InventoryReportPage'
-import StaffReportPage from './pages/reports/StaffReportPage'
-import CustomerProfileReportPage from './pages/reports/CustomerProfileReportPage'
-import HerdProjectListPage from './pages/herd-projects/HerdProjectListPage'
-import HerdProjectFormPage from './pages/herd-projects/HerdProjectFormPage'
-import HerdProjectDetailPage from './pages/herd-projects/HerdProjectDetailPage'
-import SystemSettingsPage from './pages/system/SystemSettingsPage'
-import ActiveIngredientsPage from './pages/products/ActiveIngredientsPage'
-import CustomerSettingsPage from './pages/customers/CustomerSettingsPage'
-import DiseasesPage from './pages/products/DiseasesPage'
 import { DisplaySettingsProvider } from './contexts/DisplaySettingsContext'
 
+// ─────────────────────────────────────────────────────────────
+// Sprint P0-2 (2026-05-26): Lazy-load để giảm initial bundle.
+// Giữ eager: LoginPage (cần ngay nếu chưa login),
+//            AuthCallback (cần ngay khi OAuth redirect về),
+//            DashboardPage (route mặc định sau login).
+// ─────────────────────────────────────────────────────────────
+import LoginPage from './pages/auth/LoginPage'
+import AuthCallback from './pages/AuthCallback'
+import DashboardPage from './pages/dashboard/DashboardPage'
+
+const CustomerListPage           = lazy(() => import('./pages/customers/CustomerListPage'))
+const CustomerDetailPage         = lazy(() => import('./pages/customers/CustomerDetailPage'))
+const CustomerSettingsPage       = lazy(() => import('./pages/customers/CustomerSettingsPage'))
+const ProductListPage            = lazy(() => import('./pages/products/ProductListPage'))
+const ProductDetailPage          = lazy(() => import('./pages/products/ProductDetailPage'))
+const PriceListPage              = lazy(() => import('./pages/products/PriceListPage'))
+const ActiveIngredientsPage      = lazy(() => import('./pages/products/ActiveIngredientsPage'))
+const DiseasesPage               = lazy(() => import('./pages/products/DiseasesPage'))
+const SupplierListPage           = lazy(() => import('./pages/suppliers/SupplierListPage'))
+const SupplierDetailPage         = lazy(() => import('./pages/suppliers/SupplierDetailPage'))
+const InventoryPage              = lazy(() => import('./pages/inventory/InventoryPage'))
+const PurchaseOrderFormPage      = lazy(() => import('./pages/purchase-orders/PurchaseOrderFormPage'))
+const GoodsReceiptFormPage       = lazy(() => import('./pages/goods-receipts/GoodsReceiptFormPage'))
+const OrderListPage              = lazy(() => import('./pages/orders/OrderListPage'))
+const OrderDetailPage            = lazy(() => import('./pages/orders/OrderDetailPage'))
+const POSPage                    = lazy(() => import('./pages/orders/POSPage'))
+const MobileOrderPage            = lazy(() => import('./pages/orders/MobileOrderPage'))
+const PipelinePage               = lazy(() => import('./pages/pipeline/PipelinePage'))
+const CashbookPage               = lazy(() => import('./pages/cashbook/CashbookPage'))
+const ReportsHubPage             = lazy(() => import('./pages/reports/ReportsHubPage'))
+const RevenueReportPage          = lazy(() => import('./pages/reports/RevenueReportPage'))
+const DebtReportPage             = lazy(() => import('./pages/reports/DebtReportPage'))
+const InventoryReportPage        = lazy(() => import('./pages/reports/InventoryReportPage'))
+const StaffReportPage            = lazy(() => import('./pages/reports/StaffReportPage'))
+const CustomerProfileReportPage  = lazy(() => import('./pages/reports/CustomerProfileReportPage'))
+const HerdProjectListPage        = lazy(() => import('./pages/herd-projects/HerdProjectListPage'))
+const HerdProjectFormPage        = lazy(() => import('./pages/herd-projects/HerdProjectFormPage'))
+const HerdProjectDetailPage      = lazy(() => import('./pages/herd-projects/HerdProjectDetailPage'))
+const SystemSettingsPage         = lazy(() => import('./pages/system/SystemSettingsPage'))
+
+
+// ─────────────────────────────────────────────────────────────
+// Loading spinner dùng chung cho PrivateRoute + Suspense fallback
+// ─────────────────────────────────────────────────────────────
+function FullPageSpinner() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      height: '100vh', gap: '12px',
+      fontFamily: "'Be Vietnam Pro', sans-serif",
+      color: '#4A5663', background: '#FAFBFC'
+    }}>
+      <div style={{
+        width: '36px', height: '36px',
+        border: '3px solid #E5E9EE', borderTopColor: '#1E5A9C',
+        borderRadius: '50%', animation: 'spin 0.7s linear infinite'
+      }} />
+      <p style={{ fontSize: '14px' }}>Đang tải...</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); }}`}</style>
+    </div>
+  )
+}
 
 // ─────────────────────────────────────────────────────────────
 // Guard: Bảo vệ route cần đăng nhập
 // ─────────────────────────────────────────────────────────────
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth()
-  console.log('[PrivateRoute] render:', { isAuthenticated, loading })
 
-  if (loading) {
-    return (
-      <div style={{
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        height: '100vh', gap: '12px',
-        fontFamily: "'Be Vietnam Pro', sans-serif",
-        color: '#4A5663', background: '#FAFBFC'
-      }}>
-        <div style={{
-          width: '36px', height: '36px',
-          border: '3px solid #E5E9EE', borderTopColor: '#1E5A9C',
-          borderRadius: '50%', animation: 'spin 0.7s linear infinite'
-        }} />
-        <p style={{ fontSize: '14px' }}>Đang tải...</p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); }}`}</style>
-      </div>
-    )
-  }
-
+  if (loading) return <FullPageSpinner />
   if (!isAuthenticated) return <Navigate to="/login" replace />
   return <>{children}</>
 }
-
-// Dashboard chính thức được import từ './pages/dashboard/DashboardPage'
 
 // ─────────────────────────────────────────────────────────────
 // App Root
 // ─────────────────────────────────────────────────────────────
 function AppRoutes() {
   return (
+    <Suspense fallback={<FullPageSpinner />}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
@@ -114,6 +125,7 @@ function AppRoutes() {
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </Suspense>
   )
 }
 
