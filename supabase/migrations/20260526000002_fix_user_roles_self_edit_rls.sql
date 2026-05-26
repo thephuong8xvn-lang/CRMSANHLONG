@@ -2,7 +2,7 @@
 -- CRM SANHLONGVETCO – MIGRATION: PATCH USER_ROLES SELF-EDIT RLS
 -- File: 20260526000002_fix_user_roles_self_edit_rls.sql
 -- Description:
---   Allow super admins (zendviet@gmail.com and admin@sanhlongvetco.vn)
+--   Allow super admin (admin@sanhlongvetco.vn)
 --   to bypass RLS checks on user_roles based on their profile email.
 --   This prevents the "new row violates row-level security policy" error
 --   when an admin updates their own roles (since deleting the role first
@@ -18,7 +18,7 @@ CREATE POLICY "user_roles_select_manager" ON public.user_roles
     OR EXISTS (
       SELECT 1 FROM public.profiles
       WHERE id = auth.uid()
-        AND email IN ('zendviet@gmail.com', 'admin@sanhlongvetco.vn')
+        AND email = 'admin@sanhlongvetco.vn'
     )
     OR (
       public.fn_has_role('branch_manager')
@@ -39,7 +39,7 @@ CREATE POLICY "user_roles_manage_manager" ON public.user_roles
       OR EXISTS (
         SELECT 1 FROM public.profiles
         WHERE id = auth.uid()
-          AND email IN ('zendviet@gmail.com', 'admin@sanhlongvetco.vn')
+          AND email = 'admin@sanhlongvetco.vn'
       )
       OR (
         public.fn_has_role('branch_manager')

@@ -295,11 +295,18 @@ DECLARE
   v_role   JSONB;
   v_perms  JSONB;
 BEGIN
-  -- Lấy role đầu tiên (1 user thường có 1 role chính)
+  -- Lấy role đầu tiên (ưu tiên admin, ceo, sau đó đến các role khác)
   SELECT to_jsonb(r) INTO v_role
   FROM public.user_roles ur
   JOIN public.roles r ON r.id = ur.role_id
   WHERE ur.user_id = p_user_id
+  ORDER BY 
+    CASE 
+      WHEN r.code = 'admin' THEN 1
+      WHEN r.code = 'ceo' THEN 2
+      ELSE 3
+    END ASC, 
+    r.code ASC
   LIMIT 1;
 
   -- Lấy danh sách permission codes (distinct, vì 1 user có thể có nhiều role)

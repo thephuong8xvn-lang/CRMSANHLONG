@@ -33,15 +33,24 @@ export function useUserRolePermissions(userId: string | null | undefined) {
       // 2. RPC chưa có → fallback query trực tiếp
       logger.warn('[useUserRolePermissions] RPC unavailable, fallback to direct queries:', rpcRes.error?.message)
 
-      const { data: roleData } = await supabase
+      const { data: rolesData } = await supabase
         .from('user_roles')
         .select('role:roles(code, name)')
         .eq('user_id', userId!)
-        .limit(1)
-        .maybeSingle()
 
-      const role = (roleData?.role as unknown as { code: string; name: string } | null)
-        ?? { code: 'guest', name: 'Khách' }
+      const rolesList = (rolesData ?? [])
+        .map((ur: any) => ur.role)
+        .filter(Boolean) as { code: string; name: string }[]
+
+      // Sắp xếp ưu tiên: admin -> ceo -> các role khác
+      const getRolePriority = (code: string) => {
+        if (code === 'admin') return 1
+        if (code === 'ceo') return 2
+        return 3
+      }
+      rolesList.sort((a, b) => getRolePriority(a.code) - getRolePriority(b.code))
+
+      const role = rolesList[0] ?? { code: 'guest', name: 'Khách' }
 
       const { data: permData } = await supabase
         .from('user_roles')

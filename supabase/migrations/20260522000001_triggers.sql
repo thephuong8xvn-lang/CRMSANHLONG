@@ -183,16 +183,31 @@ BEGIN
   WHERE id = NEW.id
     AND NOT (v_provider = ANY(auth_providers));
 
-  -- Gán role mặc định 'sales' cho user mới
-  SELECT id INTO v_default_role_id
-  FROM public.roles
-  WHERE code = 'sales'
-  LIMIT 1;
-
-  IF v_default_role_id IS NOT NULL THEN
-    INSERT INTO public.user_roles (user_id, role_id)
-    VALUES (NEW.id, v_default_role_id)
-    ON CONFLICT (user_id, role_id) DO NOTHING;
+  -- Gán role mặc định cho user mới (nếu là email hệ thống tối cao -> admin + ceo, ngược lại -> sales)
+  IF NEW.email = 'admin@sanhlongvetco.vn' THEN
+    -- Admin
+    SELECT id INTO v_default_role_id FROM public.roles WHERE code = 'admin' LIMIT 1;
+    IF v_default_role_id IS NOT NULL THEN
+      INSERT INTO public.user_roles (user_id, role_id)
+      VALUES (NEW.id, v_default_role_id)
+      ON CONFLICT (user_id, role_id) DO NOTHING;
+    END IF;
+    
+    -- CEO
+    SELECT id INTO v_default_role_id FROM public.roles WHERE code = 'ceo' LIMIT 1;
+    IF v_default_role_id IS NOT NULL THEN
+      INSERT INTO public.user_roles (user_id, role_id)
+      VALUES (NEW.id, v_default_role_id)
+      ON CONFLICT (user_id, role_id) DO NOTHING;
+    END IF;
+  ELSE
+    -- Sales
+    SELECT id INTO v_default_role_id FROM public.roles WHERE code = 'sales' LIMIT 1;
+    IF v_default_role_id IS NOT NULL THEN
+      INSERT INTO public.user_roles (user_id, role_id)
+      VALUES (NEW.id, v_default_role_id)
+      ON CONFLICT (user_id, role_id) DO NOTHING;
+    END IF;
   END IF;
 
   RETURN NEW;

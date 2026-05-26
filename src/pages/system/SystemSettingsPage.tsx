@@ -211,8 +211,12 @@ export default function SystemSettingsPage() {
         .order('code')
       if (tmData) setTeams(tmData as unknown as Team[])
 
-      // 4. Fetch roles
-      const { data: rData } = await supabase.from('roles').select('id, code, name, description').order('name')
+      // 4. Fetch roles (không lấy vai trò admin và ceo)
+      const { data: rData } = await supabase
+        .from('roles')
+        .select('id, code, name, description')
+        .not('code', 'in', '("admin","ceo")')
+        .order('name')
       if (rData) setRoles(rData)
 
       // 5. Fetch profiles (employees)
@@ -351,18 +355,22 @@ export default function SystemSettingsPage() {
         if (profileErr) throw profileErr
       }
 
-      // Sync roles in user_roles
-      // 1. Delete existing roles
-      await supabase.from('user_roles').delete().eq('user_id', userId)
+      // Sync roles in user_roles (chỉ áp dụng cho tài khoản thường, không đè lên admin/ceo)
+      const isSuperUser = selectedEmployee?.user_roles?.some(ur => ur.role.code === 'admin' || ur.role.code === 'ceo')
 
-      // 2. Insert selected roles
-      if (empSelectedRoles.length > 0) {
-        const rolesToInsert = empSelectedRoles.map(roleId => ({
-          user_id: userId,
-          role_id: roleId
-        }))
-        const { error: roleInsertErr } = await supabase.from('user_roles').insert(rolesToInsert)
-        if (roleInsertErr) throw roleInsertErr
+      if (!isSuperUser) {
+        // 1. Delete existing roles
+        await supabase.from('user_roles').delete().eq('user_id', userId)
+
+        // 2. Insert selected roles
+        if (empSelectedRoles.length > 0) {
+          const rolesToInsert = empSelectedRoles.map(roleId => ({
+            user_id: userId,
+            role_id: roleId
+          }))
+          const { error: roleInsertErr } = await supabase.from('user_roles').insert(rolesToInsert)
+          if (roleInsertErr) throw roleInsertErr
+        }
       }
 
       showToast('success', selectedEmployee ? 'Cập nhật nhân viên thành công!' : 'Tạo tài khoản nhân viên thành công!')
@@ -1223,25 +1231,31 @@ export default function SystemSettingsPage() {
                 {/* RBAC Role Selection (Checkboxes) */}
                 <div className="space-y-2 pt-2">
                   <label className="block text-body-md font-semibold text-gray-700">Vai trò / Phân quyền hệ thống</label>
-                  <div className="grid grid-cols-2 gap-2 bg-gray-50 p-4 rounded-lg border border-gray-100">
-                    {roles.map(role => (
-                      <label key={role.id} className="flex items-center gap-2 text-body-md font-medium text-gray-650 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={empSelectedRoles.includes(role.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setEmpSelectedRoles([...empSelectedRoles, role.id])
-                            } else {
-                              setEmpSelectedRoles(empSelectedRoles.filter(id => id !== role.id))
-                            }
-                          }}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                        />
-                        <span>{role.name}</span>
-                      </label>
-                    ))}
-                  </div>
+                  {selectedEmployee?.user_roles?.some(ur => ur.role.code === 'admin' || ur.role.code === 'ceo') ? (
+                    <div className="p-3 bg-blue-50 border border-blue-100 text-blue-700 rounded-lg text-body-md font-semibold">
+                      Tài khoản có quyền cao nhất (Admin/CEO) - Không cần điều chỉnh phân quyền.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                      {roles.map(role => (
+                        <label key={role.id} className="flex items-center gap-2 text-body-md font-medium text-gray-650 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={empSelectedRoles.includes(role.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEmpSelectedRoles([...empSelectedRoles, role.id])
+                              } else {
+                                setEmpSelectedRoles(empSelectedRoles.filter(id => id !== role.id))
+                              }
+                            }}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                          />
+                          <span>{role.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Modal actions */}
