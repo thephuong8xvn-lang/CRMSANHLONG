@@ -616,7 +616,7 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 |--------|-----------|-----------|----------|
 | **P0** Quick Wins | ✅ HOÀN THÀNH 2026-05-26 | 1–2 ngày | Bundle ~1MB → 22 KB gz; lazy 28 routes |
 | **P1** Data layer overhaul | ✅ HOÀN THÀNH 2026-05-26 | 3–5 ngày | TanStack Query + views/RPC + refactor 3 page lớn |
-| **P2** UX/UI polish & refactor | ⏳ CHƯA BẮT ĐẦU | 3–4 ngày | Skeleton + virtualize + memo + tách 3 page khổng lồ + ErrorBoundary |
+| **P2** UX/UI polish & refactor | ⏳ ĐANG THỰC HIỆN | 3–4 ngày | Thực hiện UX/UI Audit hệ thống hiện tại & tối ưu hóa giao diện (Skeleton, virtualization, memo, tách component) |
 | **P3** Assets & monitoring | ⏳ CHƯA BẮT ĐẦU | 2–3 ngày | WebP + self-host font + Web Vitals + Realtime |
 | **P4** Enterprise & SaaS readiness | ⏳ CHƯA BẮT ĐẦU | 10–11 ngày | Test + PWA + VAT + KM + Chấm công + Excel + 2FA + Capacitor + Multi-tenant + Docs |
 
