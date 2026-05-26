@@ -213,7 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const permissionsLoading = rolePerms.isLoading
 
   const hasPermission = (code: string): boolean => {
-    if (userRole.code === 'admin') return true
+    if (userRole.code === 'admin' || userRole.code === 'ceo') return true
     return userPermissions.includes(code)
   }
 

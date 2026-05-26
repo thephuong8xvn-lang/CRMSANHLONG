@@ -102,10 +102,10 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
     }
   ]
 
-  // Filter groups based on role (Admin has full access) and specific module permissions
+  // Filter groups based on role (Admin and CEO have full access) and specific module permissions
   const visibleMenuGroups = menuGroups.map(group => {
     const filteredItems = group.items.filter(item => {
-      if (userRole.code === 'admin') {
+      if (userRole.code === 'admin' || userRole.code === 'ceo') {
         return true
       }
       if (!item.perms || item.perms.length === 0) {

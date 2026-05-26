@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { isSupabaseConfigured } from './lib/supabase'
 import { DisplaySettingsProvider } from './contexts/DisplaySettingsContext'
+import { ShieldAlert } from 'lucide-react'
+import Layout from './components/Layout'
 
 // ─────────────────────────────────────────────────────────────
 // Sprint P0-2 (2026-05-26): Lazy-load để giảm initial bundle.
@@ -80,6 +82,69 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Access Denied Component
+// ─────────────────────────────────────────────────────────────
+function AccessDenied() {
+  return (
+    <Layout>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center px-4">
+        <div className="w-20 h-20 bg-red-50 text-red-500 rounded-3xl flex items-center justify-center border border-red-100 mb-6 shadow-sm animate-bounce duration-1000">
+          <ShieldAlert size={40} />
+        </div>
+        <h1 className="text-2xl md:text-3xl font-extrabold text-gray-800 tracking-tight">
+          Không có quyền truy cập
+        </h1>
+        <p className="text-body-md text-gray-500 mt-3 max-w-md leading-relaxed">
+          Tài khoản của bạn không có đủ quyền hạn để xem trang này. Vui lòng liên hệ với Quản trị viên nếu bạn nghĩ đây là sự nhầm lẫn.
+        </p>
+        <div className="flex gap-3 mt-8">
+          <button
+            onClick={() => window.history.back()}
+            className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-body-md hover:bg-gray-200 active:scale-95 transition-all"
+          >
+            Quay lại
+          </button>
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="px-5 py-2.5 bg-[#1E5A9C] hover:bg-[#143C69] text-white rounded-xl font-semibold text-body-md active:scale-95 transition-all shadow-md"
+          >
+            Trang chủ
+          </button>
+        </div>
+      </div>
+    </Layout>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// ProtectedRoute: Kiểm tra trạng thái đăng nhập & phân quyền module
+// ─────────────────────────────────────────────────────────────
+function ProtectedRoute({ children, perms = [] }: { children: React.ReactNode; perms?: string[] }) {
+  const { isAuthenticated, loading, userRole, userPermissions } = useAuth()
+
+  if (loading) return <FullPageSpinner />
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+
+  // Admin và CEO bypass toàn bộ quyền hạn
+  if (userRole.code === 'admin' || userRole.code === 'ceo') {
+    return <>{children}</>
+  }
+
+  // Nếu không yêu cầu quyền cụ thể, cho phép truy cập
+  if (perms.length === 0) {
+    return <>{children}</>
+  }
+
+  // Kiểm tra xem user có ít nhất một trong các quyền yêu cầu
+  const hasAccess = perms.some(perm => userPermissions.includes(perm))
+  if (!hasAccess) {
+    return <AccessDenied />
+  }
+
+  return <>{children}</>
+}
+
+// ─────────────────────────────────────────────────────────────
 // App Root
 // ─────────────────────────────────────────────────────────────
 function AppRoutes() {
@@ -88,40 +153,40 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
-      <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-      <Route path="/customers" element={<PrivateRoute><CustomerListPage /></PrivateRoute>} />
-      <Route path="/customers/settings" element={<PrivateRoute><CustomerSettingsPage /></PrivateRoute>} />
-      <Route path="/customers/:id" element={<PrivateRoute><CustomerDetailPage /></PrivateRoute>} />
-      <Route path="/products" element={<PrivateRoute><ProductListPage /></PrivateRoute>} />
+      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+      <Route path="/customers" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerListPage /></ProtectedRoute>} />
+      <Route path="/customers/settings" element={<ProtectedRoute perms={['users.manage']}><CustomerSettingsPage /></ProtectedRoute>} />
+      <Route path="/customers/:id" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerDetailPage /></ProtectedRoute>} />
+      <Route path="/products" element={<ProtectedRoute perms={['products.view', 'products.manage', 'pricing.manage', 'promotions.manage']}><ProductListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /products/:id */}
-      <Route path="/products/prices" element={<PrivateRoute><PriceListPage /></PrivateRoute>} />
-      <Route path="/products/ingredients" element={<PrivateRoute><ActiveIngredientsPage /></PrivateRoute>} />
-      <Route path="/products/:id" element={<PrivateRoute><ProductDetailPage /></PrivateRoute>} />
-      <Route path="/suppliers" element={<PrivateRoute><SupplierListPage /></PrivateRoute>} />
-      <Route path="/suppliers/:id" element={<PrivateRoute><SupplierDetailPage /></PrivateRoute>} />
-      <Route path="/inventory" element={<PrivateRoute><InventoryPage /></PrivateRoute>} />
-      <Route path="/purchase-orders/new" element={<PrivateRoute><PurchaseOrderFormPage /></PrivateRoute>} />
-      <Route path="/goods-receipts/new" element={<PrivateRoute><GoodsReceiptFormPage /></PrivateRoute>} />
-      <Route path="/orders" element={<PrivateRoute><OrderListPage /></PrivateRoute>} />
+      <Route path="/products/prices" element={<ProtectedRoute perms={['pricing.manage']}><PriceListPage /></ProtectedRoute>} />
+      <Route path="/products/ingredients" element={<ProtectedRoute perms={['products.view', 'products.manage']}><ActiveIngredientsPage /></ProtectedRoute>} />
+      <Route path="/products/:id" element={<ProtectedRoute perms={['products.view', 'products.manage']}><ProductDetailPage /></ProtectedRoute>} />
+      <Route path="/suppliers" element={<ProtectedRoute perms={['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive']}><SupplierListPage /></ProtectedRoute>} />
+      <Route path="/suppliers/:id" element={<ProtectedRoute perms={['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive']}><SupplierDetailPage /></ProtectedRoute>} />
+      <Route path="/inventory" element={<ProtectedRoute perms={['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer']}><InventoryPage /></ProtectedRoute>} />
+      <Route path="/purchase-orders/new" element={<ProtectedRoute perms={['purchase_orders.create']}><PurchaseOrderFormPage /></ProtectedRoute>} />
+      <Route path="/goods-receipts/new" element={<ProtectedRoute perms={['inventory.receive']}><GoodsReceiptFormPage /></ProtectedRoute>} />
+      <Route path="/orders" element={<ProtectedRoute perms={['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create']}><OrderListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /orders/:id */}
-      <Route path="/orders/pos" element={<PrivateRoute><POSPage /></PrivateRoute>} />
-      <Route path="/orders/mobile" element={<PrivateRoute><MobileOrderPage /></PrivateRoute>} />
-      <Route path="/orders/:id" element={<PrivateRoute><OrderDetailPage /></PrivateRoute>} />
-      <Route path="/pipeline" element={<PrivateRoute><PipelinePage /></PrivateRoute>} />
-      <Route path="/cashbook" element={<PrivateRoute><CashbookPage /></PrivateRoute>} />
-      <Route path="/reports" element={<PrivateRoute><ReportsHubPage /></PrivateRoute>} />
-      <Route path="/reports/revenue" element={<PrivateRoute><RevenueReportPage /></PrivateRoute>} />
-      <Route path="/reports/debt" element={<PrivateRoute><DebtReportPage /></PrivateRoute>} />
-      <Route path="/reports/inventory" element={<PrivateRoute><InventoryReportPage /></PrivateRoute>} />
-      <Route path="/reports/staff" element={<PrivateRoute><StaffReportPage /></PrivateRoute>} />
-      <Route path="/reports/customer-profile" element={<PrivateRoute><CustomerProfileReportPage /></PrivateRoute>} />
-      <Route path="/herd-projects" element={<PrivateRoute><HerdProjectListPage /></PrivateRoute>} />
+      <Route path="/orders/pos" element={<ProtectedRoute perms={['orders.create']}><POSPage /></ProtectedRoute>} />
+      <Route path="/orders/mobile" element={<ProtectedRoute perms={['orders.create']}><MobileOrderPage /></ProtectedRoute>} />
+      <Route path="/orders/:id" element={<ProtectedRoute perms={['orders.view_own', 'orders.view_team', 'orders.view_all']}><OrderDetailPage /></ProtectedRoute>} />
+      <Route path="/pipeline" element={<ProtectedRoute perms={['opportunities.view_all', 'opportunities.create']}><PipelinePage /></ProtectedRoute>} />
+      <Route path="/cashbook" element={<ProtectedRoute perms={['cashbook.view', 'cashbook.create', 'cashbook.approve']}><CashbookPage /></ProtectedRoute>} />
+      <Route path="/reports" element={<ProtectedRoute perms={['reports.sales', 'reports.cashflow', 'reports.inventory', 'reports.debt', 'reports.team_kpi']}><ReportsHubPage /></ProtectedRoute>} />
+      <Route path="/reports/revenue" element={<ProtectedRoute perms={['reports.sales']}><RevenueReportPage /></ProtectedRoute>} />
+      <Route path="/reports/debt" element={<ProtectedRoute perms={['reports.debt']}><DebtReportPage /></ProtectedRoute>} />
+      <Route path="/reports/inventory" element={<ProtectedRoute perms={['reports.inventory']}><InventoryReportPage /></ProtectedRoute>} />
+      <Route path="/reports/staff" element={<ProtectedRoute perms={['reports.team_kpi']}><StaffReportPage /></ProtectedRoute>} />
+      <Route path="/reports/customer-profile" element={<ProtectedRoute perms={['reports.sales']}><CustomerProfileReportPage /></ProtectedRoute>} />
+      <Route path="/herd-projects" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><HerdProjectListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /herd-projects/:id */}
-      <Route path="/herd-projects/new" element={<PrivateRoute><HerdProjectFormPage /></PrivateRoute>} />
-      <Route path="/herd-projects/:id" element={<PrivateRoute><HerdProjectDetailPage /></PrivateRoute>} />
+      <Route path="/herd-projects/new" element={<ProtectedRoute perms={['herd_projects.create']}><HerdProjectFormPage /></ProtectedRoute>} />
+      <Route path="/herd-projects/:id" element={<ProtectedRoute perms={['herd_projects.view_all']}><HerdProjectDetailPage /></ProtectedRoute>} />
       {/* /products/ingredients đã được khai báo ở trên, không cần lặp lại */}
-      <Route path="/diseases" element={<PrivateRoute><DiseasesPage /></PrivateRoute>} />
-      <Route path="/system-settings" element={<PrivateRoute><SystemSettingsPage /></PrivateRoute>} />
+      <Route path="/diseases" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><DiseasesPage /></ProtectedRoute>} />
+      <Route path="/system-settings" element={<ProtectedRoute perms={['users.manage', 'users.assign_role', 'audit.view']}><SystemSettingsPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

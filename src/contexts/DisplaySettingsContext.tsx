@@ -422,7 +422,7 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
   const maskData = (value: string | null | undefined, type: 'phone' | 'email'): string => {
     if (!value) return formatEmpty(value)
     if (!settings.enable_partial_masking) return value
-    if (userRoleCode === 'admin') return value
+    if (userRoleCode === 'admin' || userRoleCode === 'ceo') return value
 
     if (type === 'phone') {
       const cleaned = value.trim()
@@ -443,6 +443,7 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
   // 11. Check field level security access
   const hasFieldAccess = (fieldName: string, userRoleCodeOverride?: string): boolean => {
     const role = userRoleCodeOverride || userRoleCode || 'sales'
+    if (role === 'admin' || role === 'ceo') return true
     const rules = settings.field_level_security_rules[role]
     if (rules && rules[fieldName] !== undefined) {
       return rules[fieldName]

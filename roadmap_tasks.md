@@ -189,6 +189,14 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Thiết kế code tương thích tuyệt đối với các cột thực tế trong DB: sử dụng `manager_id` (trong `branches`), `lead_id` (trong `teams`), và không sử dụng các trường dư thừa hoặc không tồn tại như `keeper_user_id` hay `region` để tránh lỗi SQL.
   - Sửa lỗi toàn bộ các vấn đề biên dịch TypeScript (lỗi thiếu import.meta.env, lỗi so khớp receiptMode, lỗi type narrowing, lỗi scoped variables và các lỗi unused import/variables kế thừa) giúp dự án đạt trạng thái 0 lỗi biên dịch.
   - 0 TypeScript errors, 0 ESLint errors.
+- [x] **Vá lỗi Phân quyền & RLS Chi nhánh/Kho/Tác vụ (2026-05-26)**:
+  - Khắc phục lỗ hổng RLS trên `warehouses` và `teams` nhằm giới hạn quản trị viên chi nhánh (`branch_manager`) chỉ được phép quản lý kho và nhóm thuộc chi nhánh của họ.
+  - Sửa đổi chính sách bảo mật bảng `profiles` và `user_roles` cho phép Quản lý chi nhánh (`branch_manager`) toàn quyền thực hiện thêm mới, cập nhật thông tin và gán vai trò nhân viên trong chi nhánh mình phụ trách.
+  - Nâng cấp trigger `public.fn_handle_new_user()` và cấu hình để tự động gán vai trò quản trị cao nhất (`admin`) cho email `zendviet@gmail.com` khi đăng nhập Google hoặc Email.
+  - Cập nhật frontend (`AuthContext.tsx`, `Layout.tsx`, `DisplaySettingsContext.tsx`) đảm bảo vai trò `ceo` được bypass quyền và không bị che giấu dữ liệu tài chính nhạy cảm như `admin`.
+  - Giải quyết triệt để lỗi RLS "new row violates row-level security policy for table 'user_roles'" xảy ra khi quản trị viên cao nhất tự cập nhật danh sách vai trò của chính mình, thông qua kiểm tra email an toàn trực tiếp từ bảng `profiles` (được sửa lỗi chính tả từ profilesa thành profiles ngày 2026-05-26) thay vì gọi đệ quy các quyền đã bị xóa tạm thời trong session.
+  - **Bảo mật định tuyến (Route-level Guard - 2026-05-26)**: Phát triển component `ProtectedRoute` kết hợp giao diện `AccessDenied` (ShieldAlert) trang nhã. Chặn truy cập trực tiếp qua địa chỉ URL cho tất cả 30+ Route trên frontend, đối chiếu trực tiếp với quyền module của tài khoản (ngoại trừ vai trò admin/ceo được bypass tự động). Giải quyết triệt để vấn đề nhân viên gõ URL trái phép.
+  - **Phân quyền Module hóa & Cô lập quyền Báo cáo (2026-05-26)**: Chuyển đổi tên hiển thị của các vai trò hệ thống trong DB sang dạng mô tả module (ví dụ: 'Kế toán' -> 'Sổ quỹ & Tài chính', 'Thủ kho' -> 'Kho hàng & Sản phẩm', 'Xem báo cáo' -> 'Báo cáo & Phân tích'). Rút bớt quyền xem báo cáo động khỏi các vai trò nghiệp vụ khác, chỉ giữ độc quyền cho vai trò 'Báo cáo & Phân tích' (ngoại trừ admin/ceo bypass), đảm bảo phân quyền phân hệ trực quan và an toàn tuyệt đối.
 
 ---
 
