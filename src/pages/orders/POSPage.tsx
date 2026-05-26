@@ -1380,7 +1380,7 @@ export default function POSPage() {
                               </div>
                               <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-gray-50 shrink-0">
                                 <span className="text-[11px] font-bold text-blue-600">{formatCurrency(price)}</span>
-                                <span className="text-[9px] text-gray-400 font-mono truncate max-w-[50px]" title={prod.sku}>SKU: {prod.sku || '-'}</span>
+                                <span className="text-[9px] text-gray-400 font-mono truncate max-w-[85px]" title={prod.sku}>SKU: {prod.sku || '-'}</span>
                               </div>
                             </div>
                           )

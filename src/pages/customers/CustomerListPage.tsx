@@ -378,31 +378,37 @@ export default function CustomerListPage() {
 
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-3">
-                            <div className="flex-1">
+                            <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-body-lg font-semibold text-gray-700 group-hover:text-blue-500 transition-colors">
+                                <span 
+                                  className="text-body-lg font-semibold text-gray-700 group-hover:text-blue-500 transition-colors line-clamp-2 break-words-auto"
+                                  title={customer.farm_name}
+                                >
                                   {customer.farm_name}
                                 </span>
                                 {customer.value_tier === 'vip' && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700 font-semibold text-[10px]">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700 font-semibold text-[10px] shrink-0">
                                     VIP
                                   </span>
                                 )}
                                 {customer.value_tier === 'high_potential' && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 font-semibold text-[10px]">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 font-semibold text-[10px] shrink-0">
                                     Tiềm năng
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-2 text-tiny text-gray-400 mt-1">
-                                <MapPin size={12} className="text-gray-300" />
-                                <span>
+                              <div className="flex items-center gap-2 text-tiny text-gray-400 mt-1 min-w-0">
+                                <MapPin size={12} className="text-gray-300 shrink-0" />
+                                <span 
+                                  className="truncate max-w-[200px]"
+                                  title={[customer.district, customer.province].filter(Boolean).join(', ') || 'Chưa định vị'}
+                                >
                                   {[customer.district, customer.province].filter(Boolean).join(', ') || 'Chưa định vị'}
                                 </span>
                                 {primaryContact?.phone && (
                                   <>
-                                    <span className="text-gray-200">•</span>
-                                    <span>SĐT: {maskData(formatPhone(primaryContact.phone), 'phone')}</span>
+                                    <span className="text-gray-200 shrink-0">•</span>
+                                    <span className="shrink-0">SĐT: {maskData(formatPhone(primaryContact.phone), 'phone')}</span>
                                   </>
                                 )}
                               </div>
