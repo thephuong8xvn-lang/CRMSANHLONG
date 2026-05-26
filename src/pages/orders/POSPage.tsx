@@ -958,7 +958,7 @@ export default function POSPage() {
 
   // Custom Search element passed to top Layout header (F2 Product Search)
   const customSearchElement = (
-    <div className="relative flex items-center bg-gray-25 rounded-lg px-3 h-10 w-80 md:w-96 border border-gray-105 focus-within:border-blue-500 focus-within:ring-[4px] focus-within:ring-blue-100 transition-all text-gray-800">
+    <div className="relative flex items-center bg-gray-25 rounded-lg px-3 h-10 w-full max-w-[200px] sm:max-w-[280px] md:max-w-[360px] lg:max-w-[400px] border border-gray-105 focus-within:border-blue-500 focus-within:ring-[4px] focus-within:ring-blue-100 transition-all text-gray-800">
       <Search className="text-gray-400 mr-2" size={15} strokeWidth={1.5} />
       <input
         ref={searchInputRef}

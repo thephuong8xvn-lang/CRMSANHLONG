@@ -189,7 +189,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
               </div>
             </div>
             {/* Mobile actions */}
-            <div className="flex items-center md:hidden gap-2">
+            <div className="flex items-center xl:hidden gap-2">
               <button
                 onClick={() => setMobileMenuOpen(true)}
                 className="p-2 text-gray-500 hover:bg-gray-50 rounded-lg"
@@ -200,7 +200,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
           </div>
 
           {/* Grouped Horizontal Navigation Menu for Desktop */}
-          <nav className="hidden md:flex items-center gap-1.5 no-scrollbar px-2 py-1">
+          <nav className="hidden xl:flex items-center gap-1.5 no-scrollbar px-2 py-1">
             {visibleMenuGroups.map((group, groupIdx) => {
               if (group.items.length === 1) {
                 const item = group.items[0]
@@ -383,7 +383,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
 
       {/* ── Mobile Side Navigation Drawer ── */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 md:hidden transition-opacity">
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 xl:hidden transition-opacity">
           <div className="bg-gray-0 w-64 h-full py-6 px-4 flex flex-col shadow-xl animate-in slide-in-from-left duration-200">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-3">
