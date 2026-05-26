@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNotifications } from '../hooks/useNotifications'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -21,7 +22,8 @@ import {
   X,
   PawPrint,
   Settings,
-  ChevronDown
+  ChevronDown,
+  Tag
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -38,6 +40,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
   const { profile, signOut, userRole, userPermissions } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const { unreadCount, markAllRead } = useNotifications()
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickActionOpen, setQuickActionOpen] = useState(false)
@@ -83,6 +86,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
         { label: 'Sản phẩm', icon: Package, path: '/products', perms: ['products.view', 'products.manage', 'pricing.manage', 'promotions.manage'] },
         { label: 'Hoạt chất', icon: Activity, path: '/products/ingredients', perms: ['products.view', 'products.manage'] },
         { label: 'Bệnh & Phác đồ', icon: Stethoscope, path: '/diseases', perms: ['herd_projects.view_all', 'herd_projects.create'] },
+        { label: 'Khuyến mãi', icon: Tag, path: '/promotions', perms: ['promotions.manage'] },
         { label: 'Kho hàng', icon: Warehouse, path: '/inventory', perms: ['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer'] },
         { label: 'Nhà cung cấp', icon: Truck, path: '/suppliers', perms: ['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive'] }
       ]
@@ -289,9 +293,17 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
             )}
             
             <div className="flex items-center gap-1">
-              <button className="w-9 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-25 rounded-lg transition-all relative">
+              <button
+                onClick={markAllRead}
+                className="w-9 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-25 rounded-lg transition-all relative"
+                title={unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : 'Không có thông báo mới'}
+              >
                 <Bell size={18} strokeWidth={1.5} />
-                <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-blue-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </button>
               <button className="w-9 h-9 flex items-center justify-center text-gray-400 hover:bg-gray-25 rounded-lg transition-all">
                 <HelpCircle size={18} strokeWidth={1.5} />

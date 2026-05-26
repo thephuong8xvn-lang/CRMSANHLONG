@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
   Search,
   Plus,
@@ -24,8 +26,10 @@ import {
   RefreshCw
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
 
 interface Customer {
   id: string
@@ -196,10 +200,17 @@ export default function POSPage() {
 
   // Search / Dropdown UI States
   const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [focusedSearchIndex, setFocusedSearchIndex] = useState(-1)
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [showGrid, setShowGrid] = useState(true)
   const [showProductImages, setShowProductImages] = useState(true)
+
+  // Promotion / voucher
+  const { applyBestPromotion, applyVoucher } = usePromotionEngine()
+  const [voucherCode, setVoucherCode] = useState('')
+  const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null)
+  const [voucherError, setVoucherError] = useState('')
 
   // Feedback UI States
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -515,23 +526,41 @@ export default function POSPage() {
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId)
 
   // Filter products
-  const filteredProducts = products.filter(p => {
+  const filteredProducts = useMemo(() => products.filter(p => {
     const matchesCategory = !selectedCategoryId || p.category_id === selectedCategoryId
-    const matchesSearch = !searchTerm.trim() ||
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = !debouncedSearch.trim() ||
+      p.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      p.sku.toLowerCase().includes(debouncedSearch.toLowerCase())
     return matchesCategory && matchesSearch
+  }), [products, selectedCategoryId, debouncedSearch])
+
+  const PRODUCT_COLS = 3
+  const productRows = useMemo(() => {
+    const rows: Product[][] = []
+    for (let i = 0; i < filteredProducts.length; i += PRODUCT_COLS) {
+      rows.push(filteredProducts.slice(i, i + PRODUCT_COLS))
+    }
+    return rows
+  }, [filteredProducts])
+
+  const productListRef = useRef<HTMLDivElement>(null)
+  const rowVirtualizer = useVirtualizer({
+    count: productRows.length,
+    getScrollElement: () => productListRef.current,
+    estimateSize: () => showProductImages ? 146 : 96,
+    overscan: 3,
+    measureElement: typeof window !== 'undefined' ? el => el.getBoundingClientRect().height : undefined,
   })
 
   // Filter customers
-  const filteredCustomers = customers.filter(c => {
+  const filteredCustomers = useMemo(() => customers.filter(c => {
     if (!customerSearchQuery.trim()) return true
     return c.farm_name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
       c.code.toLowerCase().includes(customerSearchQuery.toLowerCase())
-  })
+  }), [customers, customerSearchQuery])
 
   // Add to cart helper
-  const addToCart = (product: Product) => {
+  const addToCart = useCallback((product: Product) => {
     let price = 0
     if (product.price_list_items && product.price_list_items.length > 0) {
       const itemPrice = product.price_list_items.find(
@@ -547,108 +576,136 @@ export default function POSPage() {
       }
     }
 
-    const existingIndex = cart.findIndex(
-      item => item.product.id === product.id &&
-              item.unitPrice === price &&
-              item.discountPercent === 0 &&
-              !item.isPriceOverridden
-    )
-
-    if (existingIndex > -1) {
-      const updated = [...cart]
-      updated[existingIndex].quantity += 1
-      setCart(updated)
-    } else {
-      setCart([
-        ...cart,
-        {
-          id: crypto.randomUUID(),
-          product,
-          quantity: 1,
-          unitPrice: price,
-          discountPercent: 0,
-          isPriceOverridden: false
-        }
-      ])
-    }
-  }
+    setCart(prev => {
+      const existingIndex = prev.findIndex(
+        item => item.product.id === product.id &&
+                item.unitPrice === price &&
+                item.discountPercent === 0 &&
+                !item.isPriceOverridden
+      )
+      if (existingIndex > -1) {
+        const updated = [...prev]
+        updated[existingIndex] = { ...updated[existingIndex], quantity: updated[existingIndex].quantity + 1 }
+        return updated
+      }
+      return [
+        ...prev,
+        { id: crypto.randomUUID(), product, quantity: 1, unitPrice: price, discountPercent: 0, isPriceOverridden: false }
+      ]
+    })
+  }, [selectedPriceListId])
 
   // Adjust cart quantity
-  const adjustQuantity = (rowId: string, amount: number) => {
-    const index = cart.findIndex(item => item.id === rowId)
-    if (index === -1) return
-    const updated = [...cart]
-    const nextQty = updated[index].quantity + amount
-    if (nextQty <= 0) {
-      updated.splice(index, 1)
-    } else {
-      updated[index].quantity = nextQty
-    }
-    setCart(updated)
-  }
+  const adjustQuantity = useCallback((rowId: string, amount: number) => {
+    setCart(prev => {
+      const index = prev.findIndex(item => item.id === rowId)
+      if (index === -1) return prev
+      const updated = [...prev]
+      const nextQty = updated[index].quantity + amount
+      if (nextQty <= 0) { updated.splice(index, 1) }
+      else { updated[index] = { ...updated[index], quantity: nextQty } }
+      return updated
+    })
+  }, [])
 
   // Update quantity directly
-  const updateQuantity = (rowId: string, qty: number) => {
-    const index = cart.findIndex(item => item.id === rowId)
-    if (index === -1) return
-    const updated = [...cart]
-    updated[index].quantity = Math.max(1, qty)
-    setCart(updated)
-  }
+  const updateQuantity = useCallback((rowId: string, qty: number) => {
+    setCart(prev => {
+      const index = prev.findIndex(item => item.id === rowId)
+      if (index === -1) return prev
+      const updated = [...prev]
+      updated[index] = { ...updated[index], quantity: Math.max(1, qty) }
+      return updated
+    })
+  }, [])
 
   // Update unit price directly (manual override)
-  const updateUnitPrice = (rowId: string, price: number) => {
-    const index = cart.findIndex(item => item.id === rowId)
-    if (index === -1) return
-    const updated = [...cart]
-    updated[index].unitPrice = Math.max(0, price)
-    updated[index].isPriceOverridden = true
-    setCart(updated)
-  }
+  const updateUnitPrice = useCallback((rowId: string, price: number) => {
+    setCart(prev => {
+      const index = prev.findIndex(item => item.id === rowId)
+      if (index === -1) return prev
+      const updated = [...prev]
+      updated[index] = { ...updated[index], unitPrice: Math.max(0, price), isPriceOverridden: true }
+      return updated
+    })
+  }, [])
 
   // Add promo line for a product (10+2 scenario)
-  const addPromoLine = (product: Product) => {
-    setCart([
-      ...cart,
-      {
-        id: crypto.randomUUID(),
-        product,
-        quantity: 1,
-        unitPrice: 0,
-        discountPercent: 0,
-        isPriceOverridden: true
-      }
+  const addPromoLine = useCallback((product: Product) => {
+    setCart(prev => [
+      ...prev,
+      { id: crypto.randomUUID(), product, quantity: 1, unitPrice: 0, discountPercent: 0, isPriceOverridden: true }
     ])
-  }
+  }, [])
 
   // Set manual discount for row
-  const setRowDiscount = (rowId: string, discount: number) => {
-    const index = cart.findIndex(item => item.id === rowId)
-    if (index === -1) return
-    const updated = [...cart]
-    updated[index].discountPercent = Math.max(0, Math.min(100, discount))
-    setCart(updated)
-  }
+  const setRowDiscount = useCallback((rowId: string, discount: number) => {
+    setCart(prev => {
+      const index = prev.findIndex(item => item.id === rowId)
+      if (index === -1) return prev
+      const updated = [...prev]
+      updated[index] = { ...updated[index], discountPercent: Math.max(0, Math.min(100, discount)) }
+      return updated
+    })
+  }, [])
 
   // Calculate totals
-  const subtotal = cart.reduce((sum, item) => {
+  const subtotal = useMemo(() => cart.reduce((sum, item) => {
     const lineTotal = item.quantity * item.unitPrice
     const discount = lineTotal * (item.discountPercent / 100)
     return sum + (lineTotal - discount)
-  }, 0)
+  }, 0), [cart])
 
-  const grandTotal = Math.max(0, subtotal - invoiceDiscount)
+  // Auto-apply best promotion when cart / subtotal changes (only if no voucher applied)
+  useEffect(() => {
+    if (appliedDiscount?.type === 'voucher') return
+    if (!cart.length) { setAppliedDiscount(null); return }
+    const promoRows = cart.map(item => ({
+      id: item.id,
+      product: item.product,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discountPercent: item.discountPercent,
+      isPriceOverridden: item.isPriceOverridden ?? false,
+    }))
+    const best = applyBestPromotion(promoRows, subtotal, selectedCustomer?.value_tier)
+    if (best) {
+      setAppliedDiscount(best)
+      setInvoiceDiscount(best.discountAmount)
+    } else if (appliedDiscount?.type === 'promotion') {
+      setAppliedDiscount(null)
+    }
+  }, [cart, subtotal, applyBestPromotion, selectedCustomer?.value_tier])
+
+  const handleApplyVoucher = useCallback(async () => {
+    setVoucherError('')
+    if (!voucherCode.trim()) return
+    const result = await applyVoucher(voucherCode.trim(), subtotal)
+    if (!result) { setVoucherError('Voucher không hợp lệ hoặc hết hạn'); return }
+    setAppliedDiscount(result)
+    setInvoiceDiscount(result.discountAmount)
+    setVoucherCode('')
+  }, [voucherCode, applyVoucher, subtotal])
+
+  const clearDiscount = useCallback(() => {
+    setAppliedDiscount(null)
+    setInvoiceDiscount(0)
+    setVoucherCode('')
+    setVoucherError('')
+  }, [])
+
+  const grandTotal = useMemo(() => Math.max(0, subtotal - invoiceDiscount), [subtotal, invoiceDiscount])
 
   // Credit limit validation
   const isCreditLimitExceeded = selectedCustomer &&
     (customerDebt + grandTotal > selectedCustomer.credit_limit)
 
   // Autocomplete products
-  const searchResults = products.filter(p => {
-    if (!searchTerm.trim()) return false
-    return p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           p.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  })
+  const searchResults = useMemo(() => products.filter(p => {
+    if (!debouncedSearch.trim()) return false
+    return p.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+           p.sku.toLowerCase().includes(debouncedSearch.toLowerCase())
+  }), [products, debouncedSearch])
 
   // Keyboard navigation for Autocomplete
   useEffect(() => {
@@ -657,7 +714,7 @@ export default function POSPage() {
     } else {
       setFocusedSearchIndex(-1)
     }
-  }, [searchTerm])
+  }, [debouncedSearch])
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
@@ -1270,67 +1327,66 @@ export default function POSPage() {
                 </label>
               </div>
 
-              {/* Grid Scroll Area */}
-              <div className="flex-1 overflow-y-auto">
+              {/* Grid Scroll Area – virtualized rows of 3 */}
+              <div ref={productListRef} className="flex-1 overflow-y-auto">
                 {filteredProducts.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center p-8 text-center text-gray-400 bg-white border border-gray-100 rounded-lg">
                     <Package size={24} className="mb-1 text-gray-300" />
                     <span className="text-[12px]">Không tìm thấy hàng</span>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-                    {filteredProducts.map(prod => {
-                      let price = 0
-                      if (prod.price_list_items && prod.price_list_items.length > 0) {
-                        const itemPrice = prod.price_list_items.find(
-                          item => item.price_list_id === selectedPriceListId || item.price_list?.id === selectedPriceListId
-                        )
-                        if (itemPrice) {
-                          price = itemPrice.selling_price
-                        } else {
-                          const retailPrice = prod.price_list_items.find(
-                            item => item.price_list?.code === 'GIA-LE'
-                          )
-                          price = retailPrice ? retailPrice.selling_price : prod.price_list_items[0].selling_price
-                        }
-                      }
-                      return (
-                        <div
-                          key={prod.id}
-                          onClick={() => addToCart(prod)}
-                          className="bg-white border border-gray-100 hover:border-[#007edb] hover:shadow-sm rounded p-2 flex flex-col justify-between cursor-pointer transition-all active:scale-[0.97]"
-                        >
-                          <div>
-                            {/* Product Image Box - togglable and collapsible */}
-                            {showProductImages && prod.image_urls && prod.image_urls.length > 0 ? (
-                              <div className="w-full h-16 bg-gray-50 rounded overflow-hidden flex items-center justify-center border border-gray-100 mb-1.5 shrink-0">
-                                <img src={prod.image_urls[0]} alt={prod.name} className="w-full h-full object-cover" />
+                  <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+                    {rowVirtualizer.getVirtualItems().map(virtualRow => (
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{ position: 'absolute', top: virtualRow.start, left: 0, right: 0 }}
+                        className="grid grid-cols-3 gap-2 pb-2"
+                      >
+                        {productRows[virtualRow.index].map(prod => {
+                          let price = 0
+                          if (prod.price_list_items && prod.price_list_items.length > 0) {
+                            const itemPrice = prod.price_list_items.find(
+                              item => item.price_list_id === selectedPriceListId || item.price_list?.id === selectedPriceListId
+                            )
+                            if (itemPrice) {
+                              price = itemPrice.selling_price
+                            } else {
+                              const retailPrice = prod.price_list_items.find(
+                                item => item.price_list?.code === 'GIA-LE'
+                              )
+                              price = retailPrice ? retailPrice.selling_price : prod.price_list_items[0].selling_price
+                            }
+                          }
+                          return (
+                            <div
+                              key={prod.id}
+                              onClick={() => addToCart(prod)}
+                              className="bg-white border border-gray-100 hover:border-[#007edb] hover:shadow-sm rounded p-2 flex flex-col justify-between cursor-pointer transition-all active:scale-[0.97]"
+                            >
+                              <div>
+                                {showProductImages && (
+                                  <div className="w-full h-16 bg-gray-50 rounded overflow-hidden flex items-center justify-center border border-gray-100 mb-1.5 shrink-0">
+                                    <ProductImage src={prod.image_urls?.[0]} alt={prod.name} />
+                                  </div>
+                                )}
+                                <h4 className="text-[12px] font-bold text-gray-800 line-clamp-2 leading-tight h-8 select-none">{prod.name}</h4>
+                                <div className="my-1.5 flex items-center">
+                                  <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 uppercase font-mono tracking-wider">
+                                    ĐVT: {prod.unit || 'N/A'}
+                                  </span>
+                                </div>
                               </div>
-                            ) : showProductImages ? (
-                              <div className="w-full h-6 bg-gray-50 rounded overflow-hidden flex items-center justify-center border border-gray-100 mb-1.5 shrink-0 text-gray-300">
-                                <Package size={12} />
+                              <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-gray-50 shrink-0">
+                                <span className="text-[11px] font-bold text-blue-600">{formatCurrency(price)}</span>
+                                <span className="text-[9px] text-gray-400 font-mono truncate max-w-[50px]" title={prod.sku}>SKU: {prod.sku || '-'}</span>
                               </div>
-                            ) : null}
-
-                            {/* Product name - up to 2 lines */}
-                            <h4 className="text-[12px] font-bold text-gray-800 line-clamp-2 leading-tight h-8 select-none">{prod.name}</h4>
-                            
-                            {/* Unit (ĐVT) - Prominent Under Name */}
-                            <div className="my-1.5 flex items-center">
-                              <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 uppercase font-mono tracking-wider">
-                                ĐVT: {prod.unit || 'N/A'}
-                              </span>
                             </div>
-                          </div>
-                          
-                          {/* Card Footer */}
-                          <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-gray-50 shrink-0">
-                            <span className="text-[11px] font-bold text-blue-600">{formatCurrency(price)}</span>
-                            <span className="text-[9px] text-gray-400 font-mono truncate max-w-[50px]" title={prod.sku}>SKU: {prod.sku || '-'}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
+                          )
+                        })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1495,6 +1551,35 @@ export default function POSPage() {
                   />
                 </div>
               </div>
+
+              {/* Applied promotion/voucher badge */}
+              {appliedDiscount && (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-2 py-1.5">
+                  <span className="text-[10px] font-medium text-green-700 truncate">{appliedDiscount.label}</span>
+                  <button onClick={clearDiscount} className="ml-1 text-green-600 hover:text-green-800 shrink-0"><X size={12} /></button>
+                </div>
+              )}
+
+              {/* Voucher code input */}
+              {!appliedDiscount && (
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={voucherCode}
+                    onChange={e => { setVoucherCode(e.target.value.toUpperCase()); setVoucherError('') }}
+                    onKeyDown={e => e.key === 'Enter' && handleApplyVoucher()}
+                    placeholder="Mã voucher"
+                    className="flex-1 h-7 px-2 border border-gray-200 rounded text-[11px] focus:outline-none focus:border-[#007edb] uppercase"
+                  />
+                  <button
+                    onClick={handleApplyVoucher}
+                    className="px-2 h-7 bg-orange-500 text-white text-[10px] font-bold rounded hover:bg-orange-600 transition-colors"
+                  >
+                    Áp
+                  </button>
+                </div>
+              )}
+              {voucherError && <p className="text-[10px] text-red-500">{voucherError}</p>}
 
               {/* Grand Total */}
               <div className="flex justify-between items-end pt-1 border-t border-gray-200/60">

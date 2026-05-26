@@ -5,6 +5,8 @@ import { isSupabaseConfigured } from './lib/supabase'
 import { DisplaySettingsProvider } from './contexts/DisplaySettingsContext'
 import { ShieldAlert } from 'lucide-react'
 import Layout from './components/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { PwaUpdateBanner } from './components/PwaUpdateBanner'
 
 // ─────────────────────────────────────────────────────────────
 // Sprint P0-2 (2026-05-26): Lazy-load để giảm initial bundle.
@@ -45,6 +47,7 @@ const HerdProjectListPage        = lazy(() => import('./pages/herd-projects/Herd
 const HerdProjectFormPage        = lazy(() => import('./pages/herd-projects/HerdProjectFormPage'))
 const HerdProjectDetailPage      = lazy(() => import('./pages/herd-projects/HerdProjectDetailPage'))
 const SystemSettingsPage         = lazy(() => import('./pages/system/SystemSettingsPage'))
+const PromotionsPage             = lazy(() => import('./pages/promotions/PromotionsPage'))
 
 
 // ─────────────────────────────────────────────────────────────
@@ -187,6 +190,7 @@ function AppRoutes() {
       {/* /products/ingredients đã được khai báo ở trên, không cần lặp lại */}
       <Route path="/diseases" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><DiseasesPage /></ProtectedRoute>} />
       <Route path="/system-settings" element={<ProtectedRoute perms={['users.manage', 'users.assign_role', 'audit.view']}><SystemSettingsPage /></ProtectedRoute>} />
+      <Route path="/promotions" element={<ProtectedRoute perms={['promotions.manage']}><PromotionsPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
@@ -256,13 +260,18 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <DisplaySettingsProvider>
-          <AppRoutes />
-        </DisplaySettingsProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <DisplaySettingsProvider>
+            <ErrorBoundary>
+              <AppRoutes />
+            </ErrorBoundary>
+          </DisplaySettingsProvider>
+        </AuthProvider>
+      </BrowserRouter>
+      <PwaUpdateBanner />
+    </ErrorBoundary>
   )
 }
 

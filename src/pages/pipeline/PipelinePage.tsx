@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
   Search,
   Plus,
@@ -102,6 +103,7 @@ export default function PipelinePage() {
   const [selectedOwnerFilter, setSelectedOwnerFilter] = useState('all') // 'all', 'me', or rep ID
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'open' | 'won' | 'lost' | 'abandoned'>('open')
   const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
 
   // Modals
@@ -266,8 +268,8 @@ export default function PipelinePage() {
       }
 
       // 3. Search query filter
-      if (searchTerm.trim()) {
-        const query = searchTerm.toLowerCase().trim()
+      if (debouncedSearch.trim()) {
+        const query = debouncedSearch.toLowerCase().trim()
         const matchTitle = opp.title.toLowerCase().includes(query)
         const matchCode = opp.opp_code.toLowerCase().includes(query)
         const matchCustomer = (opp.customers?.farm_name || '').toLowerCase().includes(query)
@@ -702,7 +704,7 @@ export default function PipelinePage() {
                         return (
                           <tr key={opp.id} className="hover:bg-gray-25/50 transition-colors">
                             <td className="px-6 py-4 font-bold text-blue-600 text-tiny tabular-nums">
-                              {highlightText(opp.opp_code, searchTerm)}
+                              {highlightText(opp.opp_code, debouncedSearch)}
                             </td>
                             <td className="px-6 py-4">
                               <span
@@ -712,7 +714,7 @@ export default function PipelinePage() {
                                 }}
                                 className="font-bold text-gray-700 hover:text-blue-500 cursor-pointer block"
                               >
-                                {highlightText(opp.title, searchTerm)}
+                                {highlightText(opp.title, debouncedSearch)}
                               </span>
                               {isStale && (
                                 <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
@@ -722,7 +724,7 @@ export default function PipelinePage() {
                             </td>
                             <td className="px-6 py-4">
                               <Link to={`/customers/${opp.customer_id}`} className="font-semibold text-gray-500 hover:text-blue-500 flex items-center gap-1.5">
-                                {highlightText(opp.customers?.farm_name || 'Khách lẻ / Chưa liên kết', searchTerm)}
+                                {highlightText(opp.customers?.farm_name || 'Khách lẻ / Chưa liên kết', debouncedSearch)}
                                 <ExternalLink size={12} className="text-gray-300" />
                               </Link>
                             </td>
@@ -868,7 +870,7 @@ export default function PipelinePage() {
                                     }}
                                     className="text-body-md font-bold text-gray-700 line-clamp-2 leading-snug group-hover:text-blue-500 cursor-pointer transition-colors"
                                   >
-                                    {highlightText(opp.title, searchTerm)}
+                                    {highlightText(opp.title, debouncedSearch)}
                                   </h4>
                                   <div className="relative">
                                     <button
@@ -899,12 +901,12 @@ export default function PipelinePage() {
 
                                 {/* Code */}
                                 <p className="text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1 font-mono">
-                                  {highlightText(opp.opp_code, searchTerm)}
+                                  {highlightText(opp.opp_code, debouncedSearch)}
                                 </p>
 
                                 {/* Customer and Value */}
                                 <p className="text-tiny text-gray-500 font-semibold truncate mb-2">
-                                  {highlightText(opp.customers?.farm_name || 'Khách lẻ / Chưa liên kết', searchTerm)}
+                                  {highlightText(opp.customers?.farm_name || 'Khách lẻ / Chưa liên kết', debouncedSearch)}
                                 </p>
                                 
                                 <p className="text-body-lg font-bold text-blue-500 mb-3 tabular-nums">

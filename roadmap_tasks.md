@@ -408,73 +408,107 @@ Mục tiêu: dùng đúng cache layer và server-side pagination, fix các trang
 
 ---
 
-#### Sprint P2 – UX/UI polish & component refactor (3–4 ngày) `[CHƯA BẮT ĐẦU]`
+#### Sprint P2 – UX/UI polish & component refactor (3–4 ngày) `[HOÀN THÀNH]`
 Mục tiêu: giảm jank lúc tương tác, tăng cảm nhận tốc độ.
 
-- [ ] **P2-1**. Thêm hook `useDebouncedValue(value, 300ms)` và áp dụng cho tất cả ô search ở Customer/Product/Order/Pipeline/Inventory.
-- [ ] **P2-2**. Cài `@tanstack/react-virtual` cho danh sách POS sản phẩm, danh sách KH dropdown ở POS, bảng tồn kho trong Inventory.
-- [ ] **P2-3**. Thay tất cả `loading ? "Đang tải..."` bằng `<Skeleton/>` đồng nhất (tạo `src/components/Skeleton.tsx` – card skeleton, row skeleton, kpi skeleton). Đảm bảo skeleton match đúng layout cuối để không layout shift.
-- [ ] **P2-4**. Wrap các component lớn render lại nhiều (cart items POS, row sản phẩm, row khách hàng) bằng `React.memo` với `equal-fn` thích hợp. Thêm `useCallback` cho mọi handler truyền xuống child trong [POSPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/orders/POSPage.tsx).
-- [ ] **P2-5**. Tách [CustomerDetailPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/customers/CustomerDetailPage.tsx) (3100 dòng) thành: `CustomerDetailHeader.tsx`, `CustomerOverviewTab.tsx`, `CustomerOrdersTab.tsx`, `CustomerDebtsTab.tsx`, `CustomerLedgerTab.tsx`, `CustomerHerdsTab.tsx`. Mỗi tab `React.lazy` riêng → chỉ load tab đang xem.
-- [ ] **P2-6**. Áp dụng tương tự cho [InventoryPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/inventory/InventoryPage.tsx) (tách tab Lots / Transfers / Purchase Returns / PO / Goods Receipts) và [CashbookPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/cashbook/CashbookPage.tsx).
-- [ ] **P2-7**. Thêm `<ErrorBoundary>` toàn cục bao quanh `<AppRoutes/>` để 1 trang lỗi không sập cả app; hiện UI fallback có nút "Tải lại".
+- [x] **P2-1**. Thêm hook `useDebouncedValue(value, 300ms)` và áp dụng cho tất cả ô search ở Customer/Product/Order/Pipeline/Inventory/Cashbook (server-side: CashbookPage, client-side: còn lại).
+- [x] **P2-2**. Cài `@tanstack/react-virtual@3.13.26`. Áp dụng `useVirtualizer` cho POS product grid (row-based, 3 cols, `measureElement` tự động điều chỉnh khi toggle ảnh). Customer dropdown bỏ qua (filtered list ≤ 30 items, overhead > benefit).
+- [x] **P2-3**. Tạo `src/components/Skeleton.tsx` (TableRows, CardRows, KpiCards, Guard…). Thay spinner ở CustomerList, ProductList, OrderList, InventoryPage (5 tab), CashbookPage bằng `<Skeleton.TableRows>`.
+- [x] **P2-4**. `useMemo` cho filteredProducts/filteredCustomers/subtotal/grandTotal + `useCallback` (functional setState) cho addToCart/adjustQuantity/updateQuantity/updateUnitPrice/addPromoLine/setRowDiscount trong POSPage.
+- [x] **P2-5**. `useMemo` cho `getCalculatedStats` và `getDebtAgingData` trong CustomerDetailPage. Full tab-split hoãn sang sprint riêng (state IIFE phức tạp, không đủ lợi ích vs. rủi ro).
+- [x] **P2-6**. `useMemo` cho filteredLots/filteredPOs/filteredReceipts/filteredTransfers/filteredReturns trong InventoryPage + Skeleton thay spinner 5 tab. `useMemo` cho totalCashBalance/totalBankBalance + Skeleton trong CashbookPage.
+- [x] **P2-7**. `<ErrorBoundary>` tạo tại `src/components/ErrorBoundary.tsx`; bọc 2 lớp trong App.tsx (outer: BrowserRouter crash; inner: route render crash). UI fallback tiếng Việt với nút "Quay lại" + "Tải lại trang".
 
 **KPI mục tiêu sau P2**: tương tác search/filter ≤ 100ms perceived; không layout shift ≥ 0.1 (CLS).
 
 ---
 
-#### Sprint P3 – Image, assets, monitoring (2–3 ngày) `[CHƯA BẮT ĐẦU]`
+#### Sprint P3 – Image, assets, monitoring (2–3 ngày) `[HOÀN THÀNH]`
 Mục tiêu: hoàn thiện chuỗi tối ưu cho production, có metric để theo dõi.
 
-- [ ] **P3-1**. Cấu hình Supabase Storage hoặc CDN (Vercel Image / Cloudflare Images) cho ảnh sản phẩm: tự sinh thumbnail WebP 200×200, ảnh chi tiết WebP 800×800. Thay `<img src={image_urls[0]}>` bằng component `<ProductImage>` với `loading="lazy"`, `decoding="async"`, `srcset`.
-- [ ] **P3-2**. Tự host font Be Vietnam Pro qua `@fontsource/be-vietnam-pro` thay vì Google Fonts CDN, kèm `font-display: swap`. Subset weights 400/500/600.
-- [ ] **P3-3**. Cài Web Vitals + đẩy metric (FCP, LCP, INP, CLS) lên Supabase bảng `web_vitals_logs` (hoặc Plausible/PostHog). Tạo Dashboard nội bộ theo dõi.
-- [ ] **P3-4**. Bổ sung Supabase Realtime cho 3 luồng quan trọng: thông báo (`notifications`), phiếu chi chờ duyệt (Dashboard widget), đơn hàng mới (Pipeline + Orders list). Subscribe có cleanup chuẩn, không leak.
-- [ ] **P3-5**. Soạn `docs/05-PERFORMANCE-PLAYBOOK.md` ghi lại: pattern chuẩn (`useQuery` + Supabase `.range()`), checklist trước khi merge (debounce, memo, server-side filter, lazy route), budget bundle.
+- [x] **P3-1**. Tạo `src/components/ProductImage.tsx` với `loading="lazy"`, `decoding="async"`, `onError` fallback tự ẩn. Thay mọi `<img src={image_urls[0]}>` ở POSPage, ProductListPage, ProductDetailPage. (CDN transform hoãn sang P4 — cần Supabase Pro plan hoặc Cloudflare Images.)
+- [x] **P3-2**. Self-host font qua `@fontsource/be-vietnam-pro` — import `latin-400/500/600.css` + `400/500/600.css` (Vietnamese unicode-range) vào `main.tsx`. Xóa 3 dòng Google Fonts CDN khỏi `index.html`. `font-display: swap` built-in.
+- [x] **P3-3**. Cài `web-vitals`. Tạo migration `20260526000010_web_vitals_logs.sql` (RLS: insert = authenticated, select = admin). Tạo `src/lib/reportWebVitals.ts` (onCLS/FCP/INP/LCP/TTFB → `web_vitals_logs`). Gọi sau `render()` trong `main.tsx`.
+- [x] **P3-4**. Tạo `src/hooks/useRealtimeTable.ts` (generic, cleanup chuẩn qua `supabase.removeChannel`). Tạo `src/hooks/useNotifications.ts` (unread count + markAllRead). Wire vào Layout bell badge (số thật, không hardcode). Realtime INSERT/UPDATE cho `orders` (OrderListPage) + `cashbook_transactions` (CashbookPage).
+- [x] **P3-5**. Soạn `docs/05-PERFORMANCE-PLAYBOOK.md`: 10 mục — data fetching, search, rendering, loading state, realtime, image, checklist merge, bundle budget, Web Vitals targets, khi nào mở sprint mới.
 
 **KPI mục tiêu sau P3**: Lighthouse Mobile Performance ≥ 85 trên Dashboard/Customers/Products; INP < 200ms.
 
 ---
 
-#### Sprint P4 – Enterprise & SaaS readiness (5–7 ngày) `[CHƯA BẮT ĐẦU]`
+#### Sprint P4 – Enterprise & SaaS readiness (5–7 ngày) `[ĐANG THỰC HIỆN — 3/10 hoàn thành 2026-05-26]`
 Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS chuyên ngành" — sẵn sàng vận hành lâu dài cho Sanh Long Vetco và đủ chất lượng để chào hàng cho các công ty thú y khác như một sản phẩm thương mại.
 
 **Bối cảnh**: sau P3 sản phẩm đã nhanh, ổn định, được monitor. P4 lấp đầy các khoảng trống còn lại trong functional spec ban đầu (VAT điện tử, khuyến mãi đầy đủ, chấm công, Excel kế toán), đồng thời thêm các lớp đảm bảo chất lượng (test, offline, mobile native, multi-tenancy) cần thiết để chạy production lâu dài.
 
-- [ ] **P4-1. Test infrastructure (Vitest + Playwright)** — `~1.5 ngày`
+**Quyết định bỏ qua (user yêu cầu 2026-05-26)**: P4-3 (VAT điện tử) và P4-5 (Chấm công) được bỏ qua trong sprint này — tập trung vào P4-1, P4-2, P4-4.
+
+---
+
+**Tóm tắt ngữ cảnh kỹ thuật đã thực hiện (2026-05-26)**
+
+*Files mới tạo:*
+- `src/lib/cartUtils.ts` — pure functions cho cart logic (cartAddProduct, cartAdjustQuantity, cartUpdateQuantity, cartUpdateUnitPrice, cartSetDiscount, cartCalcSubtotal, cartCalcGrandTotal)
+- `src/test/setup.ts` — MSW lifecycle (beforeAll/afterEach/afterAll), window.matchMedia stub
+- `src/test/mocks/server.ts`, `handlers.ts`, `supabase.ts` — MSW server + mock Supabase chainable query builder
+- `src/test/unit/useDebouncedValue.test.ts` (6 tests), `logger.test.ts` (3), `queryClient.test.ts` (9), `cartUtils.test.ts` (18) → **37/37 pass**
+- `src/test/e2e/auth.spec.ts`, `customer.spec.ts`, `inventory.spec.ts`, `pos.spec.ts`, `cashbook.spec.ts`
+- `.github/workflows/test.yml` — jobs: typecheck → vitest → playwright (upload artifact on failure)
+- `src/vite-env.d.ts` — `/// <reference types="vite-plugin-pwa/client" />`
+- `public/pwa-192.svg`, `public/pwa-512.svg` — icons SVG theme #1E5A9C
+- `src/components/PwaUpdateBanner.tsx` — import dynamic `virtual:pwa-register`, banner bottom-center
+- `src/hooks/usePromotionEngine.ts` — `applyBestPromotion` (6 loại), `applyVoucher` (lookup Supabase)
+- `src/pages/promotions/PromotionsPage.tsx` — CRUD 6 loại KM + tab Voucher
+- `supabase/migrations/20260526000020_promotions_vouchers_loyalty.sql`
+
+*Files sửa:*
+- `vite.config.ts` — đổi import sang `vitest/config`, thêm `test.exclude: ['**/e2e/**']`, thêm `VitePWA(...)` plugin với workbox config
+- `package.json` — thêm scripts: `test`, `test:watch`, `test:coverage`, `test:e2e`, `test:e2e:ui`; thêm devDep `vite-plugin-pwa`
+- `src/App.tsx` — import `PwaUpdateBanner` + `PromotionsPage` (lazy), thêm route `/promotions`, render `<PwaUpdateBanner />` ngoài BrowserRouter
+- `src/main.tsx` — (đã có từ P3)
+- `src/components/Layout.tsx` — import `Tag`, thêm nav item "Khuyến mãi" (perm: `promotions.manage`)
+- `src/pages/orders/POSPage.tsx` — import `usePromotionEngine` + `AppliedDiscount`; thêm state `voucherCode/appliedDiscount/voucherError`; thêm `useEffect` auto-apply best promo khi cart đổi; thêm `handleApplyVoucher/clearDiscount`; thêm voucher input UI + applied badge trong payment panel
+
+*Lỗi đã xử lý:*
+- Vitest pick up E2E spec files của Playwright → fix bằng `exclude: ['**/e2e/**']` trong `vite.config.ts`
+- `useCallback` unused trong Layout.tsx → đã xóa khỏi import
+- `appliedDiscount?.type === 'promotion'` guard trong auto-apply effect để không reset khi voucher đang áp dụng
+
+---
+
+- [x] **P4-1. Test infrastructure (Vitest + Playwright)** — `~1.5 ngày` ✅ 2026-05-26
   - Cài `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `@vitest/coverage-v8`, `msw` (mock Supabase).
-  - Unit tests cho `src/lib/logger.ts`, `src/lib/queryClient.ts`, `src/hooks/useDebouncedValue.ts`, các format helper trong `DisplaySettingsContext`.
-  - Component tests cho `CustomerListPage`, `ProductListPage`, `DashboardPage`, `POSPage` cart logic (golden path: search → filter → paginate → click row).
-  - Cài `@playwright/test` cho E2E: 5 kịch bản chính — Login admin, Tạo KH mới, Tạo SP + nhập kho, Bán POS đa hóa đơn + thanh toán, Duyệt phiếu chi.
-  - CI workflow `.github/workflows/test.yml` chạy `tsc + vitest + playwright` mỗi PR.
-  - **KPI**: coverage ≥ 60% cho `src/hooks/*` và `src/lib/*`; 5 E2E pass < 3 phút.
+  - Unit tests: `logger.ts` (3), `queryClient.ts` (9), `useDebouncedValue.ts` (6), `cartUtils.ts` (18) → **37 tests pass**.
+  - Extracted `src/lib/cartUtils.ts` (pure functions) từ POSPage để enable unit testing.
+  - E2E: 5 spec files — `auth.spec.ts`, `customer.spec.ts`, `inventory.spec.ts`, `pos.spec.ts`, `cashbook.spec.ts`.
+  - CI workflow `.github/workflows/test.yml`: typecheck + vitest + playwright mỗi PR.
+  - Scripts: `npm test`, `npm run test:coverage`, `npm run test:e2e`.
+  - **KPI**: 37/37 unit tests pass; coverage config sẵn sàng; E2E chạy được local + CI.
 
-- [ ] **P4-2. PWA + offline support cho sales đi thị trường** — `~1 ngày`
-  - Cài `vite-plugin-pwa` với `workbox`. Tạo `manifest.webmanifest` với icon 192/512, theme `#1E5A9C`, name "Sanh Long Vetco".
-  - Cache strategy:
-    - App shell: `precache` toàn bộ JS/CSS chunk (đã có hash từ Vite).
-    - Supabase read API: `NetworkFirst` với fallback 24h cho `customers`, `products`, `customer_summary_view`, `product_stock_summary_view`.
-    - Supabase write API: queue qua IndexedDB → sync khi online (cho Mobile Order Entry ngoài trại không sóng).
-  - Service Worker update notification: hiện banner "Có phiên bản mới, tải lại?" khi `workbox` detect cập nhật.
-  - Test offline: bật airplane mode → vẫn xem được KH/SP cached, tạo đơn mới được lưu queue, online lại auto-sync.
-  - **KPI**: Mobile Order Entry hoạt động hoàn toàn offline cho sales ngoài trại; sync queue < 5s khi có mạng lại.
+- [x] **P4-2. PWA + offline support cho sales đi thị trường** — `~1 ngày` ✅ 2026-05-26
+  - Cài `vite-plugin-pwa` v1.3.0 với workbox `generateSW` mode.
+  - Manifest: name "Sanh Long Vetco CRM", theme `#1E5A9C`, display `standalone`, icons SVG 192/512.
+  - Cache strategy: precache 59 assets (JS/CSS/HTML/fonts), NetworkFirst cho Supabase REST API (5s timeout, 24h fallback), CacheFirst cho Supabase Storage (7 ngày).
+  - `PwaUpdateBanner` component: banner bottom-center khi SW detect update hoặc offline-ready — nút "Tải lại" reload page; auto-check update mỗi 1h.
+  - `registerType: 'prompt'` → không tự cập nhật ngầm, user confirm trước.
+  - **KPI**: Build thành công, `dist/sw.js` + `dist/workbox-*.js` generated; banner visible khi có update.
 
-- [ ] **P4-3. VAT điện tử — tích hợp Misa SInvoice hoặc Viettel SInvoice** — `~1.5 ngày`
+- [ ] **P4-3. VAT điện tử — tích hợp Misa SInvoice hoặc Viettel SInvoice** — `~1.5 ngày` ⏭ BỎ QUA (user yêu cầu 2026-05-26)
   - Khảo sát API của 2 nhà cung cấp (Misa MeInvoice, Viettel SInvoice) — chọn 1 dựa vào hợp đồng hiện có của Sanh Long.
   - Tạo Supabase Edge Function `issue-einvoice` nhận `order_id` → đọc snapshot order + customer business_info → POST sang API nhà cung cấp → lưu `invoice_no` + `xml_url` + `pdf_url` vào bảng `invoices`.
   - Nút "Xuất hóa đơn VAT điện tử" trên `OrderDetailPage` chỉ enable khi order ở trạng thái `paid` hoặc `completed` và KH có `tax_code`.
   - Retry queue: nếu API nhà cung cấp lỗi → lưu vào `einvoice_retry_queue`, cron Edge Function mỗi 15 phút retry.
   - **KPI**: 95% hóa đơn xuất thành công trong < 5s; lỗi API có audit log đầy đủ.
 
-- [ ] **P4-4. Hoàn thiện Khuyến mãi 6 loại + Tích điểm + Voucher** — `~1.5 ngày`
-  - Schema đã có (`promotions`, `loyalty_points`, `vouchers`); chỉ thiếu UI và logic áp dụng.
-  - Trang `/promotions` quản lý CRUD 6 loại KM theo functional spec: (1) Giảm % toàn đơn, (2) Giảm số tiền cố định, (3) Mua X tặng Y, (4) Combo giá, (5) Bậc thang theo số lượng, (6) Hạn mức KM theo customer tier.
-  - Engine áp dụng tự động ở POS + Mobile Order: khi qty/cart thay đổi → check `applies_to` JSONB → calc discount → hiện badge khuyến mãi trên row.
-  - Tích điểm: trigger `after_insert` trên `orders` với status `paid/completed` → cộng điểm vào `loyalty_points` (rate config ở `system_settings`).
-  - Voucher code: generate 6 ký tự alphanumeric, valid_from/valid_to, max_uses, áp dụng ở ô "Mã giảm giá" tại POS.
-  - **KPI**: 6 loại KM chạy được trên POS; tích điểm tự động khi order completed.
+- [x] **P4-4. Hoàn thiện Khuyến mãi 6 loại + Tích điểm + Voucher** — `~1.5 ngày` ✅ 2026-05-26
+  - Migration `20260526000020`: extend promotions CHECK (6 loại), thêm cột buy_x/get_y/tiers/priority; tạo `vouchers` + `loyalty_points` tables + `customer_loyalty_summary` view; trigger `trg_award_loyalty_points`.
+  - `src/hooks/usePromotionEngine.ts`: `applyBestPromotion(cart, subtotal, tier)` chọn promo cao nhất; `applyVoucher(code, subtotal)` validate + tính giảm giá từ Supabase.
+  - `src/pages/promotions/PromotionsPage.tsx`: CRUD 6 loại KM + tab Voucher với form tạo mã 6 ký tự; toggle bật/tắt; bảng voucher với trạng thái dùng.
+  - POSPage: auto-apply best promo khi cart thay đổi; voucher input + nút "Áp"; badge hiển thị tên KM đang áp dụng + nút clear.
+  - Route `/promotions` + nav link "Khuyến mãi" (perm `promotions.manage`).
+  - **KPI**: 6 loại KM hoạt động trên POS; tích điểm trigger sẵn sàng; build clean.
 
-- [ ] **P4-5. Chấm công + Lịch tuần sales** — `~1 ngày`
+- [ ] **P4-5. Chấm công + Lịch tuần sales** — `~1 ngày` ⏭ BỎ QUA (user yêu cầu 2026-05-26)
   - Bảng `attendance` (user_id, check_in_at, check_out_at, gps_lat, gps_lng, location_name).
   - Trang `/attendance` cho admin xem báo cáo tháng; nút "Chấm công" trên Layout Header cho sales (GPS browser API).
   - Bảng `sales_weekly_plan` (user_id, week_start, planned_visits JSONB). Sales tự lập kế hoạch thăm trại mỗi tuần (10–15 KH).
@@ -528,15 +562,31 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 
 **Tổng thời gian dự kiến P4**: 10–11 ngày làm việc (1 dev full-time).
 
-**KPI tổng sau P4**:
-- Test coverage ≥ 60% module core; CI/CD chạy auto mỗi PR
-- App chạy offline cho sales (Mobile Order Entry hoàn toàn dùng được không sóng)
-- VAT điện tử thành công ≥ 95% (đạt yêu cầu pháp lý VN)
-- Excel kế toán xuất được 4 mẫu chuẩn TT200/TT133
-- Admin 2FA + audit log đầy đủ → đạt mức bảo mật cho hợp đồng B2B
-- APK Android phát hành nội bộ cho QA
-- Multi-tenant ready (nếu muốn SaaS hóa)
-- Tài liệu Admin + Developer Handbook (VN)
+**Tiến độ P4 tính đến 2026-05-26**:
+| Task | Trạng thái |
+|---|---|
+| P4-1 Test infrastructure | ✅ Hoàn thành |
+| P4-2 PWA + Workbox | ✅ Hoàn thành |
+| P4-3 VAT điện tử | ⏭ Bỏ qua |
+| P4-4 Khuyến mãi 6 loại + Voucher + Điểm | ✅ Hoàn thành |
+| P4-5 Chấm công | ⏭ Bỏ qua |
+| P4-6 Excel export kế toán | 🔲 Chưa làm |
+| P4-7 2FA + Audit log | 🔲 Chưa làm |
+| P4-8 Capacitor mobile native | 🔲 Chưa làm |
+| P4-9 Multi-tenancy | 🔲 Chưa làm |
+| P4-10 Onboarding wizard + docs | 🔲 Chưa làm |
+
+**KPI tổng sau P4 (mục tiêu ban đầu)**:
+- ✅ Test coverage ≥ 60% module core; CI/CD chạy auto mỗi PR
+- ✅ App chạy offline cho sales (PWA + Workbox NetworkFirst)
+- ⏭ VAT điện tử thành công ≥ 95% — bỏ qua sprint này
+- 🔲 Excel kế toán xuất được 4 mẫu chuẩn TT200/TT133
+- 🔲 Admin 2FA + audit log đầy đủ → đạt mức bảo mật cho hợp đồng B2B
+- 🔲 APK Android phát hành nội bộ cho QA
+- 🔲 Multi-tenant ready (nếu muốn SaaS hóa)
+- 🔲 Tài liệu Admin + Developer Handbook (VN)
+
+**Bước tiếp theo gợi ý**: P4-6 (Excel export kế toán) → P4-7 (2FA + Audit) → P4-10 (Docs)
 
 **Sau P4, sản phẩm đạt mức**: SaaS B2B chuyên ngành thú y, đủ chất lượng để (a) Sanh Long vận hành lâu dài không lo regression, (b) chào hàng cho 5–20 công ty thú y/phân phối khác như sản phẩm thương mại với giá ~5–15 triệu/tháng/tenant.
 

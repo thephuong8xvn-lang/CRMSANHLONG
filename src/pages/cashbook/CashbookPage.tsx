@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
   Search,
   TrendingUp,
@@ -15,6 +16,8 @@ import {
   Clock
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import { useRealtimeTable } from '../../hooks/useRealtimeTable'
+import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -146,6 +149,7 @@ export default function CashbookPage() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [flowFilter, setFlowFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -360,8 +364,8 @@ export default function CashbookPage() {
       }
 
       // Search term
-      if (searchTerm.trim()) {
-        query = query.ilike('description', `%${searchTerm.trim()}%`)
+      if (debouncedSearch.trim()) {
+        query = query.ilike('description', `%${debouncedSearch.trim()}%`)
       }
 
       // Pagination
@@ -383,7 +387,7 @@ export default function CashbookPage() {
     } finally {
       setLoading(false)
     }
-  }, [flowFilter, statusFilter, categoryFilter, accountFilter, startDate, endDate, searchTerm, currentPage, cashFunds])
+  }, [flowFilter, statusFilter, categoryFilter, accountFilter, startDate, endDate, debouncedSearch, currentPage, cashFunds])
 
   // Run on mount
   useEffect(() => {
@@ -402,6 +406,9 @@ export default function CashbookPage() {
   useEffect(() => {
     fetchTransactions()
   }, [currentPage, flowFilter, statusFilter, categoryFilter, accountFilter, startDate, endDate, fetchTransactions])
+
+  useRealtimeTable({ table: 'cashbook_transactions', event: 'INSERT', onData: fetchTransactions })
+  useRealtimeTable({ table: 'cashbook_transactions', event: 'UPDATE', onData: fetchTransactions })
 
   // Reset alert messages automatically
   useEffect(() => {
@@ -870,9 +877,8 @@ export default function CashbookPage() {
     }
   }
 
-  // Calculate quick stats of HCM branch
-  const totalCashBalance = cashFunds.reduce((sum, f) => sum + Number(f.balance), 0)
-  const totalBankBalance = bankAccounts.reduce((sum, b) => sum + Number(b.balance), 0)
+  const totalCashBalance = useMemo(() => cashFunds.reduce((sum, f) => sum + Number(f.balance), 0), [cashFunds])
+  const totalBankBalance = useMemo(() => bankAccounts.reduce((sum, b) => sum + Number(b.balance), 0), [bankAccounts])
 
   return (
     <Layout activeMenu="Sổ quỹ">
@@ -1166,10 +1172,7 @@ export default function CashbookPage() {
               {/* Table Data */}
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="h-60 flex flex-col items-center justify-center text-gray-400 gap-3">
-                    <div className="w-8 h-8 border-3 border-gray-100 border-t-blue-500 rounded-full animate-spin"></div>
-                    <span className="text-tiny">Đang tải lịch sử giao dịch sổ quỹ...</span>
-                  </div>
+                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={6} /></tbody></table>
                 ) : transactions.length === 0 ? (
                   <div className="h-60 flex flex-col items-center justify-center text-gray-400 gap-2 italic text-tiny">
                     Không tìm thấy giao dịch nào thỏa mãn bộ lọc.

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft,
@@ -867,7 +867,7 @@ export default function CustomerDetailPage() {
     return { totalDebt, isOverdue, lifetimeSpend, reputationScore }
   }
 
-  const { totalDebt, isOverdue, lifetimeSpend, reputationScore } = getCalculatedStats()
+  const { totalDebt, isOverdue, lifetimeSpend, reputationScore } = useMemo(() => getCalculatedStats(), [customer])
 
   // ─────────────────────────────────────────────────────────────
   // Debt Aging Calculation
@@ -905,7 +905,7 @@ export default function CustomerDetailPage() {
     ]
   }
 
-  const agingData = getDebtAgingData()
+  const agingData = useMemo(() => getDebtAgingData(), [customer])
 
   // ─────────────────────────────────────────────────────────────
   // Action Handlers

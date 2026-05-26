@@ -15,6 +15,8 @@ import {
   Award
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import { ProductImage } from '../../components/ProductImage'
+import { Skeleton } from '../../components/Skeleton'
 import AddProductModal from './AddProductModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
 import ManageBrandsModal from './ManageBrandsModal'
@@ -379,9 +381,7 @@ export default function ProductListPage() {
                 </thead>
                 <tbody>
                   {loading && rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={11} className="py-16 text-center text-gray-400 italic">Đang tải danh sách hàng hóa...</td>
-                    </tr>
+                    <Skeleton.TableRows count={8} cols={11} />
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={11} className="py-20 text-center text-gray-400 italic">Không tìm thấy sản phẩm nào khớp với bộ lọc.</td>
@@ -412,11 +412,7 @@ export default function ProductListPage() {
                           </td>
                           <td className="py-3 px-3 text-center">
                             <div className="w-10 h-10 rounded border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center mx-auto">
-                              {image ? (
-                                <img src={image} alt={prod.name} className="w-full h-full object-cover" />
-                              ) : (
-                                <Package size={18} className="text-gray-300" />
-                              )}
+                              <ProductImage src={image} alt={prod.name} />
                             </div>
                           </td>
                           <td className="py-3 px-3 font-mono text-[12px] text-gray-500 font-semibold group-hover:text-blue-500 transition-colors">

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
   Search,
   ChevronLeft,
@@ -14,6 +15,8 @@ import {
   Monitor
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import { useRealtimeTable } from '../../hooks/useRealtimeTable'
+import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
 
 interface Order {
@@ -42,6 +45,7 @@ export default function OrderListPage() {
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [selectedStatus, setSelectedStatus] = useState('')
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
   const [selectedDateRange, setSelectedDateRange] = useState('all') // 'all', 'today', '7days', '30days'
@@ -51,7 +55,7 @@ export default function OrderListPage() {
   const itemsPerPage = 8
 
   // Fetch Orders
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     setLoading(true)
     try {
       const { data, error } = await supabase
@@ -80,16 +84,18 @@ export default function OrderListPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadOrders()
-  }, [])
+  }, [loadOrders])
+
+  useRealtimeTable({ table: 'orders', event: 'INSERT', onData: loadOrders })
 
   // Filter logic
   const filteredOrders = orders.filter(order => {
     // 1. Search term match
-    const term = searchTerm.toLowerCase().trim()
+    const term = debouncedSearch.toLowerCase().trim()
     const matchesSearch =
       order.order_code.toLowerCase().includes(term) ||
       (order.customers?.farm_name || '').toLowerCase().includes(term)
@@ -129,7 +135,7 @@ export default function OrderListPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchTerm, selectedStatus, selectedPaymentStatus, selectedDateRange])
+  }, [debouncedSearch, selectedStatus, selectedPaymentStatus, selectedDateRange])
 
   // Helper to format currency
   const formatCurrency = (value: number) => {
@@ -345,9 +351,8 @@ export default function OrderListPage() {
 
         {/* Loading State */}
         {loading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="w-8 h-8 border-2 border-gray-100 border-t-blue-500 rounded-full animate-spin"></div>
-            <p className="text-body-md text-gray-400">Đang tải danh sách đơn hàng...</p>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
           </div>
         )}
 

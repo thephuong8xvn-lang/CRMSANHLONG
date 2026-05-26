@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
   Search,
   Plus,
@@ -23,6 +24,7 @@ import {
   Trash2
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -114,16 +116,19 @@ export default function InventoryPage() {
   // Tab 1: Stock Lots states
   const [lots, setLots] = useState<StockLot[]>([])
   const [lotSearchTerm, setLotSearchTerm] = useState('')
+  const debouncedLotSearch = useDebouncedValue(lotSearchTerm, 300)
   const [whFilter, setWhFilter] = useState('all')
   const [lotQuickFilter, setLotQuickFilter] = useState<'all' | 'near-expiry' | 'low-stock' | 'quarantine'>('all')
 
   // Tab 2: POs states
   const [pos, setPOs] = useState<PurchaseOrder[]>([])
   const [poSearchTerm, setPoSearchTerm] = useState('')
+  const debouncedPoSearch = useDebouncedValue(poSearchTerm, 300)
 
   // Tab 3: Receipts states
   const [receipts, setReceipts] = useState<GoodsReceipt[]>([])
   const [receiptSearchTerm, setReceiptSearchTerm] = useState('')
+  const debouncedReceiptSearch = useDebouncedValue(receiptSearchTerm, 300)
 
   // Tab 4: Settings/Low stock alerts states
   const [invSettings, setInvSettings] = useState<InventorySetting[]>([])
@@ -140,6 +145,7 @@ export default function InventoryPage() {
   // Tab: Stock Transfers states
   const [transfers, setTransfers] = useState<any[]>([])
   const [transferSearchTerm, setTransferSearchTerm] = useState('')
+  const debouncedTransferSearch = useDebouncedValue(transferSearchTerm, 300)
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [showTransferDetailModal, setShowTransferDetailModal] = useState(false)
   const [selectedTransfer, setSelectedTransfer] = useState<any>(null)
@@ -160,6 +166,7 @@ export default function InventoryPage() {
   // Tab: Purchase Returns states
   const [purchaseReturns, setPurchaseReturns] = useState<any[]>([])
   const [returnSearchTerm, setReturnSearchTerm] = useState('')
+  const debouncedReturnSearch = useDebouncedValue(returnSearchTerm, 300)
   const [showReturnModal, setShowReturnModal] = useState(false)
   const [showReturnDetailModal, setShowReturnDetailModal] = useState(false)
   const [selectedReturn, setSelectedReturn] = useState<any>(null)
@@ -322,22 +329,22 @@ export default function InventoryPage() {
   }
 
   // Filtered transfers logic
-  const filteredTransfers = transfers.filter(t => {
+  const filteredTransfers = useMemo(() => transfers.filter(t => {
     return (
-      t.transfer_code.toLowerCase().includes(transferSearchTerm.toLowerCase()) ||
-      (t.from_wh?.name || '').toLowerCase().includes(transferSearchTerm.toLowerCase()) ||
-      (t.to_wh?.name || '').toLowerCase().includes(transferSearchTerm.toLowerCase())
+      t.transfer_code.toLowerCase().includes(debouncedTransferSearch.toLowerCase()) ||
+      (t.from_wh?.name || '').toLowerCase().includes(debouncedTransferSearch.toLowerCase()) ||
+      (t.to_wh?.name || '').toLowerCase().includes(debouncedTransferSearch.toLowerCase())
     )
-  })
+  }), [transfers, debouncedTransferSearch])
 
   // Filtered returns logic
-  const filteredReturns = purchaseReturns.filter(r => {
+  const filteredReturns = useMemo(() => purchaseReturns.filter(r => {
     return (
-      r.return_code.toLowerCase().includes(returnSearchTerm.toLowerCase()) ||
-      (r.supplier?.name || '').toLowerCase().includes(returnSearchTerm.toLowerCase()) ||
-      (r.warehouse?.name || '').toLowerCase().includes(returnSearchTerm.toLowerCase())
+      r.return_code.toLowerCase().includes(debouncedReturnSearch.toLowerCase()) ||
+      (r.supplier?.name || '').toLowerCase().includes(debouncedReturnSearch.toLowerCase()) ||
+      (r.warehouse?.name || '').toLowerCase().includes(debouncedReturnSearch.toLowerCase())
     )
-  })
+  }), [purchaseReturns, debouncedReturnSearch])
 
   const handleCreateTransfer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1064,12 +1071,12 @@ export default function InventoryPage() {
   }, [activeTab])
 
   // Filtered Stock Lots logic
-  const filteredLots = lots.filter(lot => {
+  const filteredLots = useMemo(() => lots.filter(lot => {
     // 1. Search term match
-    const searchMatch = 
-      lot.product.name.toLowerCase().includes(lotSearchTerm.toLowerCase()) ||
-      lot.product.sku.toLowerCase().includes(lotSearchTerm.toLowerCase()) ||
-      lot.lot_number.toLowerCase().includes(lotSearchTerm.toLowerCase())
+    const searchMatch =
+      lot.product.name.toLowerCase().includes(debouncedLotSearch.toLowerCase()) ||
+      lot.product.sku.toLowerCase().includes(debouncedLotSearch.toLowerCase()) ||
+      lot.lot_number.toLowerCase().includes(debouncedLotSearch.toLowerCase())
 
     // 2. Warehouse Filter match
     const whMatch = whFilter === 'all' || lot.warehouse.id === whFilter
@@ -1083,32 +1090,32 @@ export default function InventoryPage() {
         const expiryTime = new Date(lot.expiry_date).getTime()
         const nowTime = new Date().getTime()
         const daysToExpiry = (expiryTime - nowTime) / (1000 * 60 * 60 * 24)
-        quickMatch = daysToExpiry >= 0 && daysToExpiry <= 30 // expiring in less than 30 days
+        quickMatch = daysToExpiry >= 0 && daysToExpiry <= 30
       }
     } else if (lotQuickFilter === 'low-stock') {
-      quickMatch = lot.quantity_on_hand <= 15 // threshold low stock level
+      quickMatch = lot.quantity_on_hand <= 15
     } else if (lotQuickFilter === 'quarantine') {
       quickMatch = lot.status === 'quarantine'
     }
 
     return searchMatch && whMatch && quickMatch
-  })
+  }), [lots, debouncedLotSearch, whFilter, lotQuickFilter])
 
   // Filtered POs logic
-  const filteredPOs = pos.filter(po => {
+  const filteredPOs = useMemo(() => pos.filter(po => {
     return (
-      po.po_code.toLowerCase().includes(poSearchTerm.toLowerCase()) ||
-      po.supplier.name.toLowerCase().includes(poSearchTerm.toLowerCase())
+      po.po_code.toLowerCase().includes(debouncedPoSearch.toLowerCase()) ||
+      po.supplier.name.toLowerCase().includes(debouncedPoSearch.toLowerCase())
     )
-  })
+  }), [pos, debouncedPoSearch])
 
   // Filtered Receipts logic
-  const filteredReceipts = receipts.filter(gr => {
+  const filteredReceipts = useMemo(() => receipts.filter(gr => {
     return (
-      gr.receipt_code.toLowerCase().includes(receiptSearchTerm.toLowerCase()) ||
-      gr.supplier.name.toLowerCase().includes(receiptSearchTerm.toLowerCase())
+      gr.receipt_code.toLowerCase().includes(debouncedReceiptSearch.toLowerCase()) ||
+      gr.supplier.name.toLowerCase().includes(debouncedReceiptSearch.toLowerCase())
     )
-  })
+  }), [receipts, debouncedReceiptSearch])
 
   // Create Inventory Setting Submit
   const handleCreateSetting = async (e: React.FormEvent) => {
@@ -1359,10 +1366,7 @@ export default function InventoryPage() {
               {/* Data Table */}
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-3">
-                    <div className="w-8 h-8 border-3 border-gray-100 border-t-blue-500 rounded-full animate-spin" />
-                    <span>Đang tải danh sách tồn lô...</span>
-                  </div>
+                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredLots.length === 0 ? (
                   <div className="p-12 text-center text-gray-400 space-y-2">
                     <Layers className="w-12 h-12 text-gray-300 mx-auto" />
@@ -1458,10 +1462,7 @@ export default function InventoryPage() {
               {/* Data Table */}
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-3">
-                    <div className="w-8 h-8 border-3 border-gray-100 border-t-blue-500 rounded-full animate-spin" />
-                    <span>Đang tải danh sách PO...</span>
-                  </div>
+                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredPOs.length === 0 ? (
                   <div className="p-12 text-center text-gray-400 space-y-2">
                     <FileText className="w-12 h-12 text-gray-300 mx-auto" />
@@ -1545,10 +1546,7 @@ export default function InventoryPage() {
               {/* Data Table */}
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-3">
-                    <div className="w-8 h-8 border-3 border-gray-100 border-t-blue-500 rounded-full animate-spin" />
-                    <span>Đang tải danh sách phiếu nhập kho...</span>
-                  </div>
+                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredReceipts.length === 0 ? (
                   <div className="p-12 text-center text-gray-400 space-y-2">
                     <WarehouseIcon className="w-12 h-12 text-gray-300 mx-auto" />
@@ -1622,10 +1620,7 @@ export default function InventoryPage() {
               {/* Data Table */}
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-3">
-                    <div className="w-8 h-8 border-3 border-gray-100 border-t-blue-500 rounded-full animate-spin" />
-                    <span>Đang tải danh sách chuyển kho...</span>
-                  </div>
+                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredTransfers.length === 0 ? (
                   <div className="p-12 text-center text-gray-400 space-y-2">
                     <ArrowRightLeft className="w-12 h-12 text-gray-300 mx-auto" />
@@ -1718,10 +1713,7 @@ export default function InventoryPage() {
               {/* Data Table */}
               <div className="overflow-x-auto">
                 {loading ? (
-                  <div className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-3">
-                    <div className="w-8 h-8 border-3 border-gray-100 border-t-blue-500 rounded-full animate-spin" />
-                    <span>Đang tải danh sách trả hàng...</span>
-                  </div>
+                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredReturns.length === 0 ? (
                   <div className="p-12 text-center text-gray-400 space-y-2">
                     <RotateCcw className="w-12 h-12 text-gray-300 mx-auto" />

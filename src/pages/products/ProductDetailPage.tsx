@@ -19,6 +19,7 @@ import {
   Bookmark
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import EditProductModal from './EditProductModal'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
@@ -534,13 +535,12 @@ export default function ProductDetailPage() {
             {/* Image Gallery */}
             <div className="bg-gray-0 border border-gray-100 rounded-xl p-6 shadow-sm flex flex-col items-center">
               <div className="aspect-square bg-gray-50 w-full rounded-lg mb-4 flex items-center justify-center overflow-hidden border border-gray-100">
-                {product.image_urls && product.image_urls.length > 0 ? (
-                  <img src={product.image_urls[0]} alt={product.name} className="w-full h-full object-contain" />
-                ) : (
-                  <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400">
-                    <Package size={48} strokeWidth={1.2} />
-                  </div>
-                )}
+                <ProductImage
+                  src={product.image_urls?.[0]}
+                  alt={product.name}
+                  fit="contain"
+                  fallbackClassName="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400"
+                />
               </div>
               <div className="text-center">
                 <span className="text-tiny font-bold text-gray-400 uppercase tracking-widest">Đơn vị cơ bản</span>

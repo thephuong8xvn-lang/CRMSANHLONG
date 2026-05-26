@@ -1,12 +1,69 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
-// Sprint P0-1 (2026-05-26):
-//   • manualChunks tách vendor nặng để giảm main chunk ban đầu
-//   • esbuild minify + es2020 target
-//   • bỏ source map ở production, bỏ reportCompressedSize cho build nhanh
 export default defineConfig({
-  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    exclude: ['**/node_modules/**', '**/e2e/**'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/hooks/**', 'src/lib/**'],
+      exclude: ['src/lib/supabase.ts'],
+      thresholds: { lines: 60, functions: 60 },
+    },
+  },
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'prompt',
+      injectRegister: 'auto',
+      includeAssets: ['favicon.svg', 'pwa-192.svg', 'pwa-512.svg'],
+      manifest: {
+        name: 'Sanh Long Vetco CRM',
+        short_name: 'SanhLong',
+        description: 'Phần mềm quản lý thú y Sanh Long Vetco',
+        theme_color: '#1E5A9C',
+        background_color: '#ffffff',
+        display: 'standalone',
+        orientation: 'portrait-primary',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          { src: 'pwa-192.svg', sizes: '192x192', type: 'image/svg+xml' },
+          { src: 'pwa-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.hostname.includes('supabase.co') && url.pathname.includes('/rest/v1/'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-api',
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: ({ url }) =>
+              url.hostname.includes('supabase.co') && url.pathname.includes('/storage/v1/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'supabase-storage',
+              expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
+    }),
+  ],
   build: {
     target: 'es2020',
     minify: 'esbuild',

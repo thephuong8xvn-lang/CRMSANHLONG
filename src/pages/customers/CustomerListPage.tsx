@@ -19,6 +19,7 @@ import {
   Settings
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import { Skeleton } from '../../components/Skeleton'
 import AddCustomerModal from './AddCustomerModal'
 import ImportCustomersModal from './ImportCustomersModal'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
@@ -329,10 +330,7 @@ export default function CustomerListPage() {
         {/* Table Container */}
         <div className="bg-gray-0 rounded-xl border border-gray-100 overflow-hidden flex flex-col shadow-sm">
           {loading ? (
-            <div className="py-24 flex flex-col items-center justify-center text-gray-400">
-              <div className="w-10 h-10 border-4 border-gray-100 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-              <span>Đang tải danh sách khách hàng...</span>
-            </div>
+            <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={6} /></tbody></table>
           ) : rows.length === 0 ? (
             <div className="py-20 flex flex-col items-center justify-center text-gray-400 px-4">
               <Users className="text-gray-200 mb-4" size={64} strokeWidth={1} />

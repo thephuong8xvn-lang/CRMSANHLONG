@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cd E:\\\\CRMSANHLONG; $env:PATH = \"C:\\\\Program Files\\\\nodejs;\" + $env:PATH; node --version; npm run build 2>&1 | Select-String -Pattern \"error TS|ERROR|Build failed\" | Select-Object -First 20)",
+      "PowerShell($nodePaths = @\\(\"C:\\\\Program Files\\\\nodejs\", \"C:\\\\Users\\\\Admin\\\\AppData\\\\Roaming\\\\npm\", \"C:\\\\nvm\\\\v20.14.0\"\\); foreach \\($p in $nodePaths\\) { if \\(Test-Path \"$p\\\\node.exe\"\\) { Write-Output \"Found node at $p\" } }; Get-Command node -ErrorAction SilentlyContinue)",
+      "PowerShell($env:PATH; [System.Environment]::GetEnvironmentVariable\\(\"PATH\", \"Machine\"\\) | Out-String | Select-String -Pattern \"node|npm\" -SimpleMatch)",
+      "PowerShell($files = @\\(\"E:\\\\CRMSANHLONG\\\\src\\\\pages\\\\inventory\\\\InventoryPage.tsx\", \"E:\\\\CRMSANHLONG\\\\src\\\\pages\\\\cashbook\\\\CashbookPage.tsx\", \"E:\\\\CRMSANHLONG\\\\src\\\\pages\\\\customers\\\\CustomerDetailPage.tsx\"\\); foreach \\($f in $files\\) { $lines = \\(Get-Content $f | Measure-Object -Line\\).Lines; Write-Output \"$lines lines: $\\([System.IO.Path]::GetFileName\\($f\\)\\)\" })",
+      "PowerShell(Get-Command npm -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command node -ErrorAction SilentlyContinue)",
+      "PowerShell(node --version)",
+      "PowerShell(npm --version)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); cd E:\\\\CRMSANHLONG; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" install vite-plugin-pwa --save-dev 2>&1)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); cd E:\\\\CRMSANHLONG; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 20)"
+    ]
+  }
+}
