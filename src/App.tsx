@@ -48,6 +48,7 @@ const HerdProjectFormPage        = lazy(() => import('./pages/herd-projects/Herd
 const HerdProjectDetailPage      = lazy(() => import('./pages/herd-projects/HerdProjectDetailPage'))
 const SystemSettingsPage         = lazy(() => import('./pages/system/SystemSettingsPage'))
 const PromotionsPage             = lazy(() => import('./pages/promotions/PromotionsPage'))
+const PrintPreviewPage           = lazy(() => import('./pages/system/PrintPreviewPage'))
 
 
 // ─────────────────────────────────────────────────────────────
@@ -191,6 +192,7 @@ function AppRoutes() {
       <Route path="/diseases" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><DiseasesPage /></ProtectedRoute>} />
       <Route path="/system-settings" element={<ProtectedRoute perms={['users.manage', 'users.assign_role', 'audit.view']}><SystemSettingsPage /></ProtectedRoute>} />
       <Route path="/promotions" element={<ProtectedRoute perms={['promotions.manage']}><PromotionsPage /></ProtectedRoute>} />
+      <Route path="/print-preview" element={<ProtectedRoute><PrintPreviewPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

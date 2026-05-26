@@ -321,6 +321,24 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 
 ---
 
+### 15. Phân Hệ In Ấn Chứng Từ Chuyên Nghiệp (Professional Print Layouts) - `[HOÀN THÀNH]`
+- [x] **TypeScript Interfaces cho 6 loại chứng từ** ([print.types.ts](file:///e:/CRMSANHLONG/src/types/print.types.ts)):
+  - Hóa đơn bán hàng & Phiếu xuất kho: Hỗ trợ thông tin số lô (Batch/Lot) và hạn sử dụng (Expiry Date) đặc thù của thuốc thú y.
+  - Phiếu nhập kho & Phiếu trả hàng: Hỗ trợ thông tin nhà cung cấp, lý do nhập/xuất/trả.
+  - Phiếu thu & Phiếu chi: Hỗ trợ lý do thu/chi, đối tượng (khách hàng/đối tác/nhân viên), và quỹ/tài khoản tiền nguồn/nhận.
+- [x] **Component in ấn chuyên dụng** ([PrintLayout.tsx](file:///e:/CRMSANHLONG/src/components/PrintLayout.tsx)):
+  - Thiết kế chuẩn khổ A4 & A5 (dọc và ngang), tối giản trắng đen có độ tương phản cao cho máy in Laser.
+  - Cơ chế tự động điền dòng trống để lấp đầy bảng in giúp bản in trông chuyên nghiệp và cân đối.
+  - Kiểm soát ngắt trang (`page-break`) thông minh, tránh cắt đôi dòng chữ hoặc đè nội dung lên chữ ký/footer.
+  - Tự động sinh mã vạch vector (Barcode SVG) và chuyển đổi số tiền thành chữ bằng Tiếng Việt.
+- [x] **Trang xem trước & in ấn độc lập** ([PrintPreviewPage.tsx](file:///e:/CRMSANHLONG/src/pages/system/PrintPreviewPage.tsx)):
+  - Tải dữ liệu thực tế từ các bảng Supabase tương ứng (`orders`, `goods_receipts`, `sales_returns`, `stock_transfers`, `cashbook_transactions`).
+  - Cơ chế fallback tự sinh dữ liệu mẫu đầy đủ (mock preview) khi chạy demo hoặc không truyền ID.
+  - Thanh công cụ cấu hình trực quan (kích thước giấy, hướng xoay) và nút in chứng từ `window.print()` nhanh chóng.
+  - Đăng ký route `/print-preview` bảo vệ bằng `ProtectedRoute` trong [App.tsx](file:///e:/CRMSANHLONG/src/App.tsx).
+
+---
+
 ## 🔬 BÁO CÁO AUDIT HIỆU NĂNG & KẾ HOẠCH TỐI ƯU (2026-05-26) – `[ĐANG MỞ]`
 
 > **Phạm vi audit**: tốc độ load, kỹ thuật xử lý dữ liệu (client + Supabase), kiến trúc giao diện.
