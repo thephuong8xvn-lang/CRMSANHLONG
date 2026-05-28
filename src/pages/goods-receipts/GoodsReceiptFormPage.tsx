@@ -945,14 +945,14 @@ export default function GoodsReceiptFormPage() {
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
                           <th className="px-4 py-4 w-12 text-center">#</th>
-                          <th className="px-4 py-4 min-w-[200px]">Tên sản phẩm / SKU</th>
-                          <th className="px-4 py-4 w-36 text-center">Thực nhận</th>
-                          {receiptMode === 'direct' && <th className="px-4 py-4 w-32 text-right">Giá nhập (₫)</th>}
-                          <th className="px-4 py-4 w-40">Mã Số lô</th>
-                          <th className="px-4 py-4 w-40">NSX</th>
-                          <th className="px-4 py-4 w-40">HSD</th>
-                          <th className="px-4 py-4 min-w-[180px]">Kho & Vị trí</th>
-                          <th className="px-4 py-4 w-28 text-center">Xác nhận</th>
+                          <th className="px-4 py-4 min-w-[220px]">Tên sản phẩm / SKU</th>
+                          <th className="px-4 py-4 min-w-[130px] text-center">Thực nhận</th>
+                          {receiptMode === 'direct' && <th className="px-4 py-4 min-w-[150px] text-right">Giá nhập (₫)</th>}
+                          <th className="px-4 py-4 min-w-[140px]">Mã Số lô</th>
+                          <th className="px-4 py-4 min-w-[150px]">NSX</th>
+                          <th className="px-4 py-4 min-w-[150px]">HSD</th>
+                          <th className="px-4 py-4 min-w-[200px]">Kho & Vị trí</th>
+                          <th className="px-4 py-4 min-w-[100px] text-center">Xác nhận</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 text-body-md text-gray-750">
@@ -988,7 +988,7 @@ export default function GoodsReceiptFormPage() {
                                   )}
                                 </td>
 
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4 min-w-[220px]">
                                   <div className="space-y-1">
                                     <span className="font-bold text-gray-800 block leading-tight">{item.productName}</span>
                                     <div className="flex flex-wrap gap-1.5 items-center">
@@ -1015,8 +1015,8 @@ export default function GoodsReceiptFormPage() {
                                   </div>
                                 </td>
 
-                                <td className="px-4 py-4">
-                                  <div className="flex items-center border border-gray-100 rounded-lg overflow-hidden h-8 w-28 bg-white shadow-sm">
+                                <td className="px-4 py-4 min-w-[130px]">
+                                  <div className="flex items-center border border-gray-100 rounded-lg overflow-hidden h-8 w-28 bg-white shadow-sm mx-auto">
                                     <button
                                       type="button"
                                       onClick={() => updateItemAtIndex(index, { 
@@ -1051,7 +1051,7 @@ export default function GoodsReceiptFormPage() {
                                 </td>
 
                                 {receiptMode === 'direct' && (
-                                  <td className="px-4 py-4">
+                                  <td className="px-4 py-4 min-w-[150px]">
                                     <input
                                       type="number"
                                       min="0"
@@ -1066,7 +1066,7 @@ export default function GoodsReceiptFormPage() {
                                   </td>
                                 )}
 
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4 min-w-[140px]">
                                   <input
                                     type="text"
                                     placeholder={item.isLotManaged ? "Bắt buộc *" : "Số lô (tùy chọn)"}
@@ -1081,7 +1081,7 @@ export default function GoodsReceiptFormPage() {
                                   />
                                 </td>
 
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4 min-w-[150px]">
                                   <input
                                     type="date"
                                     value={item.manufactureDate}
@@ -1090,7 +1090,7 @@ export default function GoodsReceiptFormPage() {
                                   />
                                 </td>
 
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4 min-w-[150px]">
                                   <input
                                     type="date"
                                     value={item.expiryDate}
@@ -1099,7 +1099,7 @@ export default function GoodsReceiptFormPage() {
                                   />
                                 </td>
 
-                                <td className="px-4 py-4">
+                                <td className="px-4 py-4 min-w-[200px]">
                                   <div className="space-y-1">
                                     <select
                                       value={item.warehouseId}
