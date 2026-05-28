@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   Wallet,
   ArrowLeftRight,
-  Clock
+  Clock,
+  Printer
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
@@ -222,10 +223,11 @@ export default function CashbookPage() {
         }
       }
 
-      // 2. Fetch active bank accounts
+      // 2. Fetch active bank accounts of user branch
       const { data: banks } = await supabase
         .from('bank_accounts')
         .select('*')
+        .eq('branch_id', userBranchId)
         .eq('is_active', true)
       if (banks) {
         setBankAccounts(banks)
@@ -242,7 +244,7 @@ export default function CashbookPage() {
       if (cats) {
         setCategories(cats)
         // Find default category
-        const defaultCat = cats.find(c => c.flow_type === 'inflow')
+        const defaultCat = cats.find((c: ExpenseCategory) => c.flow_type === 'inflow')
         if (defaultCat) setFormCategoryId(defaultCat.id)
       }
 
@@ -349,10 +351,14 @@ export default function CashbookPage() {
           query = query.eq('bank_account_id', bankId)
         }
       } else {
-        // By default limit cash transactions to those in current branch
-        if (cashFunds.length > 0) {
-          const fundIds = cashFunds.map(f => f.id)
-          query = query.or(`cash_fund_id.in.(${fundIds.map(id => `"${id}"`).join(',')}),cash_fund_id.is.null`)
+        // Limit to current branch: cash transactions in our funds + bank transactions in our bank accounts
+        const fundIds = cashFunds.map(f => f.id)
+        const bankIds = bankAccounts.map(b => b.id)
+        const orParts: string[] = []
+        if (fundIds.length > 0) orParts.push(`cash_fund_id.in.(${fundIds.join(',')})`)
+        if (bankIds.length > 0) orParts.push(`bank_account_id.in.(${bankIds.join(',')})`)
+        if (orParts.length > 0) {
+          query = query.or(orParts.join(','))
         }
       }
 
@@ -365,7 +371,8 @@ export default function CashbookPage() {
 
       // Search term
       if (debouncedSearch.trim()) {
-        query = query.ilike('description', `%${debouncedSearch.trim()}%`)
+        const s = debouncedSearch.trim()
+        query = query.or(`description.ilike.%${s}%,transaction_code.ilike.%${s}%,reference_no.ilike.%${s}%`)
       }
 
       // Pagination
@@ -387,7 +394,7 @@ export default function CashbookPage() {
     } finally {
       setLoading(false)
     }
-  }, [flowFilter, statusFilter, categoryFilter, accountFilter, startDate, endDate, debouncedSearch, currentPage, cashFunds])
+  }, [flowFilter, statusFilter, categoryFilter, accountFilter, startDate, endDate, debouncedSearch, currentPage, cashFunds, bankAccounts])
 
   // Run on mount
   useEffect(() => {
@@ -670,7 +677,7 @@ export default function CashbookPage() {
       let totalIn = 0
       let totalOut = 0
       if (txs) {
-        txs.forEach(t => {
+        txs.forEach((t: { flow_type: string; amount: number }) => {
           if (t.flow_type === 'inflow') totalIn += Number(t.amount)
           else if (t.flow_type === 'outflow') totalOut += Number(t.amount)
         })
@@ -1236,7 +1243,13 @@ export default function CashbookPage() {
                                 {tx.expense_category?.name || (isTransfer ? 'Chuyển tiền nội bộ' : 'Không phân loại')}
                               </span>
                               <span className="text-[10px] text-gray-400 block mt-1">
-                                {tx.cash_fund_id ? 'Quỹ mặt' : 'Ngân hàng'}
+                                {tx.cash_fund_id
+                                  ? (cashFunds.find(f => f.id === tx.cash_fund_id)?.name ?? 'Quỹ tiền mặt')
+                                  : (() => {
+                                      const bank = bankAccounts.find(b => b.id === tx.bank_account_id)
+                                      return bank ? `${bank.bank_name} ...${bank.account_no.slice(-4)}` : 'Ngân hàng'
+                                    })()
+                                }
                                 {tx.session_id && ` · Ca #${tx.session_id.slice(0, 4).toUpperCase()}`}
                               </span>
                             </td>
@@ -1891,7 +1904,15 @@ export default function CashbookPage() {
                   </div>
                   <div className="flex justify-between text-tiny">
                     <span className="text-gray-400 font-medium">Tài khoản/Quỹ:</span>
-                    <span className="font-bold text-gray-700">{selectedTx.cash_fund_id ? 'Quỹ tiền mặt HCM' : 'Tài khoản ngân hàng'}</span>
+                    <span className="font-bold text-gray-700">
+                      {selectedTx.cash_fund_id
+                        ? (cashFunds.find(f => f.id === selectedTx.cash_fund_id)?.name ?? 'Quỹ tiền mặt')
+                        : (() => {
+                            const bank = bankAccounts.find(b => b.id === selectedTx.bank_account_id)
+                            return bank ? `${bank.bank_name} (...${bank.account_no.slice(-4)})` : 'Tài khoản ngân hàng'
+                          })()
+                      }
+                    </span>
                   </div>
                   <div className="flex justify-between text-tiny">
                     <span className="text-gray-400 font-medium">Ngày giao dịch:</span>
@@ -1949,7 +1970,22 @@ export default function CashbookPage() {
               </div>
 
               {/* Bottom Actions based on user role and status */}
-              <div className="px-6 py-4 bg-gray-25 border-t border-gray-100 flex justify-end gap-3">
+              <div className="px-6 py-4 bg-gray-25 border-t border-gray-100 flex justify-between items-center gap-3">
+                {/* Print button — chỉ hiện khi giao dịch đã approved và là thu/chi */}
+                {selectedTx.status === 'approved' && selectedTx.flow_type !== 'internal_transfer' && (
+                  <button
+                    onClick={() => window.open(
+                      `/print-preview?type=${selectedTx.flow_type === 'inflow' ? 'cash_in' : 'cash_out'}&id=${selectedTx.id}`,
+                      '_blank'
+                    )}
+                    className="h-10 px-4 border border-gray-200 text-gray-600 rounded-lg font-semibold hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                    title="In phiếu thu/chi chuyên nghiệp"
+                  >
+                    <Printer size={15} />
+                    <span>In phiếu</span>
+                  </button>
+                )}
+                <div className="flex gap-3 ml-auto">
                 <button
                   onClick={() => { setIsDetailsModalOpen(false); setSelectedTx(null) }}
                   className="h-10 px-4 border border-gray-250 text-gray-600 rounded-lg font-semibold hover:bg-gray-50"
@@ -1978,6 +2014,7 @@ export default function CashbookPage() {
                     Phê duyệt xuất quỹ
                   </button>
                 )}
+                </div>
               </div>
             </div>
           </div>

@@ -51,15 +51,6 @@ function BarcodeSVG({ value }: { value: string }) {
   );
 }
 
-// Default Header Config for Sanh Long Vetco
-const DEFAULT_HEADER = {
-  companyName: 'CÔNG TY VẬT TƯ THUỐC THÚ Y SANH LONG',
-  address: '789 Đường Thú Y, Phường Bình An, TP. Hồ Chí Minh',
-  phone: '0945.195.156 - 1900 6789',
-  email: 'lienhe@sanhlongvetco.vn',
-  mst: '4101672005',
-  website: 'www.sanhlongvetco.vn'
-};
 
 interface PrintLayoutProps {
   docType: 'invoice' | 'receipt' | 'return' | 'transfer' | 'cash_in' | 'cash_out';
@@ -74,7 +65,7 @@ export default function PrintLayout({
   orientation = 'portrait',
   data
 }: PrintLayoutProps) {
-  const { formatCurrency, formatDate, formatDateTime, formatQuantity } = useDisplaySettings();
+  const { formatCurrency, formatDate, formatDateTime, formatQuantity, printConfig } = useDisplaySettings();
 
   if (!data) {
     return (
@@ -84,8 +75,8 @@ export default function PrintLayout({
     );
   }
 
-  // Lấy cấu hình header
-  const header = data.headerConfig || DEFAULT_HEADER;
+  // Lấy cấu hình header — ưu tiên override từ data, fallback về cấu hình admin
+  const header = data.headerConfig || printConfig;
 
   // Lớp CSS định dạng khổ giấy
   const paperClass = {

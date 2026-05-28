@@ -157,9 +157,11 @@ export default function ImportProductsModal({
       let successCount = 0
       let failedCount = 0
 
-      for (const row of validRows) {
-        // Generate unique SKU
-        const uniqueSku = `SP-${Date.now().toString().slice(-7)}-${Math.floor(100 + Math.random() * 900)}`
+      // Dùng timestamp cố định + index để đảm bảo SKU unique trong cùng batch
+      const batchTs = Date.now().toString().slice(-7)
+      for (let rowIdx = 0; rowIdx < validRows.length; rowIdx++) {
+        const row = validRows[rowIdx]
+        const uniqueSku = `SP-${batchTs}-${String(rowIdx + 1).padStart(3, '0')}`
 
         const { data: newProd, error: insertErr } = await supabase
           .from('products')

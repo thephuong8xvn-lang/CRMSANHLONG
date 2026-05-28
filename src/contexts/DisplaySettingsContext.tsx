@@ -42,6 +42,16 @@ export interface DisplaySettings {
   default_units_count: string
   enable_partial_masking: boolean
   field_level_security_rules: Record<string, any>
+  // Print settings
+  print_company_name: string
+  print_company_address: string
+  print_company_phone: string
+  print_company_email: string
+  print_company_mst: string
+  print_company_website: string
+  print_company_logo_url: string | null
+  print_default_paper: 'A4' | 'A5'
+  print_default_orientation: 'portrait' | 'landscape'
 }
 
 const DEFAULT_SETTINGS: DisplaySettings = {
@@ -122,7 +132,17 @@ const DEFAULT_SETTINGS: DisplaySettings = {
       'cost_price': true,
       'gross_profit': true
     }
-  }
+  },
+  // Print settings defaults
+  print_company_name: 'CÔNG TY VẬT TƯ THUỐC THÚ Y SANH LONG',
+  print_company_address: '789 Đường Thú Y, Phường Bình An, TP. Hồ Chí Minh',
+  print_company_phone: '0945.195.156 - 1900 6789',
+  print_company_email: 'lienhe@sanhlongvetco.vn',
+  print_company_mst: '4101672005',
+  print_company_website: 'www.sanhlongvetco.vn',
+  print_company_logo_url: null,
+  print_default_paper: 'A4' as const,
+  print_default_orientation: 'portrait' as const
 }
 
 interface DisplaySettingsContextType {
@@ -143,6 +163,17 @@ interface DisplaySettingsContextType {
   hasFieldAccess: (fieldName: string, userRoleCode?: string) => boolean
   getStatusBadgeStyle: (status: string, module: string) => string
   getTrendIndicator: (val: number) => { symbol: string; color: string }
+  printConfig: {
+    companyName: string
+    address: string
+    phone: string
+    email: string
+    mst: string
+    website: string
+    logoUrl: string | null
+    defaultPaper: 'A4' | 'A5'
+    defaultOrientation: 'portrait' | 'landscape'
+  }
 }
 
 const DisplaySettingsContext = createContext<DisplaySettingsContextType | null>(null)
@@ -472,6 +503,18 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const printConfig = {
+    companyName: settings.print_company_name,
+    address: settings.print_company_address,
+    phone: settings.print_company_phone,
+    email: settings.print_company_email,
+    mst: settings.print_company_mst,
+    website: settings.print_company_website,
+    logoUrl: settings.print_company_logo_url,
+    defaultPaper: settings.print_default_paper,
+    defaultOrientation: settings.print_default_orientation
+  }
+
   return (
     <DisplaySettingsContext.Provider value={{
       settings,
@@ -490,7 +533,8 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
       maskData,
       hasFieldAccess,
       getStatusBadgeStyle,
-      getTrendIndicator
+      getTrendIndicator,
+      printConfig
     }}>
       {children}
     </DisplaySettingsContext.Provider>

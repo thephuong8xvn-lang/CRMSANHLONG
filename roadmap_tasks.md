@@ -92,6 +92,31 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] Quản lý phiên quỹ / ca làm việc của thủ quỹ (mở ca, đóng ca kèm đối soát, tính toán chênh lệch và bắt buộc nhập lý do chênh lệch).
 - [x] Chức năng chuyển tiền nội bộ tự động tạo hai bút toán đối ứng cân bằng.
 
+#### 🔍 Kiểm tra toàn diện 2026-05-28 — Bugs đã fix / còn tồn đọng
+
+**Đã fix (CashbookPage.tsx — phiên 1):**
+- [x] **Bug 1**: Detail modal hiển thị hardcode `'Quỹ tiền mặt HCM'` — đã sửa thành lookup động từ `cashFunds[]` / `bankAccounts[]`.
+- [x] **Bug 2**: PostgREST `.or()` filter dùng double-quoted UUID (`"uuid"`) → không match được → ẩn toàn bộ cash transactions khi `accountFilter='all'`. Đã bỏ quotes: `fundIds.join(',')`.
+- [x] **Bug 3**: Search chỉ match cột `description`, bỏ sót `transaction_code` và `reference_no`. Đã dùng `.or(description.ilike…,transaction_code.ilike…,reference_no.ilike…)`.
+- [x] **TS Error**: 2 implicit `any` trong `cats.find()` (line 245) và `txs.forEach()` (line 673) — đã thêm type annotations.
+
+**Đã fix (CashbookPage.tsx — phiên 2, 2026-05-28):**
+- [x] **Bug 4 (Critical)**: `internal_transfers` insert luôn thất bại — cột `transfer_code TEXT NOT NULL UNIQUE` nhưng không có trigger tự sinh và frontend không cung cấp. Đã tạo migration `20260528000003_internal_transfer_code_trigger.sql`: thêm `code_sequences` entry prefix `CQ` + trigger `trg_internal_transfer_code`.
+- [x] **Bug 5**: `loadMetadata` fetch `bank_accounts` không lọc theo `branch_id` → hiển thị tài khoản ngân hàng của chi nhánh khác trong summary cards và dropdown. Đã thêm `.eq('branch_id', userBranchId)`.
+- [x] **Bug 6**: `fetchTransactions` khi `accountFilter='all'` dùng `cash_fund_id.is.null` → include tất cả bank transactions toàn hệ thống. Đã thay bằng `bank_account_id.in.(bankIds)` — chỉ lấy transactions của bank accounts thuộc chi nhánh. Thêm `bankAccounts` vào `useCallback` deps.
+- [x] **Bug 7**: List table hiển thị generic "Quỹ mặt"/"Ngân hàng" thay vì tên thực. Đã sửa thành lookup từ `cashFunds[]`/`bankAccounts[]` (tương tự detail modal).
+
+**Vấn đề schema (ghi nhận, chưa cần fix ngay):**
+- Spec `01-FUNCTIONAL-SPEC.md` mô tả `cashier_sessions` có cột `code`, `opened_by`, `closed_by`, `variance_reason` — migration hiện tại thiếu; UI bù bằng logic riêng.
+- Spec mô tả `cash_funds.current_balance`, `expense_categories.name_vi` — migration dùng `balance` và `name`; code đã adapt đúng.
+- `fn_auto_cashbook_code` dùng code_type `supplier_payment` (prefix `TT`) cho `internal_transfer` flow — đúng về kỹ thuật nhưng sai về ngữ nghĩa. Không ảnh hưởng chức năng.
+
+**Còn tồn đọng (backlog):**
+- E2E `cashbook.spec.ts`: test "create expense voucher" dùng `getByRole('button', { name: /tạo phiếu/i })` nhưng form cashbook là sidebar luôn visible — test `return` sớm, không cover gì. Cần viết lại.
+- Button "Xuất Excel" hiện diện trên UI nhưng không có `onClick` handler — chờ P4-6.
+- Thiếu charts dòng tiền 6 tháng theo spec — chờ sprint sau.
+- `profiles` RLS: `approver?.full_name` có thể null với sales user khi admin duyệt transaction của họ (profiles_select_self chỉ cho thấy profile bản thân).
+
 
 ---
 
@@ -127,7 +152,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 
 ---
 
-### 9. Phân Hệ Dự Án Chăn Nuôi (Herd Projects Module) - `[HOÀN THÀNH]`
+### 9. Phân Hệ Dự Án Chăn Nuôi (Herd Projects Module) - `[HOÀN THÀNH - BUGFIX 2026-05-28]`
 - [x] **Sidebar Navigation**: Tích hợp menu "Chăn nuôi" với icon `PawPrint` trong `Layout.tsx`, đảm bảo trạng thái hoạt động (active state) chuẩn xác khi truy cập bất kỳ đường dẫn con nào dưới `/herd-projects/*`.
 - [x] **Trang Danh sách Dự án** (`/herd-projects`):
   - Hiển thị danh sách dự án với các thông tin cốt lõi (mã dự án tự sinh, tên dự án, khách hàng, đàn vật nuôi, số lượng đầu con, BSTY phụ trách).
@@ -156,6 +181,12 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Không làm thay đổi cấu trúc bảng `orders` của Supabase bằng cách sử dụng tag text `[ID: project_id]` trong ghi chú để tìm kiếm liên kết bằng `.like()`.
   - Sử dụng cột `notes` dạng TEXT của bảng `herd_project_outcomes` để lưu trữ dữ liệu JSON tùy biến về đánh giá của khách hàng và bài học kinh nghiệm một cách an toàn.
   - 0 TypeScript errors, 0 ESLint errors trong toàn bộ phân hệ Dự án chăn nuôi.
+- [x] **Bugfix Schema (2026-05-28)** — Migration `20260528000000_fix-herd-projects-schema.sql`:
+  - Thêm cột `farm_id UUID FK` vào `herd_projects` (FormPage insert `farm_id` nhưng cột bị thiếu → lỗi 400 khi tạo dự án).
+  - Thêm cột `photos TEXT[]` vào `herd_project_steps` (DetailPage select/update `photos` nhưng cột không tồn tại).
+  - Mở rộng CHECK constraint `herd_project_steps.status` thêm `'failed'` (code sử dụng 4 status nhưng DB chỉ cho 3).
+  - Thêm `UNIQUE(project_id)` vào `herd_project_outcomes` + sửa `upsert({ onConflict: 'project_id' })` trong DetailPage (mỗi lần Hoàn thành tạo record mới thay vì update).
+  - Thêm RLS policy `herd_proj_select_vet` cho `vet_consultant` (có quyền `herd_projects.view_all` nhưng không thấy dự án nào do thiếu SELECT policy).
 
 ---
 
@@ -321,7 +352,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 
 ---
 
-### 15. Phân Hệ In Ấn Chứng Từ Chuyên Nghiệp (Professional Print Layouts) - `[HOÀN THÀNH]`
+### 15. Phân Hệ In Ấn Chứng Từ Chuyên Nghiệp (Professional Print Layouts) - `[HOÀN THÀNH + TÍCH HỢP CẤU HÌNH 2026-05-28]`
 - [x] **TypeScript Interfaces cho 6 loại chứng từ** ([print.types.ts](file:///e:/CRMSANHLONG/src/types/print.types.ts)):
   - Hóa đơn bán hàng & Phiếu xuất kho: Hỗ trợ thông tin số lô (Batch/Lot) và hạn sử dụng (Expiry Date) đặc thù của thuốc thú y.
   - Phiếu nhập kho & Phiếu trả hàng: Hỗ trợ thông tin nhà cung cấp, lý do nhập/xuất/trả.
@@ -336,6 +367,15 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Cơ chế fallback tự sinh dữ liệu mẫu đầy đủ (mock preview) khi chạy demo hoặc không truyền ID.
   - Thanh công cụ cấu hình trực quan (kích thước giấy, hướng xoay) và nút in chứng từ `window.print()` nhanh chóng.
   - Đăng ký route `/print-preview` bảo vệ bằng `ProtectedRoute` trong [App.tsx](file:///e:/CRMSANHLONG/src/App.tsx).
+- [x] **Tích hợp cấu hình in vào Admin Settings (2026-05-28)**:
+  - Migration `20260528000004_print_settings.sql`: bổ sung 9 cột `print_*` vào bảng `display_settings` (tên công ty, địa chỉ, điện thoại, email, MST, website, logo URL, khổ giấy mặc định, hướng in mặc định).
+  - Mở rộng `DisplaySettingsContext.tsx` với `printConfig` object — exposed qua `useDisplaySettings()` hook.
+  - Tạo `PrintSettingsTab.tsx`: giao diện form admin cấu hình header công ty + live preview header chứng từ + chọn khổ giấy/hướng in mặc định, lưu vào `display_settings`.
+  - Tab "Cấu hình in ấn" mới trong `SystemSettingsPage.tsx` bên cạnh tab Hiển thị.
+  - `PrintLayout.tsx` đọc `printConfig` từ context thay vì hardcode — admin thay đổi cấu hình tự động áp dụng toàn bộ chứng từ.
+  - `OrderDetailPage.tsx`: nút "In hóa đơn" mở `/print-preview?type=invoice&id={orderId}` trong tab mới.
+  - `CashbookPage.tsx`: nút "In phiếu" trong modal chi tiết giao dịch (chỉ hiện khi `status=approved`, map `inflow→cash_in`, `outflow→cash_out`).
+  - 0 TypeScript errors sau toàn bộ thay đổi.
 
 ---
 
@@ -580,14 +620,15 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 
 **Tổng thời gian dự kiến P4**: 10–11 ngày làm việc (1 dev full-time).
 
-**Tiến độ P4 tính đến 2026-05-26**:
+**Tiến độ P4 tính đến 2026-05-28**:
 | Task | Trạng thái |
 |---|---|
-| P4-1 Test infrastructure | ✅ Hoàn thành |
-| P4-2 PWA + Workbox | ✅ Hoàn thành |
+| P4-1 Test infrastructure | ✅ Hoàn thành 2026-05-26 |
+| P4-2 PWA + Workbox | ✅ Hoàn thành 2026-05-26 |
 | P4-3 VAT điện tử | ⏭ Bỏ qua |
-| P4-4 Khuyến mãi 6 loại + Voucher + Điểm | ✅ Hoàn thành |
+| P4-4 Khuyến mãi 6 loại + Voucher + Điểm | ✅ Hoàn thành 2026-05-26 |
 | P4-5 Chấm công | ⏭ Bỏ qua |
+| **[THÊM MỚI] Tích hợp cấu hình in ấn vào Admin** | ✅ Hoàn thành 2026-05-28 |
 | P4-6 Excel export kế toán | 🔲 Chưa làm |
 | P4-7 2FA + Audit log | 🔲 Chưa làm |
 | P4-8 Capacitor mobile native | 🔲 Chưa làm |

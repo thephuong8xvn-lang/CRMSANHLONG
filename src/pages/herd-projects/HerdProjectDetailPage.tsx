@@ -487,7 +487,7 @@ export default function HerdProjectDetailPage() {
         bentoTemp: outBentoTemp.trim()
       })
 
-      // Upsert outcomes table
+      // Upsert outcomes table (onConflict:'project_id' requires UNIQUE constraint on project_id)
       const { error: outcomeErr } = await supabase
         .from('herd_project_outcomes')
         .upsert({
@@ -501,7 +501,7 @@ export default function HerdProjectDetailPage() {
           fcr: outFcr || null,
           notes: notesJson,
           recorded_by: currentUser?.id
-        })
+        }, { onConflict: 'project_id' })
 
       if (outcomeErr) throw outcomeErr
 

@@ -753,7 +753,11 @@ export default function OrderDetailPage() {
               <div className="bg-gray-25 p-4 border-b border-gray-100 flex items-center justify-between">
                 <span className="text-tiny font-bold text-gray-400 uppercase tracking-wider">Xem trước hóa đơn</span>
                 <div className="flex gap-2">
-                  <button onClick={() => window.print()} className="w-8 h-8 rounded bg-white border border-gray-200 flex items-center justify-center hover:text-blue-500 transition-colors">
+                  <button
+                    onClick={() => window.open(`/print-preview?type=invoice&id=${id}`, '_blank')}
+                    title="In hóa đơn A4 chuyên nghiệp"
+                    className="w-8 h-8 rounded bg-white border border-gray-200 flex items-center justify-center hover:text-blue-500 transition-colors"
+                  >
                     <Printer size={14} />
                   </button>
                 </div>

@@ -205,6 +205,40 @@ interface LedgerItem {
   notes: string
 }
 
+interface Activity {
+  id: string
+  title: string
+  content: string | null
+  outcome: string | null
+  scheduled_at: string | null
+  created_at: string
+  activity_type: { code: string; name: string; icon: string | null; color_hex: string } | null
+  owner: { full_name: string } | null
+}
+
+interface ActivityType {
+  id: string
+  code: string
+  name: string
+  icon: string | null
+  color_hex: string
+}
+
+interface Promotion {
+  id: string
+  name: string
+  is_active: boolean
+  end_date: string | null
+}
+
+interface TopProduct {
+  name: string
+  sku: string
+  unit: string
+  qty: number
+  total: number
+}
+
 // ─────────────────────────────────────────────────────────────
 // Labels and Colors
 // ─────────────────────────────────────────────────────────────
@@ -263,10 +297,10 @@ export default function CustomerDetailPage() {
   const [submittingDisease, setSubmittingDisease] = useState(false)
 
   // Profiling States
-  const [activities, setActivities] = useState<any[]>([])
-  const [activityTypes, setActivityTypes] = useState<any[]>([])
-  const [promotions, setPromotions] = useState<any[]>([])
-  const [topProducts, setTopProducts] = useState<any[]>([])
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([])
+  const [promotions, setPromotions] = useState<Promotion[]>([])
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
 
   // Quick Log form states
   const [logTitle, setLogTitle] = useState('')

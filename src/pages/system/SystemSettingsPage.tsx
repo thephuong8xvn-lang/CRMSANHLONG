@@ -10,13 +10,15 @@ import {
   X,
   UserPlus,
   RefreshCw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Printer
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { createClient } from '@supabase/supabase-js'
 import DisplaySettingsTab from './DisplaySettingsTab'
+import PrintSettingsTab from './PrintSettingsTab'
 
 // Interface declarations
 interface Branch {
@@ -113,7 +115,7 @@ const WAREHOUSE_TYPES = {
 
 export default function SystemSettingsPage() {
   const { profile } = useAuth()
-  const [activeTab, setActiveTab] = useState<'employees' | 'branches' | 'warehouses' | 'display'>('employees')
+  const [activeTab, setActiveTab] = useState<'employees' | 'branches' | 'warehouses' | 'display' | 'print'>('employees')
   
   // Lists
   const [employees, setEmployees] = useState<Profile[]>([])
@@ -777,6 +779,18 @@ export default function SystemSettingsPage() {
               <SlidersHorizontal size={16} />
               <span>Cấu hình hiển thị</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('print')}
+              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'print'
+                  ? 'border-blue-500 text-blue-600 font-bold'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <Printer size={16} />
+              <span>Cấu hình in ấn</span>
+            </button>
           </div>
 
           {/* Tab contents */}
@@ -1095,6 +1109,12 @@ export default function SystemSettingsPage() {
               {activeTab === 'display' && (
                 <div className="p-6">
                   <DisplaySettingsTab />
+                </div>
+              )}
+
+              {activeTab === 'print' && (
+                <div className="p-6">
+                  <PrintSettingsTab />
                 </div>
               )}
             </>

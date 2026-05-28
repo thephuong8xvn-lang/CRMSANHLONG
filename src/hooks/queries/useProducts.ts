@@ -91,8 +91,9 @@ export function useProductsList(params: ProductListParams) {
       let totalStockAll = 0
       let totalOnOrderAll = 0
       if (!agg.error && agg.data && Array.isArray(agg.data) && agg.data[0]) {
-        totalStockAll   = Number(agg.data[0].sum ?? agg.data[0].stock_on_hand_sum ?? 0)
-        totalOnOrderAll = Number(agg.data[0].on_order_qty_sum ?? 0)
+        // PostgREST aggregate `col.sum()` returns the column with the same name as the original col
+        totalStockAll   = Number(agg.data[0].stock_on_hand ?? 0)
+        totalOnOrderAll = Number(agg.data[0].on_order_qty ?? 0)
       }
 
       return {

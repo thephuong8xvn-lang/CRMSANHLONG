@@ -8,17 +8,10 @@ import {
   Layers,
   FileText,
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
-  TrendingUp,
   Clock,
   ShieldAlert,
   Settings,
-  HelpCircle,
-  Filter,
   CheckCircle2,
-  Calendar,
-  ChevronDown,
   ArrowRightLeft,
   RotateCcw,
   Trash2
@@ -93,6 +86,8 @@ interface InventorySetting {
   warehouse_id: string
   min_stock_level: number
   max_stock_level: number | null
+  reorder_point: number
+  reorder_quantity: number | null
   product: {
     sku: string
     name: string
@@ -136,11 +131,20 @@ export default function InventoryPage() {
     productId: '',
     warehouseId: '',
     minStock: 10,
-    maxStock: 500
+    maxStock: 500,
+    reorderPoint: 0,
+    reorderQty: null as number | null
   })
+  const [editingSettingId, setEditingSettingId] = useState<string | null>(null)
   const [productList, setProductList] = useState<{ id: string; name: string; sku: string }[]>([])
   const [isEditingSetting, setIsEditingSetting] = useState(false)
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
+  // Lots tab: map product_id_warehouse_id → min_stock_level (cho filter "Tồn kho thấp")
+  const [lotInvSettingsMap, setLotInvSettingsMap] = useState<Record<string, number>>({})
+
+  // PO tab: filter trạng thái
+  const [poStatusFilter, setPoStatusFilter] = useState('all')
 
   // Tab: Stock Transfers states
   const [transfers, setTransfers] = useState<any[]>([])
@@ -150,7 +154,7 @@ export default function InventoryPage() {
   const [showTransferDetailModal, setShowTransferDetailModal] = useState(false)
   const [selectedTransfer, setSelectedTransfer] = useState<any>(null)
   const [selectedTransferLines, setSelectedTransferLines] = useState<any[]>([])
-  const [lotsForWarehouse, setLotsForWarehouse] = useState<any[]>([])
+  const [lotsForTransfer, setLotsForTransfer] = useState<any[]>([])
   const [newTransfer, setNewTransfer] = useState<{
     fromWarehouse: string;
     toWarehouse: string;
@@ -172,6 +176,7 @@ export default function InventoryPage() {
   const [selectedReturn, setSelectedReturn] = useState<any>(null)
   const [selectedReturnLines, setSelectedReturnLines] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
+  const [lotsForReturn, setLotsForReturn] = useState<any[]>([])
   const [newReturn, setNewReturn] = useState<{
     supplierId: string;
     warehouseId: string;
@@ -195,9 +200,9 @@ export default function InventoryPage() {
 
   // Fetch lots for selected source warehouse (for Transfers)
   useEffect(() => {
-    const fetchLotsForWarehouse = async () => {
+    const fetchLotsForTransfer = async () => {
       if (!newTransfer.fromWarehouse) {
-        setLotsForWarehouse([])
+        setLotsForTransfer([])
         return
       }
       const { data } = await supabase
@@ -228,17 +233,17 @@ export default function InventoryPage() {
           sku: l.product?.sku || '',
           unit: l.product?.unit || ''
         }))
-        setLotsForWarehouse(formatted)
+        setLotsForTransfer(formatted)
       }
     }
-    fetchLotsForWarehouse()
+    fetchLotsForTransfer()
   }, [newTransfer.fromWarehouse])
 
   // Load lots for selected warehouse (for Purchase Returns)
   useEffect(() => {
     const fetchLotsForReturn = async () => {
       if (!newReturn.warehouseId) {
-        setLotsForWarehouse([])
+        setLotsForReturn([])
         return
       }
       const { data } = await supabase
@@ -269,7 +274,7 @@ export default function InventoryPage() {
           sku: l.product?.sku || '',
           unit: l.product?.unit || ''
         }))
-        setLotsForWarehouse(formatted)
+        setLotsForReturn(formatted)
       }
     }
     fetchLotsForReturn()
@@ -396,21 +401,15 @@ export default function InventoryPage() {
       const { data } = await supabase
         .from('stock_transfers')
         .select(`
-          id,
-          transfer_code,
-          from_warehouse,
-          to_warehouse,
-          status,
-          transfer_date,
-          notes,
-          created_by,
-          received_by,
+          id, transfer_code, from_warehouse, to_warehouse, status,
+          transfer_date, notes, created_by, received_by,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
           receiver:profiles!received_by(full_name)
         `)
-        .order('transfer_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100)
       setTransfers(data || [])
     } catch (err: any) {
       console.error(err)
@@ -420,73 +419,30 @@ export default function InventoryPage() {
     }
   }
 
-  const handleStartTransfer = async (transfer: any, lines: any[]) => {
+  const handleStartTransfer = async (transfer: any, _lines: any[]) => {
     setSubmitting(true)
     try {
-      for (const line of lines) {
-        const { data: lotData } = await supabase
-          .from('stock_lots')
-          .select('quantity_on_hand, quantity_reserved')
-          .eq('id', line.lot_id)
-          .single()
-
-        if (!lotData || (lotData.quantity_on_hand - lotData.quantity_reserved) < line.quantity) {
-          throw new Error(`Sản phẩm trong lô không đủ tồn kho để chuyển. Yêu cầu: ${line.quantity}`)
-        }
-
-        const { error: updateError } = await supabase
-          .from('stock_lots')
-          .update({
-            quantity_on_hand: lotData.quantity_on_hand - line.quantity
-          })
-          .eq('id', line.lot_id)
-
-        if (updateError) throw updateError
-
-        const { error: moveError } = await supabase
-          .from('stock_movements')
-          .insert([{
-            lot_id: line.lot_id,
-            product_id: line.product_id,
-            warehouse_id: transfer.from_warehouse,
-            movement_type: 'transfer_out',
-            quantity: -line.quantity,
-            reference_id: transfer.id,
-            reference_type: 'stock_transfer',
-            performed_by: profile?.id
-          }])
-        
-        if (moveError) throw moveError
-      }
-
-      const { error: statusError } = await supabase
-        .from('stock_transfers')
-        .update({ status: 'in_transit' })
-        .eq('id', transfer.id)
-
-      if (statusError) throw statusError
+      const { error } = await supabase.rpc('fn_start_transfer', {
+        p_transfer_id: transfer.id,
+        p_user_id: profile?.id
+      })
+      if (error) throw error
 
       setAlertMsg({ type: 'success', text: 'Chuyển hàng thành công! Trạng thái: Đang đi đường.' })
       setShowTransferDetailModal(false)
-      
+
       const { data } = await supabase
         .from('stock_transfers')
         .select(`
-          id,
-          transfer_code,
-          from_warehouse,
-          to_warehouse,
-          status,
-          transfer_date,
-          notes,
-          created_by,
-          received_by,
+          id, transfer_code, from_warehouse, to_warehouse, status,
+          transfer_date, notes, created_by, received_by,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
           receiver:profiles!received_by(full_name)
         `)
-        .order('transfer_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100)
       setTransfers(data || [])
     } catch (err: any) {
       console.error(err)
@@ -496,105 +452,30 @@ export default function InventoryPage() {
     }
   }
 
-  const handleReceiveTransfer = async (transfer: any, lines: any[]) => {
+  const handleReceiveTransfer = async (transfer: any, _lines: any[]) => {
     setSubmitting(true)
     try {
-      for (const line of lines) {
-        const { data: sourceLot } = await supabase
-          .from('stock_lots')
-          .select('lot_number, manufacture_date, expiry_date, cost_price, status')
-          .eq('id', line.lot_id)
-          .single()
-
-        if (!sourceLot) throw new Error('Không tìm thấy lô hàng nguồn.')
-
-        const { data: targetLot } = await supabase
-          .from('stock_lots')
-          .select('id, quantity_on_hand')
-          .eq('product_id', line.product_id)
-          .eq('lot_number', sourceLot.lot_number)
-          .eq('warehouse_id', transfer.to_warehouse)
-          .maybeSingle()
-
-        let targetLotId = ''
-        if (targetLot) {
-          targetLotId = targetLot.id
-          const { error: updateError } = await supabase
-            .from('stock_lots')
-            .update({
-              quantity_on_hand: targetLot.quantity_on_hand + line.quantity
-            })
-            .eq('id', targetLotId)
-          
-          if (updateError) throw updateError
-        } else {
-          const { data: newLot, error: createError } = await supabase
-            .from('stock_lots')
-            .insert([{
-              product_id: line.product_id,
-              warehouse_id: transfer.to_warehouse,
-              lot_number: sourceLot.lot_number,
-              manufacture_date: sourceLot.manufacture_date,
-              expiry_date: sourceLot.expiry_date,
-              cost_price: sourceLot.cost_price,
-              quantity_on_hand: line.quantity,
-              status: sourceLot.status
-            }])
-            .select()
-            .single()
-
-          if (createError) throw createError
-          targetLotId = newLot.id
-        }
-
-        const { error: moveError } = await supabase
-          .from('stock_movements')
-          .insert([{
-            lot_id: targetLotId,
-            product_id: line.product_id,
-            warehouse_id: transfer.to_warehouse,
-            movement_type: 'transfer_in',
-            quantity: line.quantity,
-            reference_id: transfer.id,
-            reference_type: 'stock_transfer',
-            performed_by: profile?.id
-          }])
-
-        if (moveError) throw moveError
-      }
-
-      const { error: statusError } = await supabase
-        .from('stock_transfers')
-        .update({
-          status: 'received',
-          received_by: profile?.id,
-          received_at: new Date().toISOString()
-        })
-        .eq('id', transfer.id)
-
-      if (statusError) throw statusError
+      const { error } = await supabase.rpc('fn_receive_transfer', {
+        p_transfer_id: transfer.id,
+        p_user_id: profile?.id
+      })
+      if (error) throw error
 
       setAlertMsg({ type: 'success', text: 'Nhận hàng và nhập kho thành công!' })
       setShowTransferDetailModal(false)
-      
+
       const { data } = await supabase
         .from('stock_transfers')
         .select(`
-          id,
-          transfer_code,
-          from_warehouse,
-          to_warehouse,
-          status,
-          transfer_date,
-          notes,
-          created_by,
-          received_by,
+          id, transfer_code, from_warehouse, to_warehouse, status,
+          transfer_date, notes, created_by, received_by,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
           receiver:profiles!received_by(full_name)
         `)
-        .order('transfer_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100)
       setTransfers(data || [])
     } catch (err: any) {
       console.error(err)
@@ -604,74 +485,30 @@ export default function InventoryPage() {
     }
   }
 
-  const handleCancelTransfer = async (transfer: any, lines: any[]) => {
+  const handleCancelTransfer = async (transfer: any, _lines: any[]) => {
     setSubmitting(true)
     try {
-      if (transfer.status === 'in_transit') {
-        for (const line of lines) {
-          const { data: lotData } = await supabase
-            .from('stock_lots')
-            .select('quantity_on_hand')
-            .eq('id', line.lot_id)
-            .single()
-
-          if (lotData) {
-            const { error: updateError } = await supabase
-              .from('stock_lots')
-              .update({
-                quantity_on_hand: lotData.quantity_on_hand + line.quantity
-              })
-              .eq('id', line.lot_id)
-
-            if (updateError) throw updateError
-
-            const { error: moveError } = await supabase
-              .from('stock_movements')
-              .insert([{
-                lot_id: line.lot_id,
-                product_id: line.product_id,
-                warehouse_id: transfer.from_warehouse,
-                movement_type: 'transfer_in',
-                quantity: line.quantity,
-                reference_id: transfer.id,
-                reference_type: 'stock_transfer',
-                performed_by: profile?.id,
-                notes: 'Hoàn kho do hủy chuyển'
-              }])
-
-            if (moveError) throw moveError
-          }
-        }
-      }
-
-      const { error: statusError } = await supabase
-        .from('stock_transfers')
-        .update({ status: 'cancelled' })
-        .eq('id', transfer.id)
-
-      if (statusError) throw statusError
+      const { error } = await supabase.rpc('fn_cancel_transfer', {
+        p_transfer_id: transfer.id,
+        p_user_id: profile?.id
+      })
+      if (error) throw error
 
       setAlertMsg({ type: 'success', text: 'Đã hủy yêu cầu chuyển kho.' })
       setShowTransferDetailModal(false)
-      
+
       const { data } = await supabase
         .from('stock_transfers')
         .select(`
-          id,
-          transfer_code,
-          from_warehouse,
-          to_warehouse,
-          status,
-          transfer_date,
-          notes,
-          created_by,
-          received_by,
+          id, transfer_code, from_warehouse, to_warehouse, status,
+          transfer_date, notes, created_by, received_by,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
           receiver:profiles!received_by(full_name)
         `)
-        .order('transfer_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(100)
       setTransfers(data || [])
     } catch (err: any) {
       console.error(err)
@@ -884,9 +721,22 @@ export default function InventoryPage() {
               supplier:suppliers(id, name)
             `)
             .order('expiry_date', { ascending: true })
+            .limit(100)
 
           if (error) throw error
-          
+
+          // Fetch inventory_settings để dùng cho filter "Tồn kho thấp"
+          const { data: settingsRaw } = await supabase
+            .from('inventory_settings')
+            .select('product_id, warehouse_id, min_stock_level')
+          const settingsMap: Record<string, number> = {}
+          if (settingsRaw) {
+            settingsRaw.forEach((s: any) => {
+              settingsMap[`${s.product_id}_${s.warehouse_id}`] = s.min_stock_level
+            })
+          }
+          setLotInvSettingsMap(settingsMap)
+
           const formattedLots = (data || []).map((lot: any) => ({
             id: lot.id,
             lot_number: lot.lot_number,
@@ -927,9 +777,10 @@ export default function InventoryPage() {
               warehouse:warehouses(name)
             `)
             .order('created_at', { ascending: false })
+            .limit(100)
 
           if (error) throw error
-          
+
           const formattedPOs = (data || []).map((po: any) => ({
             id: po.id,
             po_code: po.po_code,
@@ -961,9 +812,10 @@ export default function InventoryPage() {
               profile:profiles(full_name)
             `)
             .order('receipt_date', { ascending: false })
+            .limit(100)
 
           if (error) throw error
-          
+
           const formattedReceipts = (data || []).map((gr: any) => ({
             id: gr.id,
             receipt_code: gr.receipt_code,
@@ -992,16 +844,20 @@ export default function InventoryPage() {
               warehouse_id,
               min_stock_level,
               max_stock_level,
+              reorder_point,
+              reorder_quantity,
               product:products(sku, name),
               warehouse:warehouses(name)
             `)
-          
+
           const formattedSettings = (settingsData || []).map((set: any) => ({
             id: set.id,
             product_id: set.product_id,
             warehouse_id: set.warehouse_id,
             min_stock_level: set.min_stock_level,
             max_stock_level: set.max_stock_level,
+            reorder_point: set.reorder_point ?? 0,
+            reorder_quantity: set.reorder_quantity ?? null,
             product: {
               sku: set.product?.sku || '',
               name: set.product?.name || 'Sản phẩm không rõ'
@@ -1010,7 +866,7 @@ export default function InventoryPage() {
               name: set.warehouse?.name || 'Kho không rõ'
             }
           }))
-          
+
           setInvSettings(formattedSettings)
 
           // Fetch products for list creation
@@ -1020,21 +876,15 @@ export default function InventoryPage() {
           const { data, error } = await supabase
             .from('stock_transfers')
             .select(`
-              id,
-              transfer_code,
-              from_warehouse,
-              to_warehouse,
-              status,
-              transfer_date,
-              notes,
-              created_by,
-              received_by,
+              id, transfer_code, from_warehouse, to_warehouse, status,
+              transfer_date, notes, created_by, received_by,
               from_wh:warehouses!from_warehouse(name),
               to_wh:warehouses!to_warehouse(name),
               creator:profiles!created_by(full_name),
               receiver:profiles!received_by(full_name)
             `)
-            .order('transfer_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(100)
           if (error) throw error
           setTransfers(data || [])
         } else if (activeTab === 'purchase_returns') {
@@ -1058,6 +908,7 @@ export default function InventoryPage() {
               creator:profiles!created_by(full_name)
             `)
             .order('created_at', { ascending: false })
+            .limit(100)
           if (error) throw error
           setPurchaseReturns(data || [])
         }
@@ -1093,7 +944,9 @@ export default function InventoryPage() {
         quickMatch = daysToExpiry >= 0 && daysToExpiry <= 30
       }
     } else if (lotQuickFilter === 'low-stock') {
-      quickMatch = lot.quantity_on_hand <= 15
+      const key = `${lot.product.id}_${lot.warehouse.id}`
+      const minLevel = lotInvSettingsMap[key] ?? 15
+      quickMatch = lot.quantity_on_hand <= minLevel
     } else if (lotQuickFilter === 'quarantine') {
       quickMatch = lot.status === 'quarantine'
     }
@@ -1103,11 +956,12 @@ export default function InventoryPage() {
 
   // Filtered POs logic
   const filteredPOs = useMemo(() => pos.filter(po => {
-    return (
+    const searchMatch =
       po.po_code.toLowerCase().includes(debouncedPoSearch.toLowerCase()) ||
       po.supplier.name.toLowerCase().includes(debouncedPoSearch.toLowerCase())
-    )
-  }), [pos, debouncedPoSearch])
+    const statusMatch = poStatusFilter === 'all' || po.status === poStatusFilter
+    return searchMatch && statusMatch
+  }), [pos, debouncedPoSearch, poStatusFilter])
 
   // Filtered Receipts logic
   const filteredReceipts = useMemo(() => receipts.filter(gr => {
@@ -1117,61 +971,97 @@ export default function InventoryPage() {
     )
   }), [receipts, debouncedReceiptSearch])
 
-  // Create Inventory Setting Submit
-  const handleCreateSetting = async (e: React.FormEvent) => {
+  const reloadInvSettings = async () => {
+    const { data: settingsData } = await supabase
+      .from('inventory_settings')
+      .select(`
+        id, product_id, warehouse_id, min_stock_level, max_stock_level,
+        reorder_point, reorder_quantity,
+        product:products(sku, name),
+        warehouse:warehouses(name)
+      `)
+    const formatted = (settingsData || []).map((set: any) => ({
+      id: set.id,
+      product_id: set.product_id,
+      warehouse_id: set.warehouse_id,
+      min_stock_level: set.min_stock_level,
+      max_stock_level: set.max_stock_level,
+      reorder_point: set.reorder_point ?? 0,
+      reorder_quantity: set.reorder_quantity ?? null,
+      product: { sku: set.product?.sku || '', name: set.product?.name || 'Sản phẩm không rõ' },
+      warehouse: { name: set.warehouse?.name || 'Kho không rõ' }
+    }))
+    setInvSettings(formatted)
+  }
+
+  const handleSaveSetting = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newSetting.productId || !newSetting.warehouseId) {
       setAlertMsg({ type: 'error', text: 'Vui lòng chọn đầy đủ Sản phẩm và Kho hàng.' })
       return
     }
-
     try {
-      const { error } = await supabase
-        .from('inventory_settings')
-        .insert([{
-          product_id: newSetting.productId,
-          warehouse_id: newSetting.warehouseId,
-          min_stock_level: Number(newSetting.minStock),
-          max_stock_level: Number(newSetting.maxStock)
-        }])
-
-      if (error) throw error
-
-      setAlertMsg({ type: 'success', text: 'Thêm định mức tồn kho thành công!' })
+      if (editingSettingId) {
+        const { error } = await supabase
+          .from('inventory_settings')
+          .update({
+            min_stock_level: Number(newSetting.minStock),
+            max_stock_level: Number(newSetting.maxStock) || null,
+            reorder_point: Number(newSetting.reorderPoint),
+            reorder_quantity: newSetting.reorderQty ? Number(newSetting.reorderQty) : null
+          })
+          .eq('id', editingSettingId)
+        if (error) throw error
+        setAlertMsg({ type: 'success', text: 'Cập nhật định mức tồn kho thành công!' })
+      } else {
+        const { error } = await supabase
+          .from('inventory_settings')
+          .upsert([{
+            product_id: newSetting.productId,
+            warehouse_id: newSetting.warehouseId,
+            min_stock_level: Number(newSetting.minStock),
+            max_stock_level: Number(newSetting.maxStock) || null,
+            reorder_point: Number(newSetting.reorderPoint),
+            reorder_quantity: newSetting.reorderQty ? Number(newSetting.reorderQty) : null
+          }], { onConflict: 'product_id,warehouse_id' })
+        if (error) throw error
+        setAlertMsg({ type: 'success', text: 'Lưu định mức tồn kho thành công!' })
+      }
       setIsEditingSetting(false)
-      // Reload settings tab
-      const { data: settingsData } = await supabase
-        .from('inventory_settings')
-        .select(`
-          id,
-          product_id,
-          warehouse_id,
-          min_stock_level,
-          max_stock_level,
-          product:products(sku, name),
-          warehouse:warehouses(name)
-        `)
-      
-      const formatted = (settingsData || []).map((set: any) => ({
-        id: set.id,
-        product_id: set.product_id,
-        warehouse_id: set.warehouse_id,
-        min_stock_level: set.min_stock_level,
-        max_stock_level: set.max_stock_level,
-        product: {
-          sku: set.product?.sku || '',
-          name: set.product?.name || 'Sản phẩm không rõ'
-        },
-        warehouse: {
-          name: set.warehouse?.name || 'Kho không rõ'
-        }
-      }))
-      setInvSettings(formatted)
-
+      setEditingSettingId(null)
+      setNewSetting({ productId: '', warehouseId: '', minStock: 10, maxStock: 500, reorderPoint: 0, reorderQty: null })
+      await reloadInvSettings()
     } catch (err: any) {
       console.error('Error saving inventory setting:', err)
       setAlertMsg({ type: 'error', text: 'Lỗi thiết lập định mức: ' + err.message })
     }
+  }
+
+  const handleDeleteSetting = async (settingId: string) => {
+    try {
+      const { error } = await supabase
+        .from('inventory_settings')
+        .delete()
+        .eq('id', settingId)
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã xóa định mức tồn kho.' })
+      setInvSettings(prev => prev.filter(s => s.id !== settingId))
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Lỗi xóa định mức: ' + err.message })
+    }
+  }
+
+  const handleOpenEditSetting = (setting: InventorySetting) => {
+    setEditingSettingId(setting.id)
+    setNewSetting({
+      productId: setting.product_id,
+      warehouseId: setting.warehouse_id,
+      minStock: setting.min_stock_level,
+      maxStock: setting.max_stock_level ?? 500,
+      reorderPoint: setting.reorder_point ?? 0,
+      reorderQty: setting.reorder_quantity ?? null
+    })
+    setIsEditingSetting(true)
   }
 
   // Auto-clear alert
@@ -1360,6 +1250,17 @@ export default function InventoryPage() {
                     <ShieldAlert size={14} />
                     <span>Tồn kho thấp</span>
                   </button>
+                  <button
+                    onClick={() => setLotQuickFilter('quarantine')}
+                    className={`px-4 h-10 rounded-lg text-body-md font-semibold border transition-all flex items-center gap-1.5 ${
+                      lotQuickFilter === 'quarantine'
+                        ? 'bg-purple-50 text-purple-700 border-purple-100'
+                        : 'bg-white text-gray-400 border-gray-100 hover:bg-gray-50'
+                    }`}
+                  >
+                    <AlertTriangle size={14} />
+                    <span>Kiểm dịch</span>
+                  </button>
                 </div>
               </div>
 
@@ -1447,16 +1348,30 @@ export default function InventoryPage() {
           {/* TAB CONTENT: PURCHASE ORDERS */}
           {activeTab === 'pos' && (
             <div className="p-6 space-y-6">
-              {/* Search input */}
-              <div className="relative w-full md:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Tìm mã PO, nhà cung cấp..."
-                  value={poSearchTerm}
-                  onChange={(e) => setPoSearchTerm(e.target.value)}
-                  className="w-full h-10 pl-10 pr-4 bg-gray-25 border border-gray-100 rounded-lg text-body-md placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                />
+              {/* Search + Status Filter */}
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="relative w-full md:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Tìm mã PO, nhà cung cấp..."
+                    value={poSearchTerm}
+                    onChange={(e) => setPoSearchTerm(e.target.value)}
+                    className="w-full h-10 pl-10 pr-4 bg-gray-25 border border-gray-100 rounded-lg text-body-md placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <select
+                  value={poStatusFilter}
+                  onChange={(e) => setPoStatusFilter(e.target.value)}
+                  className="h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none bg-white font-medium text-gray-500"
+                >
+                  <option value="all">Tất cả trạng thái</option>
+                  <option value="draft">Nháp</option>
+                  <option value="sent">Chờ nhận</option>
+                  <option value="partially_received">Nhập một phần</option>
+                  <option value="received">Đã nhận đủ</option>
+                  <option value="cancelled">Đã hủy</option>
+                </select>
               </div>
 
               {/* Data Table */}
@@ -1813,8 +1728,10 @@ export default function InventoryPage() {
                       <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
                         <th className="px-6 py-4">Sản phẩm / SKU</th>
                         <th className="px-6 py-4">Kho áp dụng</th>
-                        <th className="px-6 py-4 text-center">Tồn kho tối thiểu</th>
-                        <th className="px-6 py-4 text-center">Tồn kho tối đa</th>
+                        <th className="px-6 py-4 text-center">Tồn tối thiểu</th>
+                        <th className="px-6 py-4 text-center">Tồn tối đa</th>
+                        <th className="px-6 py-4 text-center">Điểm đặt lại</th>
+                        <th className="px-6 py-4 w-24 text-center">Hành động</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
@@ -1828,8 +1745,23 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-6 py-4 font-semibold text-gray-700">{set.warehouse.name}</td>
                           <td className="px-6 py-4 text-center font-bold text-red-500">{set.min_stock_level}</td>
-                          <td className="px-6 py-4 text-center font-bold text-gray-700">
-                            {set.max_stock_level || '---'}
+                          <td className="px-6 py-4 text-center font-bold text-gray-700">{set.max_stock_level || '---'}</td>
+                          <td className="px-6 py-4 text-center text-gray-500">{set.reorder_point || '---'}</td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex gap-2 justify-center">
+                              <button
+                                onClick={() => handleOpenEditSetting(set)}
+                                className="text-blue-500 hover:text-blue-600 font-semibold text-tiny hover:underline"
+                              >
+                                Sửa
+                              </button>
+                              <button
+                                onClick={() => handleDeleteSetting(set.id)}
+                                className="text-red-500 hover:text-red-600 font-semibold text-tiny hover:underline"
+                              >
+                                Xóa
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1850,11 +1782,17 @@ export default function InventoryPage() {
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
               <div>
-                <h3 className="text-body-lg font-bold text-gray-800">Cấu hình định mức tồn kho</h3>
+                <h3 className="text-body-lg font-bold text-gray-800">
+                  {editingSettingId ? 'Cập nhật định mức tồn kho' : 'Cấu hình định mức tồn kho'}
+                </h3>
                 <p className="text-tiny text-gray-400">Thiết lập ngưỡng cảnh báo an toàn cho sản phẩm</p>
               </div>
               <button
-                onClick={() => setIsEditingSetting(false)}
+                onClick={() => {
+                  setIsEditingSetting(false)
+                  setEditingSettingId(null)
+                  setNewSetting({ productId: '', warehouseId: '', minStock: 10, maxStock: 500, reorderPoint: 0, reorderQty: null })
+                }}
                 className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400"
               >
                 <Plus size={20} className="rotate-45" />
@@ -1862,13 +1800,14 @@ export default function InventoryPage() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleCreateSetting} className="flex-1 overflow-y-auto p-6 space-y-5">
+            <form onSubmit={handleSaveSetting} className="flex-1 overflow-y-auto p-6 space-y-5">
               <div className="space-y-1.5">
                 <label className="block text-body-md font-semibold text-gray-700">Chọn sản phẩm</label>
                 <select
                   value={newSetting.productId}
                   onChange={(e) => setNewSetting({ ...newSetting, productId: e.target.value })}
-                  className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                  disabled={!!editingSettingId}
+                  className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="">-- Chọn sản phẩm --</option>
                   {productList.map(p => (
@@ -1882,7 +1821,8 @@ export default function InventoryPage() {
                 <select
                   value={newSetting.warehouseId}
                   onChange={(e) => setNewSetting({ ...newSetting, warehouseId: e.target.value })}
-                  className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                  disabled={!!editingSettingId}
+                  className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="">-- Chọn kho hàng --</option>
                   {warehouses.map(w => (
@@ -1915,11 +1855,40 @@ export default function InventoryPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Điểm đặt hàng lại</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newSetting.reorderPoint}
+                    onChange={(e) => setNewSetting({ ...newSetting, reorderPoint: parseInt(e.target.value) || 0 })}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">SL đặt lại gợi ý</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newSetting.reorderQty ?? ''}
+                    placeholder="Tùy chọn"
+                    onChange={(e) => setNewSetting({ ...newSetting, reorderQty: e.target.value ? parseInt(e.target.value) : null })}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
               {/* Submit Buttons */}
               <div className="pt-4 border-t border-gray-100 flex gap-4">
                 <button
                   type="button"
-                  onClick={() => setIsEditingSetting(false)}
+                  onClick={() => {
+                    setIsEditingSetting(false)
+                    setEditingSettingId(null)
+                    setNewSetting({ productId: '', warehouseId: '', minStock: 10, maxStock: 500, reorderPoint: 0, reorderQty: null })
+                  }}
                   className="flex-1 h-10 border border-gray-100 rounded-lg text-body-md font-semibold hover:bg-gray-50 text-gray-600 transition-colors"
                 >
                   Hủy bỏ
@@ -1928,7 +1897,7 @@ export default function InventoryPage() {
                   type="submit"
                   className="flex-1 h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center"
                 >
-                  Lưu định mức
+                  {editingSettingId ? 'Cập nhật' : 'Lưu định mức'}
                 </button>
               </div>
             </form>
@@ -2009,7 +1978,7 @@ export default function InventoryPage() {
                         className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
                       >
                         <option value="">-- Chọn lô hàng còn tồn --</option>
-                        {lotsForWarehouse.map(l => {
+                        {lotsForTransfer.map((l: any) => {
                           const avail = l.quantity_on_hand - l.quantity_reserved;
                           const isAlreadyAdded = newTransfer.lines.some(line => line.lotId === l.id);
                           return (
@@ -2035,7 +2004,7 @@ export default function InventoryPage() {
                           type="button"
                           onClick={() => {
                             if (!modalLotId) return;
-                            const lot = lotsForWarehouse.find(l => l.id === modalLotId);
+                            const lot = lotsForTransfer.find((l: any) => l.id === modalLotId);
                             if (!lot) return;
                             const avail = lot.quantity_on_hand - lot.quantity_reserved;
                             if (modalQty > avail) {
@@ -2425,13 +2394,13 @@ export default function InventoryPage() {
                         onChange={(e) => {
                           const val = e.target.value;
                           setModalLotId(val);
-                          const lot = lotsForWarehouse.find(l => l.id === val);
+                          const lot = lotsForReturn.find((l: any) => l.id === val);
                           if (lot) setModalUnitPrice(lot.cost_price);
                         }}
                         className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
                       >
                         <option value="">-- Chọn lô hàng còn tồn --</option>
-                        {lotsForWarehouse.map(l => {
+                        {lotsForReturn.map((l: any) => {
                           const avail = l.quantity_on_hand - l.quantity_reserved;
                           const isAlreadyAdded = newReturn.lines.some(line => line.lotId === l.id);
                           return (
@@ -2468,7 +2437,7 @@ export default function InventoryPage() {
                           type="button"
                           onClick={() => {
                             if (!modalLotId) return;
-                            const lot = lotsForWarehouse.find(l => l.id === modalLotId);
+                            const lot = lotsForReturn.find((l: any) => l.id === modalLotId);
                             if (!lot) return;
                             const avail = lot.quantity_on_hand - lot.quantity_reserved;
                             if (modalQty > avail) {

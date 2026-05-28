@@ -83,7 +83,7 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
           // Fetch current user to default owner
           const { data: { user } } = await supabase.auth.getUser()
           if (user) {
-            const hasUserInReps = reps.some(r => r.id === user.id)
+            const hasUserInReps = reps.some((r: { id: string; full_name: string }) => r.id === user.id)
             if (hasUserInReps) {
               setOwnerUserId(user.id)
             } else if (reps.length > 0) {
@@ -127,6 +127,15 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
     }
     if (!phone.trim()) {
       setErrorMsg('Vui lòng nhập số điện thoại.')
+      return
+    }
+    const phoneRegex = /^(\+84|0)[3-9][0-9]{8}$/
+    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+      setErrorMsg('Số điện thoại không hợp lệ. Vui lòng nhập đúng định dạng (VD: 0912345678 hoặc +84912345678).')
+      return
+    }
+    if (Number(creditLimit) < 0) {
+      setErrorMsg('Hạn mức công nợ không được nhỏ hơn 0.')
       return
     }
     if (!priceListId) {
