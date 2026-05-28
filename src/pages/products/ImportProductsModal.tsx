@@ -76,49 +76,91 @@ export default function ImportProductsModal({
     URL.revokeObjectURL(url)
   }
 
-  const findValue = (row: Record<string, string>, keys: string[]): string => {
-    const rowKeys = Object.keys(row)
-    const matched = rowKeys.find(k =>
-      keys.some(key => normalize(k).includes(key) || key.includes(normalize(k)))
-    )
-    return matched ? String(row[matched] ?? '').trim() : ''
-  }
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
+
+    const isCSV = selectedFile.name.toLowerCase().endsWith('.csv') || selectedFile.type === 'text/csv'
+    const isXLSX = selectedFile.name.toLowerCase().match(/\.(xlsx|xls)$/)
+
+    if (isXLSX) {
+      setErrorMsg('File Excel (.xlsx/.xls) chưa được hỗ trợ trực tiếp. Vui lòng mở file Excel → Lưu dưới dạng CSV (UTF-8) → tải lên file CSV đó.')
+      return
+    }
+    if (!isCSV) {
+      setErrorMsg('Chỉ hỗ trợ định dạng CSV (.csv). Vui lòng kiểm tra lại file.')
+      return
+    }
+
     setFile(selectedFile)
     setParsedRows([])
     setImportSummary(null)
     setErrorMsg('')
     setLoading(true)
 
+    // Parse không có header → đọc dữ liệu thô dạng mảng 2 chiều
+    // rồi tự nhận dạng cấu trúc (có/không header, vị trí cột tên)
     Papa.parse(selectedFile, {
-      header: true,
+      header: false,
       skipEmptyLines: 'greedy',
       complete: (results) => {
         setLoading(false)
         try {
-          const rawData = results.data as Record<string, string>[]
-          if (rawData.length === 0) {
+          const rawRows = results.data as string[][]
+          if (rawRows.length === 0) {
             setErrorMsg('Tệp CSV trống hoặc không đúng định dạng.')
             return
           }
 
-          const processed: ParsedProductRow[] = rawData.map((row, index) => {
+          // ── Nhận dạng cấu trúc file ──
+          // Dòng đầu là header nếu ít nhất 1 ô chứa alias tên sản phẩm
+          const firstRow = rawRows[0].map(c => normalize(String(c ?? '')))
+          const firstRowIsHeader = firstRow.some(cell =>
+            cell.length > 1 &&
+            PRODUCT_NAME_KEYS.some(k => cell.includes(k) || k.includes(cell))
+          )
+
+          let dataRows: string[][]
+          let nameColIdx = -1
+
+          if (firstRowIsHeader) {
+            // ── Có header: dò cột theo alias ──
+            dataRows = rawRows.slice(1)
+            firstRow.forEach((cell, idx) => {
+              if (nameColIdx === -1 &&
+                PRODUCT_NAME_KEYS.some(k => cell.includes(k) || (k.includes(cell) && cell.length > 1)))
+                nameColIdx = idx
+            })
+          } else {
+            // ── Không có header: nhận dạng theo vị trí cột ──
+            dataRows = rawRows
+            const sampleRows = dataRows.slice(0, Math.min(5, dataRows.length))
+
+            // Cột 0 toàn số nguyên → layout [STT, Tên, ...]
+            const col0IsIndex = sampleRows.every(r => /^\d+$/.test(String(r[0] ?? '').trim()))
+            nameColIdx = col0IsIndex ? 1 : 0
+          }
+
+          // nameColIdx vẫn -1 nghĩa là không tìm được → fallback cột 0
+          if (nameColIdx === -1) nameColIdx = 0
+
+          // ── Map từng dòng ──
+          const processed: ParsedProductRow[] = dataRows.map((row, index) => {
             const errors: string[] = []
-            const name = findValue(row, PRODUCT_NAME_KEYS)
+            const name = String(row[nameColIdx] ?? '').trim()
 
-            if (!name) {
-              errors.push(`Dòng ${index + 1}: Thiếu Tên sản phẩm.`)
-            }
+            if (!name) errors.push(`Dòng ${index + 1}: Thiếu Tên sản phẩm.`)
 
-            return {
-              name,
-              isValid: errors.length === 0,
-              errors
-            }
+            return { name, isValid: errors.length === 0, errors }
           })
+
+          const validCnt = processed.filter(r => r.isValid).length
+          if (validCnt === 0 && processed.length > 0) {
+            setErrorMsg(
+              `Không đọc được tên sản phẩm từ ${processed.length} dòng. ` +
+              `File có thể có cấu trúc khác — hãy tải file mẫu để tham khảo.`
+            )
+          }
 
           setParsedRows(processed)
         } catch (err: unknown) {
@@ -132,6 +174,7 @@ export default function ImportProductsModal({
       }
     })
   }
+
 
   const handleImportSubmit = async () => {
     const validRows = parsedRows.filter(r => r.isValid)
