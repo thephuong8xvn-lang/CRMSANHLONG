@@ -70,6 +70,9 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - Cập nhật các chính sách RLS cho: `customer_debts`, `orders`, `order_lines`, `cashbook_transactions`, `herd_projects`, `herd_project_steps`, `herd_project_outcomes`.
 - Migration file: [20260528000009_fix_rbac_permissions.sql](file:///E:/CRMSANHLONG/supabase/migrations/20260528000009_fix_rbac_permissions.sql)
 
+### ✅ Vá lỗi layout bảng nhập kho (2026-05-28)
+- Khắc phục lỗi co giãn cột và che khuất dữ liệu ở bảng kê chi tiết kiểm kho hàng loạt (cột Giá nhập, Mã số lô, Kho & Vị trí) trong [GoodsReceiptFormPage.tsx](file:///E:/CRMSANHLONG/src/pages/goods-receipts/GoodsReceiptFormPage.tsx) bằng các lớp `min-w` cố định.
+
 ### 🔲 Còn lại: P4-6, P4-7, P4-8, P4-9, P4-10
 
 **Bước tiếp theo gợi ý**: P4-6 (Excel export kế toán VN) → P4-7 (2FA + Audit log) → P4-10 (Onboarding + docs)

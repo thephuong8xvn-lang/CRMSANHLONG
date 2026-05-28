@@ -630,6 +630,7 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 | P4-5 Chấm công | ⏭ Bỏ qua |
 | **[THÊM MỚI] Tích hợp cấu hình in ấn vào Admin** | ✅ Hoàn thành 2026-05-28 |
 | **[THÊM MỚI] Sửa lỗi phân quyền RBAC & RLS hệ thống** | ✅ Hoàn thành 2026-05-28 |
+| **[THÊM MỚI] Vá lỗi co giãn cột bảng nhập kho** | ✅ Hoàn thành 2026-05-28 |
 | P4-6 Excel export kế toán | 🔲 Chưa làm |
 | P4-7 2FA + Audit log | 🔲 Chưa làm |
 | P4-8 Capacitor mobile native | 🔲 Chưa làm |
