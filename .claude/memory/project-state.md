@@ -59,6 +59,17 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 
 ### ⏭ P4-5: Chấm công — BỎ QUA (user yêu cầu)
 
+### ✅ Cấu hình in ấn (2026-05-28)
+- 9 cột `print_*` cấu hình in được thêm vào `display_settings`.
+- Form admin cấu hình header công ty + giấy/hướng in tại tab "Cấu hình in ấn".
+- Tích hợp xem trước và in chứng từ động cho hóa đơn, phiếu thu, chi, chuyển kho tại `/print-preview`.
+
+### ✅ Phân quyền RBAC & RLS (2026-05-28)
+- Sửa lỗi phân quyền RBAC & RLS cho các vai trò nhân viên.
+- Thêm quyền còn thiếu cho: `branch_manager`, `warehouse_keeper`, `accountant`, `team_lead`, `vet_consultant`, `sales` vào bảng `role_permissions`.
+- Cập nhật các chính sách RLS cho: `customer_debts`, `orders`, `order_lines`, `cashbook_transactions`, `herd_projects`, `herd_project_steps`, `herd_project_outcomes`.
+- Migration file: [20260528000009_fix_rbac_permissions.sql](file:///E:/CRMSANHLONG/supabase/migrations/20260528000009_fix_rbac_permissions.sql)
+
 ### 🔲 Còn lại: P4-6, P4-7, P4-8, P4-9, P4-10
 
 **Bước tiếp theo gợi ý**: P4-6 (Excel export kế toán VN) → P4-7 (2FA + Audit log) → P4-10 (Onboarding + docs)
