@@ -122,17 +122,10 @@ export default function ImportCustomersModal({
     URL.revokeObjectURL(url)
   }
 
-  const findValue = (row: Record<string, string>, keys: string[]): string => {
-    const rowKeys = Object.keys(row)
-    const matched = rowKeys.find(k => keys.some(key => normalize(k).includes(key) || key.includes(normalize(k))))
-    return matched ? String(row[matched] ?? '').trim() : ''
-  }
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
 
-    // Kiểm tra định dạng file
     const isCSV = selectedFile.name.toLowerCase().endsWith('.csv') || selectedFile.type === 'text/csv'
     const isXLSX = selectedFile.name.toLowerCase().match(/\.(xlsx|xls)$/)
 
@@ -153,41 +146,97 @@ export default function ImportCustomersModal({
     setColumnWarning('')
     setLoading(true)
 
+    // Parse không có header để đọc dữ liệu thô dạng mảng 2 chiều
+    // → tự nhận dạng cấu trúc (có/không header, layout cột)
     Papa.parse(selectedFile, {
-      header: true,
+      header: false,
       skipEmptyLines: 'greedy',
       complete: (results) => {
         setLoading(false)
         try {
-          const rawData = results.data as Record<string, string>[]
-          if (rawData.length === 0) {
+          const rawRows = results.data as string[][]
+          if (rawRows.length === 0) {
             setErrorMsg('Tệp CSV trống hoặc không đúng định dạng.')
             return
           }
 
-          // Detect if phone column is present
-          const firstRowKeys = Object.keys(rawData[0])
-          const hasPhoneCol = firstRowKeys.some(k => PHONE_KEYS.some(key => normalize(k).includes(key) || key.includes(normalize(k))))
-          if (!hasPhoneCol) {
-            setColumnWarning('Không tìm thấy cột số điện thoại trong file. Hệ thống sẽ nhập tên khách hàng và để trống số điện thoại.')
+          // ─── Nhận dạng cấu trúc file ───
+          // Dòng đầu là header nếu ít nhất 1 ô khớp với alias tên/sdt
+          const firstRow = rawRows[0].map(c => normalize(String(c ?? '')))
+          const firstRowIsHeader =
+            firstRow.some(cell => cell.length > 1 && NAME_KEYS.some(k => cell.includes(k) || k.includes(cell))) ||
+            firstRow.some(cell => cell.length > 1 && PHONE_KEYS.some(k => cell.includes(k) || k.includes(cell)))
+
+          let dataRows: string[][]
+          let nameColIdx = -1
+          let phoneColIdx = -1
+
+          if (firstRowIsHeader) {
+            // --- Có header: dò tên cột theo alias ---
+            dataRows = rawRows.slice(1)
+            firstRow.forEach((cell, idx) => {
+              if (nameColIdx === -1 && NAME_KEYS.some(k => cell.includes(k) || (k.includes(cell) && cell.length > 1)))
+                nameColIdx = idx
+              if (phoneColIdx === -1 && PHONE_KEYS.some(k => cell.includes(k) || (k.includes(cell) && cell.length > 1)))
+                phoneColIdx = idx
+            })
+          } else {
+            // --- Không có header: nhận dạng bố cục theo nội dung ---
+            dataRows = rawRows
+            const sampleRows = dataRows.slice(0, Math.min(5, dataRows.length))
+
+            // Cột đầu là số thứ tự nguyên? (layout: STT | Tên | SĐT | ...)
+            const col0IsIndex = sampleRows.every(r => /^\d+$/.test(String(r[0] ?? '').trim()))
+
+            if (col0IsIndex) {
+              // Layout phổ biến nhất: [STT, Tên, SĐT, ...]
+              nameColIdx = 1
+              // Tìm cột SĐT: chứa số dài >= 9 chữ số
+              for (let c = 2; c < (sampleRows[0]?.length ?? 4); c++) {
+                const looksLikePhone = sampleRows.some(r =>
+                  /^[0+][\d\s.\-]{8,14}$/.test(String(r[c] ?? '').trim()))
+                if (looksLikePhone) { phoneColIdx = c; break }
+              }
+              if (phoneColIdx === -1) phoneColIdx = 2
+            } else {
+              // Layout: [Tên, SĐT, ...] — không có cột STT
+              nameColIdx = 0
+              for (let c = 1; c < (sampleRows[0]?.length ?? 3); c++) {
+                const looksLikePhone = sampleRows.some(r =>
+                  /^[0+][\d\s.\-]{8,14}$/.test(String(r[c] ?? '').trim()))
+                if (looksLikePhone) { phoneColIdx = c; break }
+              }
+              if (phoneColIdx === -1) phoneColIdx = 1
+            }
           }
 
-          const processed: ParsedRow[] = rawData.map((row, index) => {
+          if (phoneColIdx === -1) {
+            setColumnWarning('Không tìm thấy cột số điện thoại. Hệ thống sẽ nhập tên và để trống SĐT.')
+          }
+
+          // ─── Map từng dòng ───
+          const processed: ParsedRow[] = dataRows.map((row, index) => {
             const errors: string[] = []
-            const farmName = findValue(row, NAME_KEYS)
-            const phone = findValue(row, PHONE_KEYS)
+            const farmName = String(row[nameColIdx] ?? '').trim()
+            const rawPhone = phoneColIdx >= 0 ? String(row[phoneColIdx] ?? '').trim() : ''
+            // Chuẩn hóa: bỏ ký tự thừa, convert +84 → 0
+            const phone = rawPhone
+              .replace(/[\s.\-()]/g, '')
+              .replace(/^84(\d{9,10})$/, '0$1')
+              .replace(/^\+84(\d{9,10})$/, '0$1')
 
-            if (!farmName) {
-              errors.push(`Dòng ${index + 1}: Thiếu Tên khách hàng.`)
-            }
+            if (!farmName) errors.push(`Dòng ${index + 1}: Thiếu Tên khách hàng.`)
 
-            return {
-              farmName,
-              phone,
-              isValid: errors.length === 0,
-              errors
-            }
+            return { farmName, phone, isValid: errors.length === 0, errors }
           })
+
+          const validCnt = processed.filter(r => r.isValid).length
+          if (validCnt === 0 && processed.length > 0) {
+            setErrorMsg(
+              `Không đọc được tên khách hàng từ ${processed.length} dòng. ` +
+              `File có thể có cấu trúc cột khác — hãy tải file mẫu để tham khảo định dạng.`
+            )
+          }
 
           setParsedRows(processed)
         } catch (err: unknown) {
