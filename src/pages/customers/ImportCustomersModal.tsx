@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { X, Upload, CheckCircle, AlertTriangle, Download, RefreshCw, HelpCircle, FileText } from 'lucide-react'
+import { X, Upload, CheckCircle, AlertTriangle, Download, RefreshCw, HelpCircle, FileText, Info } from 'lucide-react'
 import Papa from 'papaparse'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../contexts/AuthContext'
+import { logger } from '../../lib/logger'
 
 interface ImportCustomersModalProps {
   isOpen: boolean
@@ -35,13 +37,13 @@ function normalize(s: string): string {
 const NAME_KEYS = [
   'ten khach hang', 'ten hang', 'ten', 'name', 'farmname', 'farm name',
   'ho ten', 'customer name', 'ten trang trai', 'ten co so', 'ten doanh nghiep',
-  'ten cong ty', 'khach hang', 'tên khách hàng', 'tên hàng', 'tên',
+  'ten cong ty', 'khach hang', 'ten khach hang', 'ten hang', 'ten',
   'ho va ten', 'full name', 'fullname', 'label', 'chu trai'
 ]
 const PHONE_KEYS = [
   'so dien thoai', 'dien thoai', 'sdt', 'phone', 'mobile', 'di dong',
   'tel', 'telephone', 'so dt', 'so dien thoai chinh', 'phone number',
-  'so phone', 'so mobile', 'điện thoại', 'số điện thoại'
+  'so phone', 'so mobile', 'dien thoai', 'so dien thoai'
 ]
 
 export default function ImportCustomersModal({
@@ -50,6 +52,8 @@ export default function ImportCustomersModal({
   onSuccess,
   salesReps
 }: ImportCustomersModalProps) {
+  const { user, userRole } = useAuth()
+
   const [file, setFile] = useState<File | null>(null)
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([])
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
@@ -61,8 +65,13 @@ export default function ImportCustomersModal({
   const [errorMsg, setErrorMsg] = useState('')
   const [columnWarning, setColumnWarning] = useState('')
 
+  // Admin / CEO / team_lead / branch_manager có thể gán owner_user_id tùy ý
+  // Sales chỉ được gán chính mình → ẩn dropdown owner
+  const isAdminOrLead = ['admin', 'ceo', 'team_lead', 'branch_manager'].includes(userRole?.code ?? '')
+
   useEffect(() => {
     if (!isOpen) return
+
     const loadBranches = async () => {
       try {
         const { data } = await supabase.from('branches').select('id, name').eq('is_active', true)
@@ -71,17 +80,27 @@ export default function ImportCustomersModal({
           if (data.length > 0) setDefaultBranchId(data[0].id)
         }
       } catch (err) {
-        console.error('Error fetching branches:', err)
+        logger.error('[ImportCustomers] loadBranches:', err)
       }
     }
+
     loadBranches()
-    if (salesReps.length > 0) setDefaultOwnerId(salesReps[0].id)
+
+    // Khởi tạo defaultOwnerId:
+    // - Admin/lead: mặc định là chính mình (có thể đổi)
+    // - Sales: luôn là chính mình (không được đổi)
+    if (user?.id) {
+      setDefaultOwnerId(user.id)
+    } else if (salesReps.length > 0) {
+      setDefaultOwnerId(salesReps[0].id)
+    }
+
     setFile(null)
     setParsedRows([])
     setImportSummary(null)
     setErrorMsg('')
     setColumnWarning('')
-  }, [isOpen, salesReps])
+  }, [isOpen, salesReps, user?.id])
 
   if (!isOpen) return null
 
@@ -112,6 +131,21 @@ export default function ImportCustomersModal({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
+
+    // Kiểm tra định dạng file
+    const isCSV = selectedFile.name.toLowerCase().endsWith('.csv') || selectedFile.type === 'text/csv'
+    const isXLSX = selectedFile.name.toLowerCase().match(/\.(xlsx|xls)$/)
+
+    if (isXLSX) {
+      setErrorMsg('File Excel (.xlsx/.xls) chưa được hỗ trợ trực tiếp. Vui lòng mở file Excel → Lưu dưới dạng CSV (UTF-8) → tải lên file CSV đó. Hoặc tải file mẫu CSV bên dưới.')
+      return
+    }
+
+    if (!isCSV) {
+      setErrorMsg('Chỉ hỗ trợ định dạng CSV (.csv). Vui lòng kiểm tra lại file.')
+      return
+    }
+
     setFile(selectedFile)
     setParsedRows([])
     setImportSummary(null)
@@ -157,7 +191,7 @@ export default function ImportCustomersModal({
 
           setParsedRows(processed)
         } catch (err: unknown) {
-          console.error(err)
+          logger.error('[ImportCustomers] parse error:', err)
           setErrorMsg('Lỗi xử lý file CSV: ' + (err instanceof Error ? err.message : String(err)))
         }
       },
@@ -174,8 +208,14 @@ export default function ImportCustomersModal({
       setErrorMsg('Không có dòng dữ liệu hợp lệ nào để nhập.')
       return
     }
-    if (!defaultOwnerId) {
-      setErrorMsg('Vui lòng chọn nhân viên phụ trách mặc định.')
+
+    // Xác định owner_user_id thực tế sẽ dùng khi insert
+    // - Sales: luôn là auth.uid() (bắt buộc theo RLS policy customers_insert_active)
+    // - Admin/lead: dùng defaultOwnerId được chọn
+    const effectiveOwnerId = isAdminOrLead ? defaultOwnerId : (user?.id ?? '')
+
+    if (!effectiveOwnerId) {
+      setErrorMsg('Không xác định được tài khoản đăng nhập. Vui lòng làm mới trang và thử lại.')
       return
     }
 
@@ -185,23 +225,38 @@ export default function ImportCustomersModal({
     let failedCount = 0
 
     try {
+      // Lấy bảng giá mặc định
       let defaultPriceListId: string | null = null
       const { data: defaultPlist } = await supabase
         .from('price_lists')
         .select('id')
         .eq('is_active', true)
+        .eq('is_default', true)
         .limit(1)
-        .single()
-      if (defaultPlist) defaultPriceListId = defaultPlist.id
+        .maybeSingle()
+
+      // Fallback: lấy bất kỳ bảng giá active nào
+      if (!defaultPlist) {
+        const { data: anyPlist } = await supabase
+          .from('price_lists')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle()
+        if (anyPlist) defaultPriceListId = anyPlist.id
+      } else {
+        defaultPriceListId = defaultPlist.id
+      }
 
       // Bulk insert customers
+      // Ghi chú: lifecycle_stage và billing_mode có DEFAULT ở DB nên không cần truyền
       const customersToInsert = validRows.map(row => ({
         farm_name: row.farmName,
         customer_type: 'farm_household',
         value_tier: 'normal',
         credit_limit: 0,
         price_list_id: defaultPriceListId,
-        owner_user_id: defaultOwnerId,
+        owner_user_id: effectiveOwnerId,
         branch_id: defaultBranchId || null,
         is_active: true
       }))
@@ -211,37 +266,62 @@ export default function ImportCustomersModal({
         .insert(customersToInsert)
         .select('id, farm_name')
 
-      if (custErr) throw custErr
-      if (!insertedCustomers || insertedCustomers.length === 0) {
-        throw new Error('Lỗi lưu danh sách khách hàng.')
-      }
-
-      // Build contacts bulk list
-      const contactsToInsert = insertedCustomers.map((cust: { id: string; farm_name: string }, idx: number) => {
-        const row = validRows[idx]
-        return {
-          customer_id: cust.id,
-          full_name: cust.farm_name,
-          role_at_farm: 'Chủ trại',
-          phone: row.phone || null,
-          is_primary: true,
-          is_decision_maker: true
+      if (custErr) {
+        // Phân tích lỗi để hiển thị thông báo thân thiện
+        let friendlyMsg = custErr.message
+        if (custErr.code === '42501' || friendlyMsg.includes('row-level security')) {
+          friendlyMsg = 'Tài khoản của bạn không có quyền tạo khách hàng cho nhân viên khác. Vui lòng chọn chính bạn làm nhân viên phụ trách.'
+        } else if (custErr.code === '23503') {
+          friendlyMsg = 'Nhân viên phụ trách hoặc chi nhánh đã chọn không tồn tại trong hệ thống.'
         }
-      })
-
-      const { error: contactErr } = await supabase
-        .from('customer_contacts')
-        .insert(contactsToInsert)
-
-      if (contactErr) {
-        console.warn('Warning: failed to import contacts:', contactErr)
+        throw new Error(friendlyMsg)
       }
 
-      successCount = validRows.length
+      if (!insertedCustomers || insertedCustomers.length === 0) {
+        throw new Error('Không thể lưu danh sách khách hàng. Vui lòng thử lại.')
+      }
+
+      successCount = insertedCustomers.length
       failedCount = parsedRows.length - validRows.length
+
+      // Build contacts bulk list – chỉ insert khi có số điện thoại để tránh dư thừa
+      // contacts_manage_active: user chỉ insert contact khi là owner hoặc admin/team_lead
+      // Vì effectiveOwnerId = auth.uid() hoặc admin insert → OK với RLS
+      const contactsToInsert = insertedCustomers
+        .map((cust: { id: string; farm_name: string }, idx: number) => {
+          const row = validRows[idx]
+          // Chỉ tạo contact khi có tên (farm_name) hoặc SĐT
+          if (!cust.farm_name && !row.phone) return null
+          return {
+            customer_id: cust.id,
+            full_name: cust.farm_name,
+            role_at_farm: 'Chủ trại',
+            phone: row.phone || null,
+            is_primary: true,
+            is_decision_maker: true
+          }
+        })
+        .filter(Boolean)
+
+      if (contactsToInsert.length > 0) {
+        const { error: contactErr } = await supabase
+          .from('customer_contacts')
+          .insert(contactsToInsert)
+
+        if (contactErr) {
+          // Contact insert lỗi không nên rollback customers đã tạo
+          // → ghi log, báo warning nhưng vẫn coi là thành công
+          logger.warn('[ImportCustomers] contacts insert warning:', contactErr.message)
+          // Nếu lỗi RLS trên contacts, hiển thị cảnh báo phụ
+          if (contactErr.code === '42501' || contactErr.message.includes('row-level security')) {
+            setColumnWarning(`Đã tạo ${successCount} khách hàng thành công nhưng không thể lưu số điện thoại liên hệ do phân quyền. Bạn có thể bổ sung SĐT thủ công trong hồ sơ từng khách hàng.`)
+          }
+        }
+      }
+
       setImportSummary({ success: successCount, failed: failedCount })
     } catch (err: unknown) {
-      console.error(err)
+      logger.error('[ImportCustomers] import error:', err)
       setErrorMsg('Lỗi nhập dữ liệu: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setImporting(false)
@@ -258,7 +338,7 @@ export default function ImportCustomersModal({
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-25">
           <div>
             <h3 className="text-body-lg font-bold text-gray-800">Nhập danh sách khách hàng</h3>
-            <p className="text-tiny text-gray-400">Hỗ trợ file CSV từ KiotViet, Excel hoặc file tự tạo. Chỉ cần cột Tên khách hàng.</p>
+            <p className="text-tiny text-gray-400">Hỗ trợ file CSV từ KiotViet, Excel (xuất ra CSV) hoặc file tự tạo. Chỉ cần cột Tên khách hàng.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-650 transition-colors p-1 rounded-full hover:bg-gray-100">
             <X size={20} />
@@ -281,6 +361,14 @@ export default function ImportCustomersModal({
             <div className="p-4 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-body-md flex items-start gap-2.5">
               <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
               <p>{columnWarning}</p>
+            </div>
+          )}
+
+          {/* RLS info banner cho sales user */}
+          {!isAdminOrLead && !importSummary && (
+            <div className="p-3.5 bg-blue-50 border border-blue-100 rounded-lg text-body-md text-blue-700 flex items-start gap-2.5">
+              <Info size={16} className="flex-shrink-0 mt-0.5" />
+              <p>Khách hàng được nhập sẽ tự động gán cho tài khoản của bạn làm nhân viên phụ trách.</p>
             </div>
           )}
 
@@ -316,6 +404,7 @@ export default function ImportCustomersModal({
                     <p className="font-bold flex items-center gap-1.5"><FileText size={15} /> Hướng dẫn nhập từ KiotViet / Excel</p>
                     <ul className="list-disc list-inside text-tiny space-y-1 text-blue-600">
                       <li>Xuất file danh sách khách hàng từ KiotViet ra định dạng <strong>CSV</strong></li>
+                      <li>Với file Excel (.xlsx): Mở → <strong>Lưu dưới dạng → CSV UTF-8</strong></li>
                       <li>Hệ thống tự động nhận dạng cột <strong>Tên khách hàng</strong> và <strong>Số điện thoại</strong></li>
                       <li>Các cột khác (địa chỉ, phân loại…) sẽ được bỏ qua, không gây lỗi</li>
                       <li>Chỉ cần cột Tên là bắt buộc – Số điện thoại có thể để trống</li>
@@ -326,13 +415,13 @@ export default function ImportCustomersModal({
                   <div className="border-2 border-dashed border-gray-200 hover:border-blue-400 rounded-xl p-10 text-center transition-all bg-gray-25/50 relative">
                     <input
                       type="file"
-                      accept=".csv"
+                      accept=".csv,text/csv"
                       onChange={handleFileChange}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                     <Upload size={36} className="text-gray-400 mx-auto mb-3" />
                     <p className="font-bold text-body-lg text-gray-700">Kéo thả hoặc nhấn để tải tệp CSV lên</p>
-                    <p className="text-tiny text-gray-450 mt-1">Hỗ trợ tệp định dạng CSV (.csv) – UTF-8 hoặc ANSI</p>
+                    <p className="text-tiny text-gray-450 mt-1">Hỗ trợ định dạng CSV (.csv) – UTF-8 hoặc ANSI</p>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDownloadTemplate() }}
                       type="button"
@@ -355,7 +444,7 @@ export default function ImportCustomersModal({
                       </div>
                     </div>
                     <button
-                      onClick={() => { setFile(null); setColumnWarning('') }}
+                      onClick={() => { setFile(null); setColumnWarning(''); setErrorMsg('') }}
                       className="text-danger-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-body-md font-semibold transition-all"
                     >
                       Chọn file khác
@@ -369,18 +458,21 @@ export default function ImportCustomersModal({
                       Cài đặt gán mặc định
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="block text-body-md font-semibold text-gray-600">Nhân viên phụ trách mặc định</label>
-                        <select
-                          value={defaultOwnerId}
-                          onChange={(e) => setDefaultOwnerId(e.target.value)}
-                          className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
-                        >
-                          {salesReps.map(r => (
-                            <option key={r.id} value={r.id}>{r.full_name}</option>
-                          ))}
-                        </select>
-                      </div>
+                      {/* Chỉ admin/lead mới được chọn nhân viên khác */}
+                      {isAdminOrLead && (
+                        <div className="space-y-1.5">
+                          <label className="block text-body-md font-semibold text-gray-600">Nhân viên phụ trách mặc định</label>
+                          <select
+                            value={defaultOwnerId}
+                            onChange={(e) => setDefaultOwnerId(e.target.value)}
+                            className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                          >
+                            {salesReps.map(r => (
+                              <option key={r.id} value={r.id}>{r.full_name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       <div className="space-y-1.5">
                         <label className="block text-body-md font-semibold text-gray-600">Chi nhánh mặc định</label>
                         <select
@@ -388,6 +480,7 @@ export default function ImportCustomersModal({
                           onChange={(e) => setDefaultBranchId(e.target.value)}
                           className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
                         >
+                          <option value="">-- Không gán chi nhánh --</option>
                           {branches.map(b => (
                             <option key={b.id} value={b.id}>{b.name}</option>
                           ))}
