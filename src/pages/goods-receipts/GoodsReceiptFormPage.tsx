@@ -212,12 +212,13 @@ export default function GoodsReceiptFormPage() {
 
   // Load PO details and lines when selectedPOId changes
   useEffect(() => {
-    if (receiptMode !== 'po' || !selectedPOId) {
+    if (receiptMode !== 'po') {
+      return
+    }
+    if (!selectedPOId) {
       setSelectedPO(null)
       setPOLines([])
-      if (receiptMode === 'po') {
-        setVerificationItems([])
-      }
+      setVerificationItems([])
       return
     }
 
