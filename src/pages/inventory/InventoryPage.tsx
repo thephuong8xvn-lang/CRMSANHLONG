@@ -193,6 +193,11 @@ export default function InventoryPage() {
     lines: []
   })
 
+  // Tab: Goods Receipts details states
+  const [showReceiptDetailModal, setShowReceiptDetailModal] = useState(false)
+  const [selectedReceipt, setSelectedReceipt] = useState<any>(null)
+  const [selectedReceiptLines, setSelectedReceiptLines] = useState<any[]>([])
+
   // Temporary states for adding lines in modals
   const [modalLotId, setModalLotId] = useState('')
   const [modalQty, setModalQty] = useState(1)
@@ -330,6 +335,27 @@ export default function InventoryPage() {
 
     if (!error && data) {
       setSelectedReturnLines(data)
+    }
+  }
+
+  // Fetch detail lines for selected goods receipt
+  const fetchReceiptDetails = async (receiptId: string) => {
+    const { data, error } = await supabase
+      .from('goods_receipt_lines')
+      .select(`
+        id,
+        quantity,
+        unit_price,
+        lot_number,
+        manufacture_date,
+        expiry_date,
+        product_id,
+        product:products(name, sku, unit)
+      `)
+      .eq('receipt_id', receiptId)
+
+    if (!error && data) {
+      setSelectedReceiptLines(data)
     }
   }
 
@@ -1461,7 +1487,7 @@ export default function InventoryPage() {
               {/* Data Table */}
               <div className="overflow-x-auto">
                 {loading ? (
-                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
+                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={8} /></tbody></table>
                 ) : filteredReceipts.length === 0 ? (
                   <div className="p-12 text-center text-gray-400 space-y-2">
                     <WarehouseIcon className="w-12 h-12 text-gray-300 mx-auto" />
@@ -1479,6 +1505,7 @@ export default function InventoryPage() {
                         <th className="px-6 py-4">Người nhận</th>
                         <th className="px-6 py-4 text-right">Tổng giá trị</th>
                         <th className="px-6 py-4">Ghi chú</th>
+                        <th className="px-6 py-4 w-20 text-center">Hành động</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
@@ -1498,6 +1525,18 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-6 py-4 text-gray-400 italic text-tiny max-w-[200px] truncate" title={gr.notes || ''}>
                             {gr.notes || '---'}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              onClick={async () => {
+                                setSelectedReceipt(gr)
+                                await fetchReceiptDetails(gr.id)
+                                setShowReceiptDetailModal(true)
+                              }}
+                              className="text-blue-500 hover:text-blue-600 font-bold hover:underline"
+                            >
+                              Chi tiết
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -2703,6 +2742,105 @@ export default function InventoryPage() {
                     </button>
                   </>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal Chi tiết phiếu nhập kho */}
+      {showReceiptDetailModal && selectedReceipt && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-xl">
+              <div>
+                <h3 className="text-body-lg font-bold text-gray-800">Chi tiết phiếu nhập kho</h3>
+                <p className="text-mono text-tiny text-blue-500 font-bold">{selectedReceipt.receipt_code}</p>
+              </div>
+              <button
+                onClick={() => setShowReceiptDetailModal(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400"
+              >
+                <Plus size={20} className="rotate-45" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Metadata details */}
+              <div className="grid grid-cols-2 gap-y-4 gap-x-6 bg-gray-25/55 border border-gray-100 rounded-lg p-4 text-body-md text-gray-600">
+                <div>
+                  <span className="text-gray-400 block text-tiny">Nhà cung cấp</span>
+                  <span className="font-semibold text-gray-800">{selectedReceipt.supplier?.name}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-tiny">Kho nhận hàng</span>
+                  <span className="font-semibold text-gray-800">{selectedReceipt.warehouse?.name}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-tiny">Ngày nhập</span>
+                  <span className="font-medium">{new Date(selectedReceipt.receipt_date).toLocaleDateString('vi-VN')}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-tiny">Người nhận</span>
+                  <span className="font-medium text-gray-700">{selectedReceipt.profile?.full_name || 'Hệ thống'}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-gray-400 block text-tiny">Tổng giá trị</span>
+                  <span className="font-bold text-gray-850">{Number(selectedReceipt.total_amount || 0).toLocaleString('vi-VN')} ₫</span>
+                </div>
+                <div className="col-span-2 border-t border-gray-100/50 pt-2">
+                  <span className="text-gray-400 block text-tiny">Ghi chú</span>
+                  <span className="text-gray-700 italic">{selectedReceipt.notes || 'Không có ghi chú'}</span>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="space-y-2">
+                <h4 className="text-body-md font-bold text-gray-755">Danh sách sản phẩm nhập</h4>
+                <div className="border border-gray-150 rounded-lg overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase">
+                        <th className="px-4 py-3">Sản phẩm / SKU</th>
+                        <th className="px-4 py-3">Số lô</th>
+                        <th className="px-4 py-3 text-center">Hạn sử dụng</th>
+                        <th className="px-4 py-3 text-center">Số lượng</th>
+                        <th className="px-4 py-3 text-right">Đơn giá nhập</th>
+                        <th className="px-4 py-3 text-right">Thành tiền</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
+                      {selectedReceiptLines.map((line) => (
+                        <tr key={line.id} className="hover:bg-gray-25/30">
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-gray-700">{line.product?.name}</p>
+                            <span className="text-tiny text-gray-400 font-mono">SKU: {line.product?.sku}</span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-blue-500 font-semibold">{line.lot_number || 'N/A'}</td>
+                          <td className="px-4 py-3 text-center text-gray-500">
+                            {line.expiry_date ? new Date(line.expiry_date).toLocaleDateString('vi-VN') : '---'}
+                          </td>
+                          <td className="px-4 py-3 text-center font-medium text-gray-800">{line.quantity} {line.product?.unit}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</td>
+                          <td className="px-4 py-3 text-right font-bold text-gray-850">
+                            {Number(line.unit_price * line.quantity).toLocaleString('vi-VN')} ₫
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-4 pt-4 border-t border-gray-100">
+                <button
+                  onClick={() => setShowReceiptDetailModal(false)}
+                  className="flex-1 h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-body-md font-semibold transition-all shadow-sm"
+                >
+                  Đóng
+                </button>
               </div>
             </div>
           </div>

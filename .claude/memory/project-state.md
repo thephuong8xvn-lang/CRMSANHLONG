@@ -73,6 +73,11 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 ### ✅ Vá lỗi layout bảng nhập kho (2026-05-28)
 - Khắc phục lỗi co giãn cột và che khuất dữ liệu ở bảng kê chi tiết kiểm kho hàng loạt (cột Giá nhập, Mã số lô, Kho & Vị trí) trong [GoodsReceiptFormPage.tsx](file:///E:/CRMSANHLONG/src/pages/goods-receipts/GoodsReceiptFormPage.tsx) bằng các lớp `min-w` cố định.
 
+### ✅ Đồng bộ giá vốn & Chi tiết phiếu nhập (2026-05-28)
+- Thêm cơ chế đồng bộ giá vốn tự động từ phiếu nhập kho vào bảng giá qua trigger `fn_create_stock_lot_on_receipt`.
+- Nâng cấp view `product_stock_summary_view` tự động fallback lấy giá vốn từ lô hàng gần nhất nếu giá vốn trong bảng giá chưa cấu hình.
+- Triển khai cột hành động và Modal chi tiết phiếu nhập kho tại tab "Phiếu nhập kho" trong `InventoryPage.tsx` để xem chi tiết danh sách sản phẩm đã nhập.
+
 ### 🔲 Còn lại: P4-6, P4-7, P4-8, P4-9, P4-10
 
 **Bước tiếp theo gợi ý**: P4-6 (Excel export kế toán VN) → P4-7 (2FA + Audit log) → P4-10 (Onboarding + docs)
