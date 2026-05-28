@@ -86,7 +86,7 @@ interface ReceiptVerificationState {
 export default function GoodsReceiptFormPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
   
   const poIdParam = searchParams.get('po_id')
 
@@ -330,7 +330,8 @@ export default function GoodsReceiptFormPage() {
     }
 
     fetchPODetails()
-  }, [selectedPOId, receiptMode, selectedWarehouseId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPOId, receiptMode])
 
   // Reset lines when mode changes
   useEffect(() => {
@@ -491,8 +492,9 @@ export default function GoodsReceiptFormPage() {
       return
     }
 
-    if (!profile?.id) {
-      setAlertMsg({ type: 'error', text: 'Không xác định được tài khoản người dùng đăng nhập.' })
+    const receivedById = profile?.id ?? user?.id
+    if (!receivedById) {
+      setAlertMsg({ type: 'error', text: 'Không xác định được tài khoản người dùng đăng nhập. Vui lòng đăng xuất và đăng nhập lại.' })
       return
     }
 
@@ -525,16 +527,21 @@ export default function GoodsReceiptFormPage() {
       const targetWarehouse = verifiedItems[0].warehouseId || selectedWarehouseId || warehouses[0]?.id
 
       // 1. Insert into goods_receipts
+      // po_id: chỉ truyền khi là PO mode và selectedPOId là UUID thực (không phải dummyId)
+      const realPoId = receiptMode === 'po' && selectedPOId && !selectedPOId.startsWith('direct-')
+        ? selectedPOId
+        : null
+
       const { data: gr, error: grErr } = await supabase
         .from('goods_receipts')
         .insert([{
           receipt_code: receiptCode,
-          po_id: receiptMode === 'po' ? selectedPOId : null,
+          po_id: realPoId,
           supplier_id: supplierId,
           warehouse_id: targetWarehouse,
           receipt_date: receiptDate,
           total_amount: totalAmount,
-          received_by: profile.id,
+          received_by: receivedById,
           notes: receiptMode === 'po' 
             ? `Nhập kho từ PO: ${selectedPO!.po_code}. ${notes}` 
             : `Nhập kho trực tiếp không cần PO. ${notes}`
@@ -542,7 +549,13 @@ export default function GoodsReceiptFormPage() {
         .select()
         .single()
 
-      if (grErr) throw grErr
+      if (grErr) {
+        console.error('[GoodsReceipt] INSERT goods_receipts error:', grErr)
+        if (grErr.code === '42501' || grErr.message?.includes('row-level security')) {
+          throw new Error('Bạn không có quyền nhập kho. Vui lòng liên hệ quản trị viên để được cấp quyền warehouse_keeper hoặc branch_manager.')
+        }
+        throw grErr
+      }
 
       // 2. Insert into goods_receipt_lines
       // Database trigger trg_receipt_lines_create_lot handles stock_lots / stock_movements creation
