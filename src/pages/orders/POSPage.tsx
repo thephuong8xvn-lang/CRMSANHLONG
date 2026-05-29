@@ -993,6 +993,16 @@ export default function POSPage() {
         throw confirmErr
       }
 
+      // Store sale is completed immediately at the counter (no shipping needed)
+      const { error: completeErr } = await supabase
+        .from('orders')
+        .update({
+          status: 'completed'
+        })
+        .eq('id', orderData.id)
+
+      if (completeErr) throw completeErr
+
       if (paymentMethod !== 'credit') {
         const { error: payErr } = await supabase
           .from('order_payments')

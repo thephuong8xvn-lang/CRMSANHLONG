@@ -457,15 +457,24 @@ export default function OrderDetailPage() {
   const renderStepper = () => {
     if (!order) return null
     const current = order.status
-    const steps = [
-      { code: 'draft', label: 'Nháp', icon: Clock },
-      { code: 'confirmed', label: 'Xác nhận', icon: CheckCircle2 },
-      { code: 'shipping', label: 'Giao hàng', icon: Clock },
-      { code: 'delivered', label: 'Đã giao', icon: CheckCircle2 },
-      { code: 'completed', label: 'Hoàn tất', icon: CheckCircle2 }
-    ]
+    const isStoreSale = order.delivery_address === 'Giao trực tiếp tại quầy POS'
+    const steps = isStoreSale
+      ? [
+          { code: 'confirmed', label: 'Xác nhận', icon: CheckCircle2 },
+          { code: 'completed', label: 'Hoàn tất', icon: CheckCircle2 }
+        ]
+      : [
+          { code: 'draft', label: 'Nháp', icon: Clock },
+          { code: 'confirmed', label: 'Xác nhận', icon: CheckCircle2 },
+          { code: 'shipping', label: 'Giao hàng', icon: Clock },
+          { code: 'delivered', label: 'Đã giao', icon: CheckCircle2 },
+          { code: 'completed', label: 'Hoàn tất', icon: CheckCircle2 }
+        ]
 
-    const currentIndex = steps.findIndex(s => s.code === current)
+    let currentIndex = steps.findIndex(s => s.code === current)
+    if (currentIndex === -1 && isStoreSale) {
+      currentIndex = 0
+    }
 
     return (
       <section className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
@@ -579,17 +588,28 @@ export default function OrderDetailPage() {
             )}
 
             {order.status === 'confirmed' && (
-              <button
-                disabled={submitting}
-                onClick={() => updateOrderStatus('shipping')}
-                className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
-              >
-                <Clock size={16} />
-                Bắt đầu giao hàng
-              </button>
+              order.delivery_address === 'Giao trực tiếp tại quầy POS' ? (
+                <button
+                  disabled={submitting}
+                  onClick={() => updateOrderStatus('completed')}
+                  className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
+                >
+                  <CheckCircle2 size={16} />
+                  Hoàn tất đơn hàng
+                </button>
+              ) : (
+                <button
+                  disabled={submitting}
+                  onClick={() => updateOrderStatus('shipping')}
+                  className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
+                >
+                  <Clock size={16} />
+                  Bắt đầu giao hàng
+                </button>
+              )
             )}
 
-            {order.status === 'shipping' && (
+            {order.status === 'shipping' && order.delivery_address !== 'Giao trực tiếp tại quầy POS' && (
               <button
                 disabled={submitting}
                 onClick={() => updateOrderStatus('delivered')}
@@ -600,7 +620,7 @@ export default function OrderDetailPage() {
               </button>
             )}
 
-            {(order.status === 'delivered' || order.status === 'paid') && (
+            {(order.status === 'delivered' || order.status === 'paid') && order.delivery_address !== 'Giao trực tiếp tại quầy POS' && (
               <button
                 disabled={submitting}
                 onClick={() => updateOrderStatus('completed')}

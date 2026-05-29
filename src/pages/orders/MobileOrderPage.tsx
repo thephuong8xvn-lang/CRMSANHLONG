@@ -221,7 +221,7 @@ export default function MobileOrderPage() {
       const orderInsert = {
         order_code: orderCode,
         customer_id: selectedCustomerId,
-        status: 'confirmed',
+        status: 'draft',
         payment_status: paymentMethod === 'credit' ? 'unpaid' : 'paid',
         payment_method: paymentMethod,
         owner_user_id: profile.id,
@@ -257,7 +257,25 @@ export default function MobileOrderPage() {
         .from('order_lines')
         .insert(linesInsert)
 
-      if (linesErr) throw linesErr
+      if (linesErr) {
+        await supabase.from('orders').delete().eq('id', orderData.id)
+        throw linesErr
+      }
+
+      // Update status to 'confirmed' to trigger FEFO allocation
+      const { error: confirmErr } = await supabase
+        .from('orders')
+        .update({
+          status: 'confirmed',
+          confirmed_by: profile.id
+        })
+        .eq('id', orderData.id)
+
+      if (confirmErr) {
+        await supabase.from('order_lines').delete().eq('order_id', orderData.id)
+        await supabase.from('orders').delete().eq('id', orderData.id)
+        throw confirmErr
+      }
 
       if (paymentMethod !== 'credit') {
         await supabase.from('order_payments').insert([{
