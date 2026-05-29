@@ -154,7 +154,7 @@ export default function CustomerMapPage() {
   const routeMarkersGroupRef = useRef<any>(null)
 
   // Unique list of provinces and districts from customers
-  const provinces = Array.from(new Set(customers.map(c => c.province).filter(Boolean)))
+  const provinces = Array.from(new Set(customers.map(c => c.province).filter(Boolean))) as string[]
   const districts = Array.from(
     new Set(
       customers
@@ -162,7 +162,7 @@ export default function CustomerMapPage() {
         .map(c => c.district)
         .filter(Boolean)
     )
-  )
+  ) as string[]
 
   // 1. Dynamic script loader for Leaflet
   useEffect(() => {
@@ -222,7 +222,7 @@ export default function CustomerMapPage() {
 
         // Associate farms with customers
         const mappedCustomers = (custsData || []).map((c: any) => {
-          const associatedFarms = (farmsData || []).filter(f => f.customer_id === c.id)
+          const associatedFarms = (farmsData || []).filter((f: any) => f.customer_id === c.id)
           return {
             ...c,
             farms: associatedFarms
@@ -249,7 +249,7 @@ export default function CustomerMapPage() {
 
         // Map latest location to profiles
         const mappedEmployees = (profilesData || []).map((p: any) => {
-          const latestLoc = (locsData || []).find(l => l.employee_id === p.id)
+          const latestLoc = (locsData || []).find((l: any) => l.employee_id === p.id)
           return {
             ...p,
             last_lat: latestLoc?.gps_lat,
@@ -380,6 +380,16 @@ export default function CustomerMapPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leafletLoaded, hasCenterPoint])
+
+  // Invalidate map size when sidebar toggles (to correct Leaflet grey/partial rendering)
+  useEffect(() => {
+    if (mapInstanceRef.current) {
+      const timer = setTimeout(() => {
+        mapInstanceRef.current?.invalidateSize()
+      }, 350)
+      return () => clearTimeout(timer)
+    }
+  }, [sidebarOpen])
 
   // Filter items logic
   const filteredCustomers = useMemo(() => {
@@ -696,12 +706,15 @@ export default function CustomerMapPage() {
     })
 
     // Expose window functions for Popups
-    window.setMapCenterPoint = (lat: number, lng: number, label: string, type: 'mylocation' | 'customer' | 'farm' | 'default', targetId: string) => {
+    ;(window as any).setMapCenterPoint = (lat: number, lng: number, label: string, type: 'mylocation' | 'customer' | 'farm' | 'default', targetId: string) => {
       setCenterPoint({ lat, lng, label, type, id: targetId })
       map.setView([lat, lng], 13)
+      if (window.innerWidth < 768) {
+        setSidebarOpen(false)
+      }
     }
 
-    window.viewEmployeeRoute = (employeeId: string) => {
+    ;(window as any).viewEmployeeRoute = (employeeId: string) => {
       setSelectedTrackingRepId(employeeId)
       // Open sidebar and trigger search
       setSidebarOpen(true)
@@ -759,6 +772,9 @@ export default function CustomerMapPage() {
         id: focusParam
       })
       map.setView([targetLat, targetLng], 14)
+      if (window.innerWidth < 768) {
+        setSidebarOpen(false)
+      }
     }
   }, [leafletLoaded, focusParam, customers])
 
@@ -847,6 +863,10 @@ export default function CustomerMapPage() {
       setLocationHistory(data || [])
       if (!data || data.length === 0) {
         alert('Không tìm thấy dữ liệu di chuyển nào của nhân viên trong ngày được chọn.')
+      } else {
+        if (window.innerWidth < 768) {
+          setSidebarOpen(false)
+        }
       }
     } catch (err) {
       console.error('Error fetching route history:', err)
@@ -880,6 +900,9 @@ export default function CustomerMapPage() {
           // Center map to reported location
           if (mapInstanceRef.current) {
             mapInstanceRef.current.setView([lat, lng], 13)
+            if (window.innerWidth < 768) {
+              setSidebarOpen(false)
+            }
           }
           setMyLocation([lat, lng])
           setCenterPoint({
@@ -1102,6 +1125,9 @@ export default function CustomerMapPage() {
                                     type: 'farm',
                                     id: f.id
                                   })
+                                  if (window.innerWidth < 768) {
+                                    setSidebarOpen(false)
+                                  }
                                 } else {
                                   alert('Chuồng trại này chưa được thiết lập tọa độ GPS!')
                                 }
@@ -1154,6 +1180,9 @@ export default function CustomerMapPage() {
                             })
                             if (mapInstanceRef.current) {
                               mapInstanceRef.current.setView(myLocation, 12)
+                              if (window.innerWidth < 768) {
+                                setSidebarOpen(false)
+                              }
                             }
                           }}
                           className="w-full py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-tiny font-bold transition-all flex items-center justify-center gap-1"
@@ -1232,6 +1261,9 @@ export default function CustomerMapPage() {
                                   onClick={() => {
                                     if (mapInstanceRef.current) {
                                       mapInstanceRef.current.setView([item.lat, item.lng], 13)
+                                      if (window.innerWidth < 768) {
+                                        setSidebarOpen(false)
+                                      }
                                     }
                                   }}
                                   className="text-tiny text-blue-500 hover:underline font-semibold mt-1"
@@ -1308,7 +1340,7 @@ export default function CustomerMapPage() {
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-tiny shrink-0">
                                   {emp.avatar_url ? (
-                                    <img src={emp.avatar_url} class="w-full h-full rounded-full object-cover" />
+                                    <img src={emp.avatar_url} className="w-full h-full rounded-full object-cover" />
                                   ) : emp.full_name.charAt(0).toUpperCase()}
                                 </div>
                                 <div className="min-w-0">
@@ -1423,7 +1455,7 @@ export default function CustomerMapPage() {
         {/* ── Toggle Sidebar Button ── */}
         <button
           onClick={() => setSidebarOpen(prev => !prev)}
-          className="absolute left-[0] md:left-auto md:relative top-4 z-40 bg-gray-0 border border-gray-100 w-8 h-10 shadow-lg rounded-r-lg flex items-center justify-center text-gray-400 hover:text-gray-600"
+          className={`absolute ${sidebarOpen ? 'left-[calc(100%-32px)]' : 'left-[0]'} md:left-auto md:relative top-4 z-40 bg-gray-0 border border-gray-100 w-8 h-10 shadow-lg rounded-r-lg flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all duration-300`}
           title={sidebarOpen ? 'Thu gọn bộ lọc' : 'Mở rộng bộ lọc'}
         >
           {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}

@@ -167,7 +167,7 @@ export default function SupplierDetailPage() {
         .select('id')
         .eq('supplier_id', id)
       
-      const receiptIds = receipts?.map(r => r.id) || []
+      const receiptIds = receipts?.map((r: { id: string }) => r.id) || []
       
       if (receiptIds.length > 0) {
         const { data: lines, error: linesError } = await supabase

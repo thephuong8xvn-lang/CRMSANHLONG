@@ -163,7 +163,7 @@ export default function ReportsHubPage() {
         .gte('created_at', startStr)
         .lte('created_at', endStr)
 
-      const totalRevenue = revenueData?.reduce((sum, o) => sum + Number(o.grand_total), 0) ?? 0
+      const totalRevenue = revenueData?.reduce((sum: number, o: { grand_total: unknown }) => sum + Number(o.grand_total), 0) ?? 0
 
       // Outstanding debts
       const { data: debtData } = await supabase
@@ -171,7 +171,7 @@ export default function ReportsHubPage() {
         .select('remaining_amount')
         .gt('remaining_amount', 0)
 
-      const totalDebt = debtData?.reduce((sum, d) => sum + Number(d.remaining_amount), 0) ?? 0
+      const totalDebt = debtData?.reduce((sum: number, d: { remaining_amount: unknown }) => sum + Number(d.remaining_amount), 0) ?? 0
 
       setSummaryRows([
         {

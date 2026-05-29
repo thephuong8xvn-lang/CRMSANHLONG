@@ -601,7 +601,7 @@ export default function GoodsReceiptFormPage() {
           .eq('po_id', selectedPOId)
 
         if (updatedLines) {
-          const isFullyReceived = updatedLines.every(line => line.received_qty >= line.quantity)
+          const isFullyReceived = updatedLines.every((line: { quantity: number; received_qty: number }) => line.received_qty >= line.quantity)
           const newPOStatus = isFullyReceived ? 'received' : 'partially_received'
 
           const { error: poStatusErr } = await supabase

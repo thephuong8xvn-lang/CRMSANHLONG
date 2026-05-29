@@ -139,7 +139,7 @@ export default function MobileOrderPage() {
           .eq('is_settled', false)
 
         if (data) {
-          const total = data.reduce((sum, item) => sum + Number(item.amount), 0)
+          const total = data.reduce((sum: number, item: { amount: unknown }) => sum + Number(item.amount), 0)
           setCustomerDebt(total)
         }
       } catch (err) {

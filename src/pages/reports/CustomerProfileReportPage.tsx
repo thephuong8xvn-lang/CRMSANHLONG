@@ -117,16 +117,16 @@ export default function CustomerProfileReportPage() {
         .select('current_quantity')
         .eq('is_active', true)
       
-      const totalHeads = herdsData?.reduce((sum, h) => sum + (h.current_quantity || 0), 0) || 0
+      const totalHeads = herdsData?.reduce((sum: number, h: { current_quantity: number | null }) => sum + (h.current_quantity || 0), 0) || 0
 
       // Calculate KPI aggregates
       const totalCustomers = customers.length
-      const activeCustomers = customers.filter(c => c.lifecycle_stage === 'active').length
-      const atRiskCustomers = customers.filter(c => c.lifecycle_stage === 'at_risk' || c.lifecycle_stage === 'churned').length
+      const activeCustomers = customers.filter((c: any) => c.lifecycle_stage === 'active').length
+      const atRiskCustomers = customers.filter((c: any) => c.lifecycle_stage === 'at_risk' || c.lifecycle_stage === 'churned').length
 
       // 3. Lifecycle stage chart data
       const lifecycleCounts: Record<string, number> = { lead: 0, active: 0, at_risk: 0, churned: 0 }
-      customers.forEach(c => {
+      customers.forEach((c: any) => {
         const stage = c.lifecycle_stage || 'lead'
         lifecycleCounts[stage] = (lifecycleCounts[stage] || 0) + 1
       })
@@ -137,7 +137,7 @@ export default function CustomerProfileReportPage() {
 
       // 4. Classifications chart data
       const classCounts: Record<string, number> = {}
-      customers.forEach(c => {
+      customers.forEach((c: any) => {
         const cls = c.customer_type || 'other'
         classCounts[cls] = (classCounts[cls] || 0) + 1
       })
@@ -148,7 +148,7 @@ export default function CustomerProfileReportPage() {
 
       // 5. Value Tier chart data
       const tierCounts: Record<string, number> = { normal: 0, vip: 0, high_potential: 0 }
-      customers.forEach(c => {
+      customers.forEach((c: any) => {
         const tier = c.value_tier || 'normal'
         tierCounts[tier] = (tierCounts[tier] || 0) + 1
       })
@@ -159,7 +159,7 @@ export default function CustomerProfileReportPage() {
       ]
 
       // 6. Aggregate Spenders & Customers List
-      const spenders = customers.map(c => {
+      const spenders = customers.map((c: any) => {
         let spend = 0
         if (c.orders) {
           c.orders.forEach((o: any) => {
@@ -214,7 +214,7 @@ export default function CustomerProfileReportPage() {
 
       // Fetch dynamic list of owner/reps
       const repsMap = new Map()
-      customers.forEach(c => {
+      customers.forEach((c: any) => {
         if (c.owner) {
           repsMap.set(c.owner.id, c.owner.full_name)
         }

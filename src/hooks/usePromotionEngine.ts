@@ -6,6 +6,7 @@ export interface Promotion {
   id: string
   code: string
   name: string
+  description?: string
   discount_type: 'percent' | 'fixed_amount' | 'buy_x_get_y' | 'combo_price' | 'tiered_quantity' | 'customer_tier_discount'
   discount_value: number
   min_order_amount: number
@@ -107,7 +108,7 @@ export function usePromotionEngine() {
       .select('*')
       .eq('is_active', true)
       .order('priority', { ascending: false })
-      .then(({ data }) => { if (data) setPromotions(data as Promotion[]) })
+      .then(({ data }: { data: Promotion[] | null }) => { if (data) setPromotions(data as Promotion[]) })
   }, [])
 
   const applyBestPromotion = useCallback(

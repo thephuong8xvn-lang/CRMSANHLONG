@@ -105,7 +105,7 @@ export default function HerdProjectFormPage() {
           setVets(profiles)
           // Set default vet as current user if possible
           const { data: { user } } = await supabase.auth.getUser()
-          if (user && profiles.some(p => p.id === user.id)) {
+          if (user && (profiles as Profile[]).some((p: Profile) => p.id === user.id)) {
             setSelectedVetId(user.id)
           } else if (profiles.length > 0) {
             setSelectedVetId(profiles[0].id)
@@ -192,7 +192,7 @@ export default function HerdProjectFormPage() {
           setDefaultSteps(data)
           // Estimate end date: start_date + max(days_offset) + 7 days
           if (data.length > 0) {
-            const maxOffset = Math.max(...data.map(d => d.days_offset))
+            const maxOffset = Math.max(...(data as DefaultStep[]).map((d: DefaultStep) => d.days_offset))
             const start = new Date(startDate)
             const end = new Date(start.getTime() + (maxOffset + 7) * 24 * 60 * 60 * 1000)
             setEndDate(end.toISOString().split('T')[0])

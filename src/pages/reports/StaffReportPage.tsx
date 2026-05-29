@@ -89,8 +89,8 @@ export default function StaffReportPage() {
 
       // Collect unique user_ids
       const userIds = [...new Set([
-        ...list.map(o => o.created_by).filter(Boolean),
-        ...(prevOrders ?? []).map(o => o.created_by).filter(Boolean),
+        ...list.map((o: { created_by: string | null }) => o.created_by).filter(Boolean),
+        ...(prevOrders ?? []).map((o: { created_by: string | null }) => o.created_by).filter(Boolean),
       ])]
 
       // Fetch profiles

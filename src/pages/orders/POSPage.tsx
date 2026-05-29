@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { useNavigate } from 'react-router-dom'
 import {
   Search,
   Plus,
@@ -155,6 +156,19 @@ const parseNumberString = (val: string) => {
 
 export default function POSPage() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
+
+  // Redirect mobile viewports to mobile-specific wizard
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        navigate('/orders/mobile', { replace: true })
+      }
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [navigate])
 
   // Base Data States
   const [customers, setCustomers] = useState<Customer[]>([])

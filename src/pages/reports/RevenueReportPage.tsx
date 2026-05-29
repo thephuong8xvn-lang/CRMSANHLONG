@@ -94,7 +94,7 @@ export default function RevenueReportPage() {
         .order('created_at', { ascending: true })
 
       const list = orders ?? []
-      const totalRevenue = list.reduce((s, o) => s + Number(o.grand_total), 0)
+      const totalRevenue = list.reduce((s: number, o: { grand_total: unknown }) => s + Number(o.grand_total), 0)
       const orderCount = list.length
       const aov = orderCount > 0 ? totalRevenue / orderCount : 0
 
@@ -107,7 +107,7 @@ export default function RevenueReportPage() {
         .gte('created_at', prevFrom + 'T00:00:00')
         .lte('created_at', prevTo + 'T23:59:59')
 
-      const prevRevenue = (prevOrders ?? []).reduce((s, o) => s + Number(o.grand_total), 0)
+      const prevRevenue = (prevOrders ?? []).reduce((s: number, o: { grand_total: unknown }) => s + Number(o.grand_total), 0)
       const prevOrderCount = (prevOrders ?? []).length
 
       setKpi({ totalRevenue, prevRevenue, orderCount, prevOrderCount, aov, margin: 32 })
