@@ -612,9 +612,9 @@ export default function HerdProjectDetailPage() {
         if (data) priceItems = data
       }
 
-      // 3. Create the Order
+      // 3. Create the Order lines
       let subtotal = 0
-      const orderLinesToInsert = productIds.map((prodId, idx) => {
+      const orderLinesToInsert = productIds.map((prodId) => {
         const item = aggregatedProducts[prodId]
         const priceRecord = priceItems.find(p => p.product_id === prodId)
         const price = priceRecord ? Number(priceRecord.selling_price) : 100000 // default fallback
@@ -623,15 +623,9 @@ export default function HerdProjectDetailPage() {
 
         return {
           product_id: prodId,
-          quantity_in_unit: item.quantity,
-          quantity_base: item.quantity,
-          unit_price_listed: price,
-          unit_price_final: price,
-          line_subtotal: total,
-          line_promotion_amount: 0,
-          line_total: total,
-          product_snapshot: { name: item.name, unit: item.unit, packaging: 'Default' },
-          line_number: idx + 1
+          quantity: item.quantity,
+          unit_price: price,
+          discount: 0
         }
       })
 
@@ -641,12 +635,12 @@ export default function HerdProjectDetailPage() {
 
       const noteText = `Đơn hàng được sinh tự động từ Dự án chăn nuôi [ID: ${project.id}] [Mã: ${project.project_code}]. Bao gồm tiền thuốc và phí dịch vụ thú y.`
 
-      // Insert Order
+      // Insert Order as draft first so lines are present when confirming (required for FEFO trigger)
       const { data: newOrder, error: orderErr } = await supabase
         .from('orders')
         .insert({
           customer_id: project.customer_id,
-          status: 'confirmed',
+          status: 'draft',
           payment_status: 'unpaid',
           payment_method: 'bank_transfer',
           owner_user_id: project.owner?.id || currentUser?.id,
@@ -656,8 +650,6 @@ export default function HerdProjectDetailPage() {
           grand_total: grandTotal,
           paid_amount: 0,
           notes: noteText,
-          confirmed_at: new Date().toISOString(),
-          confirmed_by: currentUser?.id,
           delivery_address: 'Giao tại trại'
         })
         .select()
@@ -675,7 +667,26 @@ export default function HerdProjectDetailPage() {
           .from('order_lines')
           .insert(linesToInsert)
         
-        if (linesErr) throw linesErr
+        if (linesErr) {
+          await supabase.from('orders').delete().eq('id', newOrder.id)
+          throw linesErr
+        }
+
+        // Confirm the order to trigger FEFO allocation
+        const { error: confirmErr } = await supabase
+          .from('orders')
+          .update({
+            status: 'confirmed',
+            confirmed_at: new Date().toISOString(),
+            confirmed_by: currentUser?.id
+          })
+          .eq('id', newOrder.id)
+
+        if (confirmErr) {
+          await supabase.from('order_lines').delete().eq('order_id', newOrder.id)
+          await supabase.from('orders').delete().eq('id', newOrder.id)
+          throw confirmErr
+        }
 
         // Save order ID to outcomes table under cost/revenue fields
         if (outcome) {

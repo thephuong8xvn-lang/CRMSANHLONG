@@ -83,12 +83,31 @@ export default function PrintPreviewPage() {
 
         if (orderErr) throw orderErr;
 
-        const { data: lines, error: linesErr } = await supabase
+        // Join with products table because product_snapshot is not a column
+        const { data: linesData, error: linesErr } = await supabase
           .from('order_lines')
-          .select('id, product_id, quantity, unit_price, discount, line_total, product_snapshot')
+          .select(`
+            id,
+            product_id,
+            quantity,
+            unit_price,
+            discount,
+            line_total,
+            products:products(name, sku, unit)
+          `)
           .eq('order_id', id);
 
         if (linesErr) throw linesErr;
+
+        // Map relation products back to product_snapshot for backward compatibility
+        const lines = (linesData || []).map((line: any) => ({
+          ...line,
+          product_snapshot: line.products ? {
+            name: line.products.name,
+            sku: line.products.sku,
+            unit: line.products.unit
+          } : undefined
+        }));
 
         // Resolve allocations to find lot details (Batch/Lot number and Expiry Date)
         const allocationsMap: Record<string, { lot_number: string; expiry_date: string }> = {};

@@ -104,6 +104,21 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Đồng bộ định dạng giá trị trống thành `-` hoặc `N/A` tránh vỡ layout.
   - Hoàn thiện luồng thanh toán giao dịch ghi nhận Supabase cho đa hóa đơn một cách độc lập và ổn định.
 
+#### 🔍 Kiểm tra toàn diện 2026-05-29 — Order Module Bugfix
+
+**Đã phát hiện & fix (migration `20260529000016_fix_orders_rls_and_relations.sql`):**
+- [x] **Bug 1 (RLS)**: Bảng `order_lines` thiếu chính sách SELECT cho vai trò `branch_manager` → Quản lý chi nhánh xem chi tiết đơn hàng của chi nhánh mình bị trắng thông tin sản phẩm (0 sản phẩm). Đã thêm chính sách `order_lines_select_branch_mgr`.
+- [x] **Bug 2 (RLS)**: Bảng `order_payments` thiếu chính sách SELECT cho vai trò `branch_manager` → Quản lý chi nhánh không xem được lịch sử thanh toán của đơn hàng. Đã thêm chính sách `order_payments_select_branch_mgr`.
+- [x] **Bug 3 (RLS)**: Bảng `order_line_allocations` thiếu chính sách SELECT cho vai trò `branch_manager` → Quản lý chi nhánh không tải được thông tin phân bổ số lô và hạn sử dụng khi in hóa đơn. Đã thêm chính sách `allocations_select_branch_mgr`.
+- [x] **Bug 4 (Database Schema)**: Bảng `order_line_allocations` thiếu khóa ngoại liên kết cột `lot_id` sang bảng `stock_lots(id)` → PostgREST không thể tự nhận diện mối quan hệ để thực hiện query JOIN. Đã thêm khóa ngoại `fk_order_line_allocations_lot`.
+
+**Đã fix Frontend (`OrderDetailPage.tsx` & `PrintPreviewPage.tsx`):**
+- [x] **Bug 5**: Frontend query trường không tồn tại `product_snapshot` trực tiếp từ bảng `order_lines` (gây ra lỗi 400 Bad Request và lỗi toast "Không thể tải thông tin đơn hàng"). Đã sửa thành JOIN sang bảng `products` (`products:products(name, sku, unit)`) và map ngược lại thuộc tính `product_snapshot` ở client để đảm bảo tính tương thích và hiển thị đúng tên, mã SKU, ĐVT thực tế của sản phẩm trên trang chi tiết đơn hàng và trang in.
+
+**Đã fix logic sinh đơn hàng tự động từ dự án chăn nuôi (`HerdProjectDetailPage.tsx`):**
+- [x] **Bug 6**: Luồng sinh đơn hàng tự động (`handleAutoGenerateOrder`) insert các trường không tồn tại vào bảng `order_lines` (như `quantity_in_unit`, `product_snapshot`, ...) dẫn tới lỗi SQL. Đã sửa lại map cột chuẩn xác (`product_id`, `quantity`, `unit_price`, `discount`).
+- [x] **Bug 7**: Đơn hàng được insert trực tiếp dưới trạng thái `status: 'confirmed'` trước khi insert `order_lines` → trigger FEFO allocation chạy khi chưa có dòng sản phẩm nào. Đã sửa thành insert dưới dạng `status: 'draft'` trước, sau đó insert `order_lines`, rồi mới cập nhật status sang `confirmed` (giống POSPage).
+
 ---
 
 ### 6. Phân Hệ Sổ Quỹ & Duyệt Chi (Cashbook & Disbursements) - `[HOÀN THÀNH]`
