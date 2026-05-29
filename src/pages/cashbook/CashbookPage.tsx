@@ -198,6 +198,8 @@ export default function CashbookPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false)
+  const [isFormOpen, setIsFormOpen] = useState(false)
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -1067,8 +1069,33 @@ export default function CashbookPage() {
                   </button>
                 </div>
 
+                {/* Mobile Filter Row */}
+                <div className="flex gap-2 lg:hidden w-full">
+                  <div className="relative flex-1 flex items-center bg-gray-25 border border-gray-100 rounded-lg focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-105 h-10 transition-all">
+                    <Search className="text-gray-400 ml-2.5 mr-1.5" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Tìm nội dung..."
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      className="bg-transparent border-none text-body-md w-full placeholder-gray-400 p-0 focus:outline-none focus:ring-0 text-gray-600"
+                    />
+                    {searchTerm && (
+                      <button onClick={() => setSearchTerm('')} className="p-1 text-gray-400 hover:bg-gray-50 rounded-full mr-1">
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setIsFilterSheetOpen(true)}
+                    className="h-10 px-4 border border-gray-200 text-gray-600 rounded-lg font-semibold text-body-md flex items-center gap-1.5 bg-white hover:bg-gray-50 shadow-sm"
+                  >
+                    <span>Lọc</span>
+                  </button>
+                </div>
+
                 {/* Filter Controls Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 pt-2">
+                <div className="hidden lg:grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 pt-2">
                   {/* Search box */}
                   <div className="relative flex items-center bg-gray-25 border border-gray-100 rounded-lg focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100 transition-all h-9">
                     <Search className="text-gray-400 ml-2.5 mr-1.5" size={14} />
@@ -1341,13 +1368,31 @@ export default function CashbookPage() {
             </div>
 
             {/* Action Panel / Creation Form (4 cols) */}
-            <div className="col-span-12 lg:col-span-4 space-y-6">
+            <div className={`col-span-12 lg:col-span-4 space-y-6 ${
+              isFormOpen 
+                ? 'fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end lg:relative lg:inset-auto lg:bg-transparent lg:backdrop-filter-none lg:z-auto lg:flex-none p-0 md:p-0' 
+                : 'hidden lg:block'
+            }`}>
               
               {/* Add Transaction Form Card */}
-              <div className="bg-white border border-gray-150 rounded-xl p-5 shadow-sm flex flex-col">
-                <div className="flex items-center gap-2 mb-5 border-b border-gray-50 pb-3">
-                  <Wallet className="text-blue-500" size={18} />
-                  <h3 className="text-body-lg font-bold text-gray-700">Tạo phiếu thu chi mới</h3>
+              <div className={`bg-white border border-gray-150 rounded-xl p-5 shadow-sm flex flex-col ${
+                isFormOpen 
+                  ? 'w-full rounded-t-2xl rounded-b-none max-h-[90vh] overflow-y-auto lg:rounded-xl lg:max-h-none lg:overflow-y-visible' 
+                  : ''
+              }`}>
+                <div className="flex items-center justify-between gap-2 mb-5 border-b border-gray-50 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="text-blue-500" size={18} />
+                    <h3 className="text-body-lg font-bold text-gray-700">Tạo phiếu thu chi mới</h3>
+                  </div>
+                  {/* Close button for mobile */}
+                  <button 
+                    type="button"
+                    onClick={() => setIsFormOpen(false)}
+                    className="lg:hidden p-1 hover:bg-gray-100 rounded-full text-gray-400"
+                  >
+                    <X size={20} />
+                  </button>
                 </div>
 
                 {/* Form type switcher */}
@@ -1612,7 +1657,7 @@ export default function CashbookPage() {
               </div>
 
               {/* Informative Rule Box */}
-              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 flex gap-3 text-tiny text-gray-600 leading-relaxed">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 lg:flex hidden gap-3 text-tiny text-gray-600 leading-relaxed">
                 <ShieldCheck size={18} className="shrink-0 text-blue-500" />
                 <div>
                   <h4 className="font-bold text-gray-700 mb-1">Quy trình kiểm soát quỹ</h4>
@@ -1791,75 +1836,146 @@ export default function CashbookPage() {
             </div>
 
             {/* List of Sessions */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Phiên ca</th>
-                    <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Người mở</th>
-                    <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Mở lúc</th>
-                    <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Số dư mở ca</th>
-                    <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Số dư đóng ca (hệ thống)</th>
-                    <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Thực tế (variance)</th>
-                    <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {sessions.length === 0 ? (
+            <div>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
-                      <td colSpan={7} className="px-5 py-8 text-center text-tiny text-gray-400 italic">
-                        Không có dữ liệu phiên ca nào.
-                      </td>
+                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Phiên ca</th>
+                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Người mở</th>
+                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Mở lúc</th>
+                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Số dư mở ca</th>
+                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Số dư đóng ca (hệ thống)</th>
+                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Thực tế (variance)</th>
+                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Trạng thái</th>
                     </tr>
-                  ) : (
-                    sessions.map(s => {
-                      const isClosed = s.status === 'closed'
-                      const varVal = s.variance || 0
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {sessions.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-5 py-8 text-center text-tiny text-gray-400 italic">
+                          Không có dữ liệu phiên ca nào.
+                        </td>
+                      </tr>
+                    ) : (
+                      sessions.map(s => {
+                        const isClosed = s.status === 'closed'
+                        const varVal = s.variance || 0
 
-                      return (
-                        <tr key={s.id} className="hover:bg-gray-25 transition-colors text-tiny">
-                          <td className="px-5 py-3 font-bold font-mono text-gray-600">
-                            {s.id.slice(0, 8).toUpperCase()}
-                          </td>
-                          <td className="px-5 py-3 font-semibold text-gray-700">
-                            {s.cashier?.full_name || 'N/A'}
-                          </td>
-                          <td className="px-5 py-3 text-gray-500 font-mono">
-                            {new Date(s.opened_at).toLocaleString('vi-VN')}
-                          </td>
-                          <td className="px-5 py-3 text-right font-semibold text-gray-700 tabular-nums">
-                            {formatCurrency(s.opening_balance)}
-                          </td>
-                          <td className="px-5 py-3 text-right font-semibold text-gray-700 tabular-nums">
-                            {isClosed ? formatCurrency(s.closing_balance || 0) : '—'}
-                          </td>
-                          <td className="px-5 py-3 text-right font-semibold tabular-nums">
-                            {isClosed ? (
-                              <div className="flex flex-col items-end">
-                                <span>{formatCurrency(s.cash_actual || 0)}</span>
-                                <span className={`text-[10px] ${varVal > 0 ? 'text-emerald-600' : varVal < 0 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
-                                  ({varVal > 0 ? '+' : ''}{formatCurrency(varVal)})
-                                </span>
-                              </div>
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="px-5 py-3">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                              s.status === 'open' 
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                                : 'bg-gray-50 text-gray-500 border-gray-150'
-                            }`}>
-                              {s.status === 'open' ? 'Đang mở' : 'Đã đóng'}
+                        return (
+                          <tr key={s.id} className="hover:bg-gray-25 transition-colors text-tiny">
+                            <td className="px-5 py-3 font-bold font-mono text-gray-600">
+                              {s.id.slice(0, 8).toUpperCase()}
+                            </td>
+                            <td className="px-5 py-3 font-semibold text-gray-700">
+                              {s.cashier?.full_name || 'N/A'}
+                            </td>
+                            <td className="px-5 py-3 text-gray-500 font-mono">
+                              {new Date(s.opened_at).toLocaleString('vi-VN')}
+                            </td>
+                            <td className="px-5 py-3 text-right font-semibold text-gray-700 tabular-nums">
+                              {formatCurrency(s.opening_balance)}
+                            </td>
+                            <td className="px-5 py-3 text-right font-semibold text-gray-700 tabular-nums">
+                              {isClosed ? formatCurrency(s.closing_balance || 0) : '—'}
+                            </td>
+                            <td className="px-5 py-3 text-right font-semibold tabular-nums">
+                              {isClosed ? (
+                                <div className="flex flex-col items-end">
+                                  <span>{formatCurrency(s.cash_actual || 0)}</span>
+                                  <span className={`text-[10px] ${varVal > 0 ? 'text-emerald-600' : varVal < 0 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
+                                    ({varVal > 0 ? '+' : ''}{formatCurrency(varVal)})
+                                  </span>
+                                </div>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                            <td className="px-5 py-3">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                                s.status === 'open' 
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                                  : 'bg-gray-50 text-gray-500 border-gray-150'
+                              }`}>
+                                {s.status === 'open' ? 'Đang mở' : 'Đã đóng'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card List View */}
+              <div className="block md:hidden space-y-4">
+                {sessions.length === 0 ? (
+                  <div className="p-8 text-center text-tiny text-gray-400 italic">
+                    Không có dữ liệu phiên ca nào.
+                  </div>
+                ) : (
+                  sessions.map(s => {
+                    const isClosed = s.status === 'closed'
+                    const varVal = s.variance || 0
+                    return (
+                      <div
+                        key={s.id}
+                        className="p-4 bg-white rounded-xl border border-gray-150 shadow-sm space-y-3"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-tiny font-bold font-mono text-gray-600 block">
+                              Ca #{s.id.slice(0, 8).toUpperCase()}
                             </span>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+                            <span className="text-[10px] text-gray-400 block mt-0.5 font-mono">
+                              Mở: {new Date(s.opened_at).toLocaleString('vi-VN')}
+                            </span>
+                          </div>
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                            s.status === 'open' 
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                              : 'bg-gray-50 text-gray-500 border-gray-150'
+                          }`}>
+                            {s.status === 'open' ? 'Đang mở' : 'Đã đóng'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 text-tiny pt-2 border-t border-gray-50">
+                          <div>
+                            <span className="text-gray-400 block">Người mở</span>
+                            <span className="font-semibold text-gray-700">{s.cashier?.full_name || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block text-right">Đầu ca</span>
+                            <span className="font-semibold text-gray-700 block text-right tabular-nums">{formatCurrency(s.opening_balance)}</span>
+                          </div>
+                        </div>
+
+                        {isClosed && (
+                          <div className="grid grid-cols-2 gap-3 text-tiny pt-2 border-t border-gray-50">
+                            <div>
+                              <span className="text-gray-400 block">Cuối ca (Hệ thống)</span>
+                              <span className="font-semibold text-gray-700 tabular-nums">{formatCurrency(s.closing_balance || 0)}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-right">Thực tế</span>
+                              <span className="font-semibold text-gray-700 block text-right tabular-nums">{formatCurrency(s.cash_actual || 0)}</span>
+                            </div>
+                            <div className="col-span-2 flex justify-between items-center pt-1 border-t border-gray-50 mt-1">
+                              <span className="text-gray-400">Chênh lệch:</span>
+                              <span className={`font-bold tabular-nums ${varVal > 0 ? 'text-emerald-600' : varVal < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                {varVal > 0 ? '+' : ''}{formatCurrency(varVal)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2152,6 +2268,143 @@ export default function CashbookPage() {
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+        )}
+        {/* Mobile FAB Button */}
+        {activeTab === 'overview' && !isFormOpen && (
+          <button
+            onClick={() => setIsFormOpen(true)}
+            className="lg:hidden fixed bottom-6 right-6 z-40 w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
+            title="Tạo phiếu thu chi mới"
+          >
+            <Wallet size={24} />
+          </button>
+        )}
+
+        {/* Mobile Filter Sheet */}
+        {isFilterSheetOpen && (
+          <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end lg:hidden">
+            <div className="bg-white w-full rounded-t-2xl max-h-[85vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom duration-250 flex flex-col">
+              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25 sticky top-0 z-10">
+                <h3 className="text-body-lg font-bold text-gray-700">Bộ lọc tìm kiếm</h3>
+                <button onClick={() => setIsFilterSheetOpen(false)} className="p-1 hover:bg-gray-100 rounded-full text-gray-400"><X size={20} /></button>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                {/* Flow type */}
+                <div className="space-y-1">
+                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Loại giao dịch</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-650 focus:border-blue-500 focus:outline-none"
+                    value={flowFilter}
+                    onChange={e => setFlowFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả thu/chi</option>
+                    <option value="inflow">Inflow (Thu tiền)</option>
+                    <option value="outflow">Outflow (Chi tiền)</option>
+                    <option value="internal_transfer">Chuyển quỹ nội bộ</option>
+                  </select>
+                </div>
+
+                {/* Category Filter */}
+                <div className="space-y-1">
+                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Hạng mục</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-655 focus:border-blue-500 focus:outline-none text-gray-600"
+                    value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả hạng mục</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.flow_type === 'inflow' ? 'Thu' : 'Chi'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Status */}
+                <div className="space-y-1">
+                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Trạng thái</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-655 focus:border-blue-500 focus:outline-none text-gray-600"
+                    value={statusFilter}
+                    onChange={e => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả trạng thái</option>
+                    <option value="approved">Đã duyệt (Approved)</option>
+                    <option value="pending_approval">Chờ duyệt (Pending)</option>
+                    <option value="draft">Bản nháp (Draft)</option>
+                    <option value="cancelled">Đã hủy (Cancelled)</option>
+                  </select>
+                </div>
+
+                {/* Accounts */}
+                <div className="space-y-1">
+                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Tài khoản/Quỹ</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-655 focus:border-blue-500 focus:outline-none text-gray-600"
+                    value={accountFilter}
+                    onChange={e => setAccountFilter(e.target.value)}
+                  >
+                    <option value="all">Tất cả tài khoản/quỹ</option>
+                    <optgroup label="Quỹ tiền mặt chi nhánh">
+                      {cashFunds.map(f => (
+                        <option key={f.id} value={`fund_${f.id}`}>{f.name}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Tài khoản Ngân hàng">
+                      {bankAccounts.map(b => (
+                        <option key={b.id} value={`bank_${b.id}`}>{b.bank_name} ({b.account_no.slice(-4)})</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Date filters */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Từ ngày</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={e => setStartDate(e.target.value)}
+                      className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-655 focus:border-blue-500 focus:outline-none text-gray-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Đến ngày</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={e => setEndDate(e.target.value)}
+                      className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-655 focus:border-blue-500 focus:outline-none text-gray-600"
+                    />
+                  </div>
+                </div>
+
+                {/* Action button */}
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => {
+                      setFlowFilter('all')
+                      setStatusFilter('all')
+                      setCategoryFilter('all')
+                      setAccountFilter('all')
+                      setStartDate('')
+                      setEndDate('')
+                    }}
+                    className="flex-1 h-11 border border-gray-250 text-gray-650 font-semibold rounded-lg hover:bg-gray-50 active:scale-95 transition-all text-body-md"
+                  >
+                    Xóa bộ lọc
+                  </button>
+                  <button
+                    onClick={() => setIsFilterSheetOpen(false)}
+                    className="flex-1 h-11 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-all text-body-md"
+                  >
+                    Áp dụng
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

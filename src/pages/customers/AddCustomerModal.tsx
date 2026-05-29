@@ -29,6 +29,8 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
   const [creditLimit, setCreditLimit] = useState(0)
   const [ownerUserId, setOwnerUserId] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [gpsLat, setGpsLat] = useState('')
+  const [gpsLng, setGpsLng] = useState('')
 
   // Additional detail states (Business/Personal)
   const [taxCode, setTaxCode] = useState('')
@@ -110,6 +112,8 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
     setProvince('')
     setDistrict('')
     setAddress('')
+    setGpsLat('')
+    setGpsLng('')
     setCreditLimit(0)
     setTaxCode('')
     setLegalName('')
@@ -162,6 +166,8 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
           province: province || null,
           district: district || null,
           address: address.trim() || null,
+          gps_lat: gpsLat ? Number(gpsLat) : null,
+          gps_lng: gpsLng ? Number(gpsLng) : null,
           owner_user_id: ownerUserId,
           is_active: isActive
         })
@@ -402,6 +408,32 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
                     placeholder="Số nhà, thôn, đường/phố..."
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Row: Tọa độ GPS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1.5">
+                  <label className="text-body-md font-semibold text-gray-600">Vĩ độ (GPS Latitude)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    className="w-full h-10 px-3 bg-white border border-gray-100 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-body-md text-body-md"
+                    placeholder="VD: 14.3725"
+                    value={gpsLat}
+                    onChange={(e) => setGpsLat(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-body-md font-semibold text-gray-600">Kinh độ (GPS Longitude)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    className="w-full h-10 px-3 bg-white border border-gray-100 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-body-md text-body-md"
+                    placeholder="VD: 108.9958"
+                    value={gpsLng}
+                    onChange={(e) => setGpsLng(e.target.value)}
                   />
                 </div>
               </div>

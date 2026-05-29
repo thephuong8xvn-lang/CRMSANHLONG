@@ -1291,7 +1291,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Data Table */}
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 {loading ? (
                   <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredLots.length === 0 ? (
@@ -1368,6 +1368,73 @@ export default function InventoryPage() {
                   </table>
                 )}
               </div>
+
+              {/* Mobile Card List for Stock Lots */}
+              {!loading && (
+                <div className="block md:hidden space-y-4">
+                  {filteredLots.map((lot) => {
+                    const isExpired = lot.expiry_date && new Date(lot.expiry_date).getTime() < new Date().getTime()
+                    const isNearExpiry = lot.expiry_date && !isExpired && 
+                      (new Date(lot.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) <= 30
+
+                    return (
+                      <div key={lot.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <p className="font-bold text-gray-805 text-body-md text-gray-800">{lot.product.name}</p>
+                            <span className="text-gray-400 font-mono text-tiny">SKU: {lot.product.sku}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
+                            lot.status === 'active' 
+                              ? 'bg-emerald-50 text-emerald-700' 
+                              : lot.status === 'quarantine' 
+                              ? 'bg-amber-50 text-amber-700' 
+                              : 'bg-red-50 text-red-750'
+                          }`}>
+                            {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : 'Khóa'}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
+                          <div>
+                            <span className="block text-gray-400 font-medium">Kho hàng</span>
+                            <span className="font-semibold text-gray-700">{lot.warehouse.name}</span>
+                          </div>
+                          <div>
+                            <span className="block text-gray-400 font-medium font-mono">Số lô</span>
+                            <span className="font-bold text-blue-500 font-mono">{lot.lot_number}</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1">
+                          <div>
+                            <span className="block text-gray-400 font-medium">Hạn sử dụng</span>
+                            <span className="font-semibold text-gray-700">
+                              {lot.expiry_date ? (
+                                <span className="inline-flex flex-col">
+                                  <span>{new Date(lot.expiry_date).toLocaleDateString('vi-VN')}</span>
+                                  {isExpired && <span className="text-[10px] text-red-500 font-bold uppercase font-mono">Hết hạn</span>}
+                                  {isNearExpiry && <span className="text-[10px] text-amber-500 font-bold uppercase font-mono">Cận date</span>}
+                                </span>
+                              ) : (
+                                <span className="text-gray-300">Không có HSD</span>
+                              )}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-gray-400 font-medium">Tồn khả dụng / Giá vốn</span>
+                            <span className="block">
+                              <strong className="text-body-md text-gray-800">{lot.quantity_on_hand}</strong>
+                              <span className="text-gray-300 mx-1">|</span>
+                              <span className="font-semibold text-gray-700">{lot.cost_price.toLocaleString('vi-VN')} ₫</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -1401,7 +1468,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Data Table */}
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 {loading ? (
                   <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredPOs.length === 0 ? (
@@ -1466,6 +1533,63 @@ export default function InventoryPage() {
                   </table>
                 )}
               </div>
+
+              {/* Mobile Card List for Purchase Orders */}
+              {!loading && (
+                <div className="block md:hidden space-y-4">
+                  {filteredPOs.map((po) => (
+                    <div key={po.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="font-mono font-bold text-blue-500 block">{po.po_code}</span>
+                          <p className="font-semibold text-gray-800 text-tiny mt-1">{po.supplier.name}</p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
+                          po.status === 'received' 
+                            ? 'bg-emerald-50 text-emerald-700' 
+                            : po.status === 'partially_received' 
+                            ? 'bg-amber-50 text-amber-700' 
+                            : po.status === 'sent' 
+                            ? 'bg-blue-50 text-blue-700' 
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {po.status === 'draft' ? 'Nháp' :
+                           po.status === 'sent' ? 'Chờ nhận' :
+                           po.status === 'partially_received' ? 'Nhập một phần' : 'Đã nhận đủ'}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
+                        <div>
+                          <span className="block text-gray-400 font-medium">Kho nhận dự kiến</span>
+                          <span className="font-semibold text-gray-750">{po.warehouse.name}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400 font-medium">Dự kiến giao</span>
+                          <span className="font-semibold text-gray-750">
+                            {po.expected_date ? new Date(po.expected_date).toLocaleDateString('vi-VN') : '---'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+                        <div>
+                          <span className="text-gray-450 text-[11px] block">Tổng giá trị</span>
+                          <strong className="text-body-md text-gray-800 font-bold tabular-nums">{po.grand_total.toLocaleString('vi-VN')} ₫</strong>
+                        </div>
+                        {(po.status === 'sent' || po.status === 'partially_received') && (
+                          <button
+                            onClick={() => navigate(`/goods-receipts/new?po_id=${po.id}`)}
+                            className="h-9 px-4 bg-blue-55 bg-blue-50 text-blue-600 rounded-lg font-bold text-tiny hover:bg-blue-100 flex items-center justify-center transition-all"
+                          >
+                            Nhập kho
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1485,7 +1609,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Data Table */}
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 {loading ? (
                   <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={8} /></tbody></table>
                 ) : filteredReceipts.length === 0 ? (
@@ -1544,6 +1668,62 @@ export default function InventoryPage() {
                   </table>
                 )}
               </div>
+
+              {/* Mobile Card List for Goods Receipts */}
+              {!loading && (
+                <div className="block md:hidden space-y-4">
+                  {filteredReceipts.map((gr) => (
+                    <div key={gr.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="font-mono font-bold text-blue-500 block">{gr.receipt_code}</span>
+                          <p className="font-semibold text-gray-800 text-tiny mt-1">{gr.supplier.name}</p>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            setSelectedReceipt(gr)
+                            await fetchReceiptDetails(gr.id)
+                            setShowReceiptDetailModal(true)
+                          }}
+                          className="h-8 px-3 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg font-semibold text-tiny hover:bg-gray-100 flex items-center justify-center transition-all shrink-0"
+                        >
+                          Chi tiết
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
+                        <div>
+                          <span className="block text-gray-400 font-medium">Kho nhận</span>
+                          <span className="font-semibold text-gray-750">{gr.warehouse.name}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400 font-medium">Ngày nhận</span>
+                          <span className="font-semibold text-gray-750">
+                            {new Date(gr.receipt_date).toLocaleDateString('vi-VN')}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1">
+                        <div>
+                          <span className="block text-gray-400 font-medium">Người nhận</span>
+                          <span className="font-semibold text-gray-750">{gr.profile?.full_name || 'Hệ thống'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400 font-medium">Tổng giá trị</span>
+                          <strong className="text-body-md text-gray-800 font-bold tabular-nums">{gr.total_amount.toLocaleString('vi-VN')} ₫</strong>
+                        </div>
+                      </div>
+
+                      {gr.notes && (
+                        <div className="text-[11px] text-gray-400 italic bg-gray-50 p-2 rounded-lg border border-gray-100">
+                          Ghi chú: {gr.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1572,7 +1752,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Data Table */}
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 {loading ? (
                   <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredTransfers.length === 0 ? (
@@ -1637,6 +1817,60 @@ export default function InventoryPage() {
                   </table>
                 )}
               </div>
+
+              {/* Mobile Card List for Stock Transfers */}
+              {!loading && (
+                <div className="block md:hidden space-y-4">
+                  {filteredTransfers.map((t) => (
+                    <div key={t.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="font-mono font-bold text-blue-500 block">{t.transfer_code}</span>
+                          <span className="text-[11px] text-gray-400 mt-1 block">Ngày chuyển: {new Date(t.transfer_date).toLocaleDateString('vi-VN')}</span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
+                          t.status === 'received' 
+                            ? 'bg-emerald-50 text-emerald-700' 
+                            : t.status === 'in_transit' 
+                            ? 'bg-amber-50 text-amber-700' 
+                            : t.status === 'draft' 
+                            ? 'bg-blue-50 text-blue-700' 
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {t.status === 'draft' ? 'Nháp' :
+                           t.status === 'in_transit' ? 'Đang chuyển' :
+                           t.status === 'received' ? 'Đã nhận' : 'Đã hủy'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
+                        <div>
+                          <span className="block text-gray-400 font-medium">Kho nguồn</span>
+                          <span className="font-semibold text-gray-750">{t.from_wh?.name || 'Kho nguồn'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400 font-medium">Kho đích</span>
+                          <span className="font-semibold text-gray-755 text-gray-700">{t.to_wh?.name || 'Kho đích'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+                        <span className="text-[11px] text-gray-400 font-vietnamese">Người tạo: <strong className="text-gray-600 font-semibold">{t.creator?.full_name || 'Hệ thống'}</strong></span>
+                        <button
+                          onClick={async () => {
+                            setSelectedTransfer(t)
+                            await fetchTransferDetails(t.id)
+                            setShowTransferDetailModal(true)
+                          }}
+                          className="h-8 px-4 bg-gray-50 text-gray-605 text-gray-600 border border-gray-200 rounded-lg font-semibold text-tiny hover:bg-gray-100 flex items-center justify-center transition-all"
+                        >
+                          Chi tiết
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1665,7 +1899,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Data Table */}
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 {loading ? (
                   <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
                 ) : filteredReturns.length === 0 ? (
@@ -1732,6 +1966,65 @@ export default function InventoryPage() {
                   </table>
                 )}
               </div>
+
+              {/* Mobile Card List for Purchase Returns */}
+              {!loading && (
+                <div className="block md:hidden space-y-4">
+                  {filteredReturns.map((r) => (
+                    <div key={r.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="font-mono font-bold text-blue-500 block">{r.return_code}</span>
+                          <p className="font-semibold text-gray-800 text-tiny mt-1">{r.supplier?.name || 'Nhà cung cấp'}</p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
+                          r.status === 'completed' 
+                            ? 'bg-emerald-50 text-emerald-700' 
+                            : r.status === 'confirmed'
+                            ? 'bg-blue-50 text-blue-700'
+                            : r.status === 'draft' 
+                            ? 'bg-gray-100 text-gray-500' 
+                            : 'bg-red-50 text-red-750'
+                        }`}>
+                          {r.status === 'draft' ? 'Nháp' :
+                           r.status === 'confirmed' ? 'Đã duyệt' :
+                           r.status === 'completed' ? 'Hoàn tất' : 'Đã hủy'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
+                        <div>
+                          <span className="block text-gray-400 font-medium">Kho trả hàng</span>
+                          <span className="font-semibold text-gray-750">{r.warehouse?.name || 'Kho xuất'}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400 font-medium">Hoàn tiền</span>
+                          <span className="font-semibold text-gray-750 capitalize text-gray-700">
+                            {r.refund_method === 'cash_refund' ? 'Tiền mặt' : r.refund_method === 'credit_note' ? 'Trừ công nợ' : 'Cấn trừ PO'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center pt-2 border-t border-gray-50">
+                        <div>
+                          <span className="text-gray-455 text-[11px] block">Tổng giá trị</span>
+                          <strong className="text-body-md text-gray-850 font-bold tabular-nums">{Number(r.total_amount || 0).toLocaleString('vi-VN')} ₫</strong>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            setSelectedReturn(r)
+                            await fetchReturnDetails(r.id)
+                            setShowReturnDetailModal(true)
+                          }}
+                          className="h-8 px-4 bg-gray-50 text-gray-650 text-gray-600 border border-gray-200 rounded-lg font-semibold text-tiny hover:bg-gray-100 flex items-center justify-center transition-all"
+                        >
+                          Chi tiết
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1754,7 +2047,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Data Table */}
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 {invSettings.length === 0 ? (
                   <div className="p-12 text-center text-gray-400 border border-dashed border-gray-150 rounded-xl">
                     <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-2" />
@@ -1808,6 +2101,55 @@ export default function InventoryPage() {
                   </table>
                 )}
               </div>
+
+              {/* Mobile Card List for Safety Stock Settings */}
+              {invSettings.length > 0 && (
+                <div className="block md:hidden space-y-4">
+                  {invSettings.map((set) => (
+                    <div key={set.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <p className="font-bold text-gray-800 text-body-md">{set.product.name}</p>
+                          <span className="text-gray-400 font-mono text-tiny">SKU: {set.product.sku}</span>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => handleOpenEditSetting(set)}
+                            className="h-8 px-2.5 bg-blue-50 text-blue-600 rounded-lg font-semibold text-tiny hover:bg-blue-100 flex items-center justify-center transition-all"
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSetting(set.id)}
+                            className="h-8 px-2.5 bg-red-50 text-red-650 rounded-lg font-semibold text-tiny hover:bg-red-100 flex items-center justify-center transition-all"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-tiny text-gray-500 pt-2 border-t border-gray-50">
+                        <div>
+                          <span className="block text-gray-450 text-[10px]">Tồn tối thiểu</span>
+                          <strong className="text-body-md text-red-500 font-bold">{set.min_stock_level}</strong>
+                        </div>
+                        <div>
+                          <span className="block text-gray-450 text-[10px]">Tồn tối đa</span>
+                          <strong className="text-body-md text-gray-700 font-bold">{set.max_stock_level || '---'}</strong>
+                        </div>
+                        <div>
+                          <span className="block text-gray-450 text-[10px]">Điểm đặt lại</span>
+                          <span className="text-body-md text-gray-500 font-semibold">{set.reorder_point || '---'}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-tiny text-gray-500 pt-1">
+                        Kho áp dụng: <strong className="text-gray-700 font-semibold">{set.warehouse.name}</strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1946,10 +2288,10 @@ export default function InventoryPage() {
 
       {/* Modal Tạo yêu cầu chuyển kho */}
       {showTransferModal && (
-        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-3xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-xl">
+            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
                 <h3 className="text-body-lg font-bold text-gray-800">Tạo yêu cầu chuyển kho</h3>
                 <p className="text-tiny text-gray-400">Luân chuyển hàng hóa giữa các kho/chi nhánh</p>
@@ -2014,7 +2356,7 @@ export default function InventoryPage() {
                       <select
                         value={modalLotId}
                         onChange={(e) => setModalLotId(e.target.value)}
-                        className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                        className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
                       >
                         <option value="">-- Chọn lô hàng còn tồn --</option>
                         {lotsForTransfer.map((l: any) => {
@@ -2037,7 +2379,7 @@ export default function InventoryPage() {
                           min="1"
                           value={modalQty}
                           onChange={(e) => setModalQty(Math.max(1, parseInt(e.target.value) || 0))}
-                          className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                          className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                         />
                         <button
                           type="button"
@@ -2068,7 +2410,7 @@ export default function InventoryPage() {
                             setModalLotId('');
                             setModalQty(1);
                           }}
-                          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 rounded-lg text-body-md transition-colors"
+                          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 h-11 rounded-lg text-body-md transition-colors"
                         >
                           Thêm
                         </button>
@@ -2164,10 +2506,10 @@ export default function InventoryPage() {
 
       {/* Modal Chi tiết chuyển kho */}
       {showTransferDetailModal && selectedTransfer && (
-        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-xl">
+            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
                 <h3 className="text-body-lg font-bold text-gray-800">Chi tiết yêu cầu chuyển kho</h3>
                 <p className="text-mono text-tiny text-blue-500 font-bold">{selectedTransfer.transfer_code}</p>
@@ -2318,10 +2660,10 @@ export default function InventoryPage() {
 
       {/* Modal Tạo phiếu trả hàng NCC */}
       {showReturnModal && (
-        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-3xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-xl">
+            <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
                 <h3 className="text-body-lg font-bold text-gray-800">Tạo phiếu xuất trả nhà cung cấp</h3>
                 <p className="text-tiny text-gray-400">Trả hàng cận date, lỗi hỏng hoặc do thu hồi của nhà cung cấp</p>
@@ -2436,7 +2778,7 @@ export default function InventoryPage() {
                           const lot = lotsForReturn.find((l: any) => l.id === val);
                           if (lot) setModalUnitPrice(lot.cost_price);
                         }}
-                        className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                        className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
                       >
                         <option value="">-- Chọn lô hàng còn tồn --</option>
                         {lotsForReturn.map((l: any) => {
@@ -2458,7 +2800,7 @@ export default function InventoryPage() {
                         min="1"
                         value={modalQty}
                         onChange={(e) => setModalQty(Math.max(1, parseInt(e.target.value) || 0))}
-                        className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                        className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                       />
                     </div>
 
@@ -2470,7 +2812,7 @@ export default function InventoryPage() {
                           min="0"
                           value={modalUnitPrice}
                           onChange={(e) => setModalUnitPrice(Math.max(0, parseInt(e.target.value) || 0))}
-                          className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                          className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                         />
                         <button
                           type="button"
@@ -2503,7 +2845,7 @@ export default function InventoryPage() {
                             setModalQty(1);
                             setModalUnitPrice(0);
                           }}
-                          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 rounded-lg text-body-md transition-colors"
+                          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 h-11 rounded-lg text-body-md transition-colors"
                         >
                           Thêm
                         </button>
@@ -2601,10 +2943,10 @@ export default function InventoryPage() {
 
       {/* Modal Chi tiết trả hàng NCC */}
       {showReturnDetailModal && selectedReturn && (
-        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-xl">
+            <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
                 <h3 className="text-body-lg font-bold text-gray-800">Chi tiết phiếu xuất trả NCC</h3>
                 <p className="text-mono text-tiny text-blue-500 font-bold">{selectedReturn.return_code}</p>
@@ -2749,10 +3091,10 @@ export default function InventoryPage() {
       )}
       {/* Modal Chi tiết phiếu nhập kho */}
       {showReceiptDetailModal && selectedReceipt && (
-        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-xl shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-3xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-xl">
+            <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
                 <h3 className="text-body-lg font-bold text-gray-800">Chi tiết phiếu nhập kho</h3>
                 <p className="text-mono text-tiny text-blue-500 font-bold">{selectedReceipt.receipt_code}</p>

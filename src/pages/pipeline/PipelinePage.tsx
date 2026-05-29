@@ -105,6 +105,7 @@ export default function PipelinePage() {
   const [searchTerm, setSearchTerm] = useState('')
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
+  const [activeMobileStageId, setActiveMobileStageId] = useState('')
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -146,7 +147,7 @@ export default function PipelinePage() {
       if (pipeData) {
         setPipelines(pipeData)
         // Set default pipeline
-        const def = pipeData.find(p => p.is_default) || pipeData[0]
+        const def = pipeData.find((p: any) => p.is_default) || pipeData[0]
         if (def) setSelectedPipelineId(def.id)
       }
 
@@ -187,7 +188,10 @@ export default function PipelinePage() {
         .order('sort_order', { ascending: true })
       if (data) {
         setStages(data)
-        if (data.length > 0) setAddStageId(data[0].id)
+        if (data.length > 0) {
+          setAddStageId(data[0].id)
+          setActiveMobileStageId(data[0].id)
+        }
       }
     } catch (err) {
       console.error(err)
@@ -311,7 +315,7 @@ export default function PipelinePage() {
     if (!text) return ''
     if (!search.trim()) return text
 
-    const regex = new RegExp(`(${search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi')
+    const regex = new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
     const parts = text.split(regex)
 
     return parts.map((part, i) =>
@@ -557,7 +561,7 @@ export default function PipelinePage() {
           </div>
           <div className="flex items-center gap-3 self-start sm:self-auto">
             {/* View Mode Toggle buttons */}
-            <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+            <div className="hidden sm:flex bg-gray-100 p-1 rounded-lg border border-gray-200">
               <button
                 type="button"
                 onClick={() => setViewMode('kanban')}
@@ -660,7 +664,7 @@ export default function PipelinePage() {
         </div>
 
         {/* Kanban Board Container */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4 custom-scrollbar">
+        <div className="hidden md:block flex-1 overflow-x-auto overflow-y-hidden pb-4 custom-scrollbar">
           {viewMode === 'list' ? (
             <div className="w-full bg-white border border-gray-150 rounded-xl overflow-hidden shadow-sm flex flex-col h-full">
               <div className="overflow-x-auto flex-1">
@@ -965,6 +969,153 @@ export default function PipelinePage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Mobile View: Scrollable tabs + single stage card list */}
+        <div className="block md:hidden flex-1 overflow-hidden flex flex-col min-h-0">
+          {/* Stage selector tabs */}
+          <div className="flex overflow-x-auto whitespace-nowrap gap-2 pb-3 border-b border-gray-100 no-scrollbar shrink-0">
+            {stages.map(stage => {
+              const stageOpps = filteredOpps.filter(o => o.stage_id === stage.id)
+              const isActive = activeMobileStageId === stage.id
+              return (
+                <button
+                  key={stage.id}
+                  type="button"
+                  onClick={() => setActiveMobileStageId(stage.id)}
+                  className={`px-4 py-2 rounded-full text-tiny font-bold border transition-all ${
+                    isActive
+                      ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-250 hover:bg-gray-50'
+                  }`}
+                >
+                  {stage.name} ({stageOpps.length})
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Cards list for active stage */}
+          <div className="flex-grow overflow-y-auto pt-4 space-y-4 min-h-0">
+            {loading ? (
+              <div className="h-40 flex flex-col items-center justify-center text-gray-400">
+                <div className="w-8 h-8 border-3 border-gray-105 border-t-blue-500 rounded-full animate-spin mb-2"></div>
+                <span>Đang tải...</span>
+              </div>
+            ) : (() => {
+              const activeStage = stages.find(s => s.id === activeMobileStageId)
+              if (!activeStage) {
+                return (
+                  <div className="text-gray-400 text-center py-8 italic">
+                    Chưa cấu hình giai đoạn cho pipeline này.
+                  </div>
+                )
+              }
+              
+              const stageOpps = filteredOpps.filter(o => o.stage_id === activeStage.id)
+              if (stageOpps.length === 0) {
+                return (
+                  <div className="h-40 border-2 border-dashed border-gray-250 rounded-xl flex items-center justify-center text-tiny text-gray-400 italic">
+                    Kéo cơ hội thả vào đây hoặc lùi/tiến giai đoạn từ các cột khác
+                  </div>
+                )
+              }
+              
+              return stageOpps.map(opp => {
+                const days = getDaysInStage(opp.updated_at)
+                const isStale = days > 7 && opp.status === 'open'
+                
+                return (
+                  <div
+                    key={opp.id}
+                    className="bg-white border-l-4 p-4 rounded-xl shadow-sm border border-gray-150 relative"
+                    style={{ borderLeftColor: activeStage.color_hex || '#e5e7eb' }}
+                  >
+                    {/* Header: Title and Options */}
+                    <div className="flex justify-between items-start gap-2 mb-1">
+                      <h4
+                        onClick={() => {
+                          setEditingOpp({ ...opp })
+                          setIsEditModalOpen(true)
+                        }}
+                        className="text-body-md font-bold text-gray-700 hover:text-blue-500 cursor-pointer"
+                      >
+                        {highlightText(opp.title, debouncedSearch)}
+                      </h4>
+                      
+                      {/* Touch-Friendly More Button: min size 44px */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingOpp({ ...opp })
+                          setIsEditModalOpen(true)
+                        }}
+                        className="w-11 h-11 -mr-2 -mt-2 flex items-center justify-center hover:bg-gray-50 text-gray-400 rounded-full shrink-0"
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+                    </div>
+
+                    {/* Code */}
+                    <p className="text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1 font-mono">
+                      {highlightText(opp.opp_code, debouncedSearch)}
+                    </p>
+
+                    {/* Customer and Value */}
+                    <p className="text-tiny text-gray-500 font-semibold truncate mb-2">
+                      {highlightText(opp.customers?.farm_name || 'Khách lẻ / Chưa liên kết', debouncedSearch)}
+                    </p>
+                    
+                    <p className="text-body-lg font-bold text-blue-500 mb-3 tabular-nums">
+                      {formatCurrency(opp.estimated_value)}
+                    </p>
+
+                    {/* Footer details */}
+                    <div className="flex flex-col gap-2 border-t border-gray-50 pt-2">
+                      <div className="flex justify-between items-center">
+                        <div className={`flex items-center gap-1 ${isStale ? 'text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 font-bold' : 'text-gray-400 font-medium'}`}>
+                          <Calendar size={12} />
+                          <span className="text-[11px] tabular-nums">
+                            {days} ngày {isStale && '• Trì trệ'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-gray-400 font-semibold truncate max-w-[85px]">{opp.owner?.full_name || 'Sales'}</span>
+                          <div className="w-5 h-5 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[9px] font-bold text-blue-500 uppercase">
+                            {opp.owner?.full_name?.charAt(0) || 'S'}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Touch-Friendly Move Actions: min size 44px */}
+                      {opp.status === 'open' && (
+                        <div className="flex justify-end gap-3 pt-2 mt-1 border-t border-gray-50">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleMoveStage(opp, 'left') }}
+                            disabled={stages.findIndex(s => s.id === opp.stage_id) === 0}
+                            className="w-11 h-11 flex items-center justify-center border border-gray-250 text-gray-500 hover:text-blue-500 hover:bg-gray-50 rounded-lg disabled:opacity-20 transition-all shrink-0"
+                            title="Lùi giai đoạn"
+                          >
+                            <ArrowLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleMoveStage(opp, 'right') }}
+                            disabled={stages.findIndex(s => s.id === opp.stage_id) === stages.length - 1}
+                            className="w-11 h-11 flex items-center justify-center border border-gray-250 text-gray-500 hover:text-blue-500 hover:bg-gray-50 rounded-lg disabled:opacity-20 transition-all shrink-0"
+                            title="Tiến giai đoạn"
+                          >
+                            <ArrowRight size={16} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            })()}
+          </div>
         </div>
 
         {/* Footer KPI Stats Widgets */}
@@ -1280,8 +1431,8 @@ export default function PipelinePage() {
 
         {/* MODAL 3: CLOSE WON/LOST POPUP ON DRAG DROP */}
         {isCloseModalOpen && closeTarget && (
-          <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-xl overflow-hidden shadow-2xl animate-in zoom-in duration-200">
+          <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-200">
               <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
                 <h3 className="text-body-lg font-bold text-gray-700 flex items-center gap-2">
                   {closeMode === 'won' ? (
@@ -1309,7 +1460,7 @@ export default function PipelinePage() {
                     <select
                       value={selectedLostReasonId}
                       onChange={e => setSelectedLostReasonId(e.target.value)}
-                      className="w-full h-10 px-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                      className="w-full h-11 px-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
                     >
                       {lostReasons.map(r => (
                         <option key={r.id} value={r.id}>{r.name}</option>
@@ -1330,17 +1481,19 @@ export default function PipelinePage() {
                 </div>
               </div>
 
-              <div className="p-6 bg-gray-25 border-t border-gray-100 flex justify-end gap-3">
+              <div className="p-6 bg-gray-25 border-t border-gray-100 flex justify-end gap-3 pb-8 sm:pb-6">
                 <button
+                  type="button"
                   onClick={() => { setIsCloseModalOpen(false); setCloseTarget(null) }}
-                  className="h-10 px-4 border border-gray-250 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
+                  className="h-11 px-5 border border-gray-250 text-gray-700 rounded-lg font-semibold hover:bg-gray-50"
                 >
                   Hủy
                 </button>
                 <button
+                  type="button"
                   onClick={handleConfirmClose}
                   disabled={submitting}
-                  className={`h-10 px-5 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-all ${
+                  className={`h-11 px-5 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-all ${
                     closeMode === 'won' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'
                   }`}
                 >

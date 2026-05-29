@@ -63,6 +63,7 @@ export default function CustomerListPage() {
   const [isAddModalOpen, setIsAddModalOpen]       = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   // Debounced search → tránh fire query mỗi keystroke
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
@@ -236,34 +237,46 @@ export default function CustomerListPage() {
               onClick={() => setIsAddModalOpen(true)}
               className="bg-blue-500 text-gray-0 px-5 h-11 rounded-lg font-semibold text-body-md flex items-center justify-center gap-2 hover:bg-blue-600 active:scale-95 transition-all shadow-sm"
             >
-              <Plus size={18} strokeWidth={2.5} />
-              Thêm khách hàng mới
+              <Plus size={16} />
+              Thêm khách hàng
             </button>
           </div>
         </div>
 
         {/* Filtering Bar */}
         <div className="bg-gray-0 p-6 rounded-xl border border-gray-100 flex flex-wrap items-end gap-4 shadow-sm">
-          <div className="flex-grow min-w-[280px]">
-            <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Tìm kiếm</label>
-            <div className="relative flex items-center bg-gray-25 rounded-lg border border-gray-100 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-150 transition-all">
-              <Search className="text-gray-400 ml-3 mr-2" size={16} strokeWidth={1.5} />
-              <input
-                className="bg-transparent border-none focus:ring-0 text-body-md w-full placeholder-gray-400 py-2 pl-0 pr-4 focus:outline-none"
-                placeholder="Mã, tên khách hàng..."
-                type="text"
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
-              />
-              {searchTerm && (
-                <button onClick={() => setSearchTerm('')} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-full mr-2">
-                  <X size={14} />
-                </button>
-              )}
+          <div className="flex-grow min-w-[280px] flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Tìm kiếm</label>
+              <div className="relative flex items-center bg-gray-25 rounded-lg border border-gray-100 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-150 transition-all">
+                <Search className="text-gray-400 ml-3 mr-2" size={16} strokeWidth={1.5} />
+                <input
+                  className="bg-transparent border-none focus:ring-0 text-body-md w-full placeholder-gray-400 py-2 pl-0 pr-4 focus:outline-none"
+                  placeholder="Mã, tên khách hàng..."
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
+                />
+                {searchTerm && (
+                  <button onClick={() => setSearchTerm('')} className="p-1.5 text-gray-400 hover:bg-gray-50 rounded-full mr-2">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
+            <button
+              onClick={() => setMobileFiltersOpen(true)}
+              className="flex md:hidden h-10 px-4 border border-gray-200 bg-white hover:bg-gray-50 rounded-lg text-body-md font-semibold text-gray-600 items-center justify-center gap-2 shadow-sm transition-all"
+            >
+              <Filter size={16} className="text-gray-400" />
+              <span>Lọc</span>
+              {(selectedType || selectedTier || selectedOwner || filterOverdueOnly) && (
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+              )}
+            </button>
           </div>
 
-          <div className="w-full sm:w-48">
+          <div className="hidden md:block w-full sm:w-48">
             <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Phân loại</label>
             <select
               className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
@@ -277,7 +290,7 @@ export default function CustomerListPage() {
             </select>
           </div>
 
-          <div className="w-full sm:w-40">
+          <div className="hidden md:block w-full sm:w-40">
             <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Hạng khách hàng</label>
             <select
               className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
@@ -291,7 +304,7 @@ export default function CustomerListPage() {
             </select>
           </div>
 
-          <div className="w-full sm:w-48">
+          <div className="hidden md:block w-full sm:w-48">
             <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Nhân viên phụ trách</label>
             <select
               className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
@@ -305,7 +318,7 @@ export default function CustomerListPage() {
             </select>
           </div>
 
-          <div className="flex items-center gap-3 h-10 pb-0.5 px-2 select-none">
+          <div className="hidden md:flex items-center gap-3 h-10 pb-0.5 px-2 select-none">
             <span className="text-body-md font-semibold text-gray-500">Nợ quá hạn</span>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -320,7 +333,7 @@ export default function CustomerListPage() {
 
           <button
             onClick={handleResetFilters}
-            className="h-10 px-4 border border-gray-100 text-gray-500 bg-gray-0 rounded-lg text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors w-full sm:w-auto"
+            className="h-10 px-4 border border-gray-100 text-gray-500 bg-gray-0 rounded-lg text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors w-full sm:w-auto hidden md:flex"
           >
             <Filter size={16} />
             Bỏ lọc
@@ -345,7 +358,8 @@ export default function CustomerListPage() {
               </button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="overflow-x-auto hidden md:block">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-25 border-b border-gray-100">
@@ -489,7 +503,124 @@ export default function CustomerListPage() {
                 </tbody>
               </table>
             </div>
-          )}
+
+            {/* Mobile Card List View */}
+            <div className="block md:hidden divide-y divide-gray-100">
+              {rows.map((customer) => {
+                const owner = repsById[customer.owner_user_id]
+                const primaryContact = customer.primary_contact
+                const totalDebt = Number(customer.total_debt || 0)
+                const isOverdue  = customer.is_overdue
+                const showDropdown = activeDropdown === customer.id
+
+                return (
+                  <div
+                    key={customer.id}
+                    className="p-4 hover:bg-gray-25/50 transition-colors cursor-pointer space-y-3"
+                    onClick={() => navigate(`/customers/${customer.id}`)}
+                  >
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-body-md text-blue-500 font-bold font-mono">
+                            {customer.code || 'Đang cấp...'}
+                          </span>
+                          {customer.value_tier === 'vip' && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700 font-semibold text-[10px]">
+                              VIP
+                            </span>
+                          )}
+                          {customer.value_tier === 'high_potential' && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 font-semibold text-[10px]">
+                              Tiềm năng
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="font-bold text-gray-800 leading-snug break-words mt-1">
+                          {customer.farm_name}
+                        </h4>
+                      </div>
+
+                      <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => setActiveDropdown(showDropdown ? null : customer.id)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+
+                        {showDropdown && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />
+                            <div className="absolute right-0 mt-1 w-36 bg-gray-0 border border-gray-100 rounded-lg shadow-lg py-1 z-20">
+                              <button
+                                onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}`) }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
+                              >
+                                <Eye size={14} /> Xem chi tiết
+                              </button>
+                              <button
+                                onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}?edit=true`) }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
+                              >
+                                <Edit2 size={14} /> Chỉnh sửa
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 text-tiny text-gray-400 font-medium">
+                      <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold inline-flex items-center gap-1 ${
+                        CUSTOMER_TYPE_COLORS[customer.customer_type] || CUSTOMER_TYPE_COLORS.other
+                      }`}>
+                        {classLabels[customer.customer_type] || customer.customer_type}
+                      </span>
+                      {primaryContact?.phone && (
+                        <a
+                          href={`tel:${primaryContact.phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 hover:bg-blue-100 animate-pulse"
+                        >
+                          Gọi: {maskData(formatPhone(primaryContact.phone), 'phone')}
+                        </a>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-50 text-tiny text-gray-500">
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Địa chỉ:</span>
+                        <span className="text-gray-700 font-semibold truncate block" title={[customer.district, customer.province].filter(Boolean).join(', ')}>
+                          {[customer.district, customer.province].filter(Boolean).join(', ') || 'Chưa định vị'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Phụ trách:</span>
+                        <span className="text-gray-700 font-semibold truncate block">
+                          {owner?.full_name || 'Hệ thống'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Lần mua cuối:</span>
+                        <span className="text-gray-705 font-semibold">{getLastPurchaseDate(customer)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Công nợ hiện tại:</span>
+                        <span className={`font-bold tabular-nums block ${
+                          isOverdue ? 'text-danger-500' : totalDebt > 0 ? 'text-gray-700' : 'text-gray-400'
+                        }`}>
+                          {totalDebt > 0 ? formatVND(totalDebt) : '0 ₫'}
+                          {isOverdue && <span className="text-[9px] font-normal text-danger-500 block"> (Quá hạn)</span>}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
 
           {/* Pagination Footer */}
           {!loading && totalItems > 0 && (
@@ -593,6 +724,95 @@ export default function CustomerListPage() {
           tiers={tiers}
           salesReps={salesReps as any}
         />
+
+        {/* Mobile Filter Bottom Sheet */}
+        {mobileFiltersOpen && (
+          <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end justify-center p-0">
+            <div className="bg-gray-0 w-full rounded-t-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-250 flex flex-col max-h-[85vh]">
+              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25 shrink-0">
+                <h3 className="text-body-lg font-semibold text-gray-700">Bộ lọc khách hàng</h3>
+                <button
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-all focus:outline-none"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div>
+                  <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Phân loại</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    value={selectedType}
+                    onChange={(e) => { setSelectedType(e.target.value); setCurrentPage(1) }}
+                  >
+                    <option value="">Tất cả phân loại</option>
+                    {classifications.filter(c => c.is_active).map((c) => (
+                      <option key={c.code} value={c.code}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Hạng khách hàng</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    value={selectedTier}
+                    onChange={(e) => { setSelectedTier(e.target.value); setCurrentPage(1) }}
+                  >
+                    <option value="">Tất cả hạng</option>
+                    {tiers.filter(t => t.is_active).map((t) => (
+                      <option key={t.code} value={t.code}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Nhân viên phụ trách</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    value={selectedOwner}
+                    onChange={(e) => { setSelectedOwner(e.target.value); setCurrentPage(1) }}
+                  >
+                    <option value="">Tất cả nhân viên</option>
+                    {salesReps.map((rep: any) => (
+                      <option key={rep.id} value={rep.id}>{rep.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-b border-gray-50 select-none">
+                  <span className="text-body-md font-semibold text-gray-600">Lọc nợ quá hạn</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      className="sr-only peer"
+                      type="checkbox"
+                      checked={filterOverdueOnly}
+                      onChange={(e) => { setFilterOverdueOnly(e.target.checked); setCurrentPage(1) }}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+                  </label>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => { handleResetFilters(); setMobileFiltersOpen(false); }}
+                    className="flex-1 h-10 border border-gray-200 text-gray-500 bg-gray-0 rounded-lg text-body-md font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+                  >
+                    <Filter size={16} />
+                    Đặt lại
+                  </button>
+                  <button
+                    onClick={() => setMobileFiltersOpen(false)}
+                    className="flex-1 h-10 bg-blue-500 text-white rounded-lg text-body-md font-semibold flex items-center justify-center hover:bg-blue-600 transition-colors"
+                  >
+                    Áp dụng
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   )

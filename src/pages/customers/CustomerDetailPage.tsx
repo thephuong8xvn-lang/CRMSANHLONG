@@ -110,6 +110,8 @@ interface Farm {
   area_sqm: number | null
   capacity_heads: number | null
   notes: string | null
+  gps_lat: number | null
+  gps_lng: number | null
 }
 
 interface Species {
@@ -347,6 +349,19 @@ export default function CustomerDetailPage() {
   const [farmArea, setFarmArea] = useState('')
   const [farmCapacity, setFarmCapacity] = useState('')
   const [farmNotes, setFarmNotes] = useState('')
+  const [farmLat, setFarmLat] = useState('')
+  const [farmLng, setFarmLng] = useState('')
+
+  // Edit Farm Form State
+  const [isEditFarmModalOpen, setIsEditFarmModalOpen] = useState(false)
+  const [editingFarm, setEditingFarm] = useState<Farm | null>(null)
+  const [editFarmNameVal, setEditFarmNameVal] = useState('')
+  const [editFarmAddressVal, setEditFarmAddressVal] = useState('')
+  const [editFarmAreaVal, setEditFarmAreaVal] = useState('')
+  const [editFarmCapacityVal, setEditFarmCapacityVal] = useState('')
+  const [editFarmNotesVal, setEditFarmNotesVal] = useState('')
+  const [editFarmLatVal, setEditFarmLatVal] = useState('')
+  const [editFarmLngVal, setEditFarmLngVal] = useState('')
 
   // Quick Add Herd Form State
   const [herdName, setHerdName] = useState('')
@@ -369,6 +384,8 @@ export default function CustomerDetailPage() {
   const [editDistrict, setEditDistrict] = useState('')
   const [editAddress, setEditAddress] = useState('')
   const [editIsActive, setEditIsActive] = useState(true)
+  const [editGpsLat, setEditGpsLat] = useState('')
+  const [editGpsLng, setEditGpsLng] = useState('')
   
   const [editTaxCode, setEditTaxCode] = useState('')
   const [editLegalName, setEditLegalName] = useState('')
@@ -408,10 +425,12 @@ export default function CustomerDetailPage() {
         setEditCreditLimit(Number(custData.credit_limit || 0))
         setEditPriceListId(custData.price_list_id || '')
         setEditOwnerId(custData.owner_user_id)
-        setEditProvince(custData.province || '')
+         setEditProvince(custData.province || '')
         setEditDistrict(custData.district || '')
         setEditAddress(custData.address || '')
         setEditIsActive(custData.is_active)
+        setEditGpsLat(custData.gps_lat ? String(custData.gps_lat) : '')
+        setEditGpsLng(custData.gps_lng ? String(custData.gps_lng) : '')
 
         if (custData.customer_business_info) {
           setEditTaxCode(custData.customer_business_info.tax_code || '')
@@ -1010,6 +1029,67 @@ export default function CustomerDetailPage() {
     }
   }
 
+  // Geolocation Helper
+  const handleGetBrowserLocation = (setLat: (val: string) => void, setLng: (val: string) => void) => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLat(String(position.coords.latitude.toFixed(7)))
+          setLng(String(position.coords.longitude.toFixed(7)))
+        },
+        (error) => {
+          console.error('Geolocation error:', error)
+          alert('Không thể lấy vị trí. Vui lòng cho phép quyền truy cập vị trí trên trình duyệt.')
+        }
+      )
+    } else {
+      alert('Trình duyệt của bạn không hỗ trợ định vị GPS.')
+    }
+  }
+
+  // Edit Farm Trigger
+  const openEditFarmModal = (farm: Farm) => {
+    setEditingFarm(farm)
+    setEditFarmNameVal(farm.name)
+    setEditFarmAddressVal(farm.address || '')
+    setEditFarmAreaVal(farm.area_sqm ? String(farm.area_sqm) : '')
+    setEditFarmCapacityVal(farm.capacity_heads ? String(farm.capacity_heads) : '')
+    setEditFarmNotesVal(farm.notes || '')
+    setEditFarmLatVal(farm.gps_lat ? String(farm.gps_lat) : '')
+    setEditFarmLngVal(farm.gps_lng ? String(farm.gps_lng) : '')
+    setIsEditFarmModalOpen(true)
+  }
+
+  // Edit Farm Submit Handler
+  const handleEditFarm = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingFarm || !editFarmNameVal.trim()) return
+
+    try {
+      const { error } = await supabase
+        .from('farms')
+        .update({
+          name: editFarmNameVal.trim(),
+          address: editFarmAddressVal.trim() || null,
+          area_sqm: editFarmAreaVal ? Number(editFarmAreaVal) : null,
+          capacity_heads: editFarmCapacityVal ? Number(editFarmCapacityVal) : null,
+          notes: editFarmNotesVal.trim() || null,
+          gps_lat: editFarmLatVal ? Number(editFarmLatVal) : null,
+          gps_lng: editFarmLngVal ? Number(editFarmLngVal) : null
+        })
+        .eq('id', editingFarm.id)
+
+      if (error) throw error
+
+      setIsEditFarmModalOpen(false)
+      setEditingFarm(null)
+      loadCustomerData()
+    } catch (err) {
+      console.error('Error updating farm:', err)
+      alert('Không thể cập nhật thông tin chuồng trại!')
+    }
+  }
+
   // Add Farm Handler
   const handleAddFarm = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1024,7 +1104,9 @@ export default function CustomerDetailPage() {
           address: farmAddress.trim() || null,
           area_sqm: farmArea ? Number(farmArea) : null,
           capacity_heads: farmCapacity ? Number(farmCapacity) : null,
-          notes: farmNotes.trim() || null
+          notes: farmNotes.trim() || null,
+          gps_lat: farmLat ? Number(farmLat) : null,
+          gps_lng: farmLng ? Number(farmLng) : null
         })
 
       if (error) throw error
@@ -1034,6 +1116,8 @@ export default function CustomerDetailPage() {
       setFarmArea('')
       setFarmCapacity('')
       setFarmNotes('')
+      setFarmLat('')
+      setFarmLng('')
       setIsFarmModalOpen(false)
 
       loadCustomerData()
@@ -1147,6 +1231,8 @@ export default function CustomerDetailPage() {
           province: editProvince || null,
           district: editDistrict || null,
           address: editAddress.trim() || null,
+          gps_lat: editGpsLat ? Number(editGpsLat) : null,
+          gps_lng: editGpsLng ? Number(editGpsLng) : null,
           is_active: editIsActive,
           updated_at: new Date().toISOString()
         })
@@ -1622,10 +1708,30 @@ export default function CustomerDetailPage() {
                                   </p>
                                 </div>
                               </div>
-                              <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-bold text-tiny">Đang hoạt động</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => openEditFarmModal(f)}
+                                  className="text-blue-500 hover:text-blue-600 p-1.5 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 font-semibold text-tiny"
+                                  title="Chỉnh sửa chuồng trại"
+                                >
+                                  <Edit size={13} />
+                                  Sửa
+                                </button>
+                                {f.gps_lat && f.gps_lng && (
+                                  <button
+                                    onClick={() => navigate(`/customers/map?focus=farm_${f.id}`)}
+                                    className="text-emerald-650 hover:text-emerald-700 p-1.5 rounded hover:bg-gray-50 transition-colors flex items-center gap-1 font-semibold text-tiny"
+                                    title="Xem trên bản đồ"
+                                  >
+                                    <MapPin size={13} />
+                                    Bản đồ
+                                  </button>
+                                )}
+                                <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-bold text-tiny">Đang hoạt động</span>
+                              </div>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                               <div className="p-4 rounded-lg bg-gray-25/50 border border-gray-100">
                                 <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Quy mô đàn thực tế</p>
                                 <p className="font-bold text-body-lg text-gray-700">{totalHeads} <span className="text-body-md font-normal text-gray-400">con</span></p>
@@ -1637,6 +1743,12 @@ export default function CustomerDetailPage() {
                               <div className="p-4 rounded-lg bg-gray-25/50 border border-gray-100">
                                 <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Diện tích trại</p>
                                 <p className="font-bold text-body-lg text-gray-700">{f.area_sqm || 'N/A'} <span className="text-body-md font-normal text-gray-400">m²</span></p>
+                              </div>
+                              <div className="p-4 rounded-lg bg-gray-25/50 border border-gray-100">
+                                <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Vị trí GPS</p>
+                                <p className="font-bold text-body-md text-gray-700 truncate">
+                                  {f.gps_lat && f.gps_lng ? `${f.gps_lat}, ${f.gps_lng}` : 'Chưa định vị'}
+                                </p>
                               </div>
                             </div>
 
@@ -2809,6 +2921,30 @@ export default function CustomerDetailPage() {
                   />
                 </div>
 
+                {/* GPS Coordinates */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-body-md font-semibold text-gray-600">Vĩ độ (GPS Latitude)</label>
+                    <input
+                      className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                      type="number"
+                      step="any"
+                      value={editGpsLat}
+                      onChange={(e) => setEditGpsLat(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-body-md font-semibold text-gray-600">Kinh độ (GPS Longitude)</label>
+                    <input
+                      className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                      type="number"
+                      step="any"
+                      value={editGpsLng}
+                      onChange={(e) => setEditGpsLng(e.target.value)}
+                    />
+                  </div>
+                </div>
+
                 {/* State checkbox */}
                 <div className="flex items-center gap-2">
                   <input
@@ -3070,6 +3206,41 @@ export default function CustomerDetailPage() {
                   />
                 </div>
               </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-body-md font-semibold text-gray-600">Vĩ độ (Latitude)</label>
+                    <button 
+                      type="button" 
+                      onClick={() => handleGetBrowserLocation(setFarmLat, setFarmLng)}
+                      className="text-[11px] text-blue-500 hover:underline font-semibold"
+                    >
+                      Lấy GPS máy
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    value={farmLat}
+                    onChange={(e) => setFarmLat(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    placeholder="VD: 14.3725"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-body-md font-semibold text-gray-600">Kinh độ (Longitude)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={farmLng}
+                    onChange={(e) => setFarmLng(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    placeholder="VD: 108.9958"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-body-md font-semibold text-gray-600">Ghi chú</label>
                 <textarea
@@ -3090,6 +3261,118 @@ export default function CustomerDetailPage() {
                 </button>
                 <button type="submit" className="px-5 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600">
                   Tạo trại
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3.5 EDIT FARM MODAL */}
+      {isEditFarmModalOpen && editingFarm && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-gray-0 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-250">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
+              <h3 className="text-body-lg font-bold text-gray-700">Chỉnh sửa chuồng trại</h3>
+              <button onClick={() => { setIsEditFarmModalOpen(false); setEditingFarm(null); }} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleEditFarm} className="p-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-body-md font-semibold text-gray-600">Tên chuồng trại *</label>
+                <input
+                  type="text"
+                  value={editFarmNameVal}
+                  onChange={(e) => setEditFarmNameVal(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-body-md font-semibold text-gray-600">Địa chỉ cụ thể</label>
+                <input
+                  type="text"
+                  value={editFarmAddressVal}
+                  onChange={(e) => setEditFarmAddressVal(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-body-md font-semibold text-gray-600">Diện tích (m²)</label>
+                  <input
+                    type="number"
+                    value={editFarmAreaVal}
+                    onChange={(e) => setEditFarmAreaVal(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-body-md font-semibold text-gray-600">Sức chứa (con)</label>
+                  <input
+                    type="number"
+                    value={editFarmCapacityVal}
+                    onChange={(e) => setEditFarmCapacityVal(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-body-md font-semibold text-gray-600">Vĩ độ (Latitude)</label>
+                    <button 
+                      type="button" 
+                      onClick={() => handleGetBrowserLocation(setEditFarmLatVal, setEditFarmLngVal)}
+                      className="text-[11px] text-blue-500 hover:underline font-semibold"
+                    >
+                      Lấy GPS máy
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editFarmLatVal}
+                    onChange={(e) => setEditFarmLatVal(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    placeholder="VD: 14.3725"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-body-md font-semibold text-gray-600">Kinh độ (Longitude)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editFarmLngVal}
+                    onChange={(e) => setEditFarmLngVal(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    placeholder="VD: 108.9958"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-body-md font-semibold text-gray-600">Ghi chú</label>
+                <textarea
+                  value={editFarmNotesVal}
+                  onChange={(e) => setEditFarmNotesVal(e.target.value)}
+                  className="w-full p-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                  rows={2}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditFarmModalOpen(false); setEditingFarm(null); }}
+                  className="px-4 py-2 border border-gray-150 text-gray-400 rounded-lg font-semibold"
+                >
+                  Hủy
+                </button>
+                <button type="submit" className="px-5 py-2 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600">
+                  Lưu thay đổi
                 </button>
               </div>
             </form>

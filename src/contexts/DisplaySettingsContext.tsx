@@ -285,7 +285,7 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
       return formatEmpty(val)
     }
 
-    let absoluteVal = Math.abs(val)
+    const absoluteVal = Math.abs(val)
     let formattedStr = ''
 
     if (settings.enable_compact_numbers && absoluteVal >= 1000000) {

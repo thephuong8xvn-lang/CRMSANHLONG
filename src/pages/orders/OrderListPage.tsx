@@ -12,7 +12,9 @@ import {
   XCircle,
   User,
   Smartphone,
-  Monitor
+  Monitor,
+  Filter,
+  X
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
@@ -49,6 +51,7 @@ export default function OrderListPage() {
   const [selectedStatus, setSelectedStatus] = useState('')
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
   const [selectedDateRange, setSelectedDateRange] = useState('all') // 'all', 'today', '7days', '30days'
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -279,24 +282,36 @@ export default function OrderListPage() {
         </div>
 
         {/* Filter Bar */}
-        <div className="bg-gray-0 border border-gray-100 rounded-xl p-5 mb-8 flex flex-wrap items-center gap-4 shadow-sm">
-          <div className="flex-1 min-w-[200px] relative">
-            <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-              Tìm kiếm
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input
-                className="w-full h-10 pl-9 pr-4 bg-gray-0 border border-gray-200 rounded-lg text-body-md focus:outline-none focus:border-blue-500 focus:ring-[4px] focus:ring-blue-100 transition-all"
-                placeholder="Tìm mã đơn hàng, tên khách hàng..."
-                type="text"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
+        <div className="bg-gray-0 border border-gray-100 rounded-xl p-5 mb-8 flex flex-wrap items-end gap-4 shadow-sm">
+          <div className="flex-grow min-w-[200px] flex gap-3 items-end">
+            <div className="flex-1 relative">
+              <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                Tìm kiếm
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  className="w-full h-10 pl-9 pr-4 bg-gray-0 border border-gray-200 rounded-lg text-body-md focus:outline-none focus:border-blue-500 focus:ring-[4px] focus:ring-blue-100 transition-all"
+                  placeholder="Tìm mã đơn hàng, tên khách hàng..."
+                  type="text"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                />
+              </div>
             </div>
+            <button
+              onClick={() => setMobileFiltersOpen(true)}
+              className="flex md:hidden h-10 px-4 border border-gray-200 bg-white hover:bg-gray-50 rounded-lg text-body-md font-semibold text-gray-600 items-center justify-center gap-2 shadow-sm transition-all"
+            >
+              <Filter size={16} className="text-gray-400" />
+              <span>Lọc</span>
+              {(selectedStatus || selectedPaymentStatus || selectedDateRange !== 'all') && (
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+              )}
+            </button>
           </div>
 
-          <div className="w-full sm:w-auto min-w-[150px]">
+          <div className="hidden md:block w-full sm:w-auto min-w-[150px]">
             <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
               Trạng thái đơn hàng
             </label>
@@ -316,12 +331,12 @@ export default function OrderListPage() {
             </select>
           </div>
 
-          <div className="w-full sm:w-auto min-w-[180px]">
+          <div className="hidden md:block w-full sm:w-auto min-w-[180px]">
             <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
               Trạng thái thanh toán
             </label>
             <select
-              className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-[4px] focus:ring-blue-100 transition-all"
+              className="w-full h-10 border border-gray-25 border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-[4px] focus:ring-blue-100 transition-all"
               value={selectedPaymentStatus}
               onChange={e => setSelectedPaymentStatus(e.target.value)}
             >
@@ -332,7 +347,7 @@ export default function OrderListPage() {
             </select>
           </div>
 
-          <div className="w-full sm:w-auto min-w-[150px]">
+          <div className="hidden md:block w-full sm:w-auto min-w-[150px]">
             <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
               Thời gian tạo
             </label>
@@ -388,7 +403,7 @@ export default function OrderListPage() {
         {/* Data Table */}
         {!loading && displayList.length > 0 && (
           <div className="bg-gray-0 border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto hidden md:block">
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-gray-25 text-gray-400 font-semibold text-tiny uppercase tracking-wider border-b border-gray-100">
@@ -437,6 +452,51 @@ export default function OrderListPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card List View */}
+            <div className="block md:hidden divide-y divide-gray-100">
+              {displayList.map(order => (
+                <div
+                  key={order.id}
+                  onClick={() => navigate(`/orders/${order.id}`)}
+                  className="p-4 hover:bg-gray-25/50 transition-colors cursor-pointer space-y-3"
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <span className="font-mono font-bold text-blue-600">
+                        {order.order_code}
+                      </span>
+                      <h4 className="font-bold text-gray-800 leading-snug break-words mt-1">
+                        {order.customers?.farm_name || 'Khách lẻ / Không xác định'}
+                      </h4>
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      {renderStatusBadge(order.status)}
+                      {renderPaymentStatusBadge(order.payment_status)}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-50 text-tiny text-gray-500">
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Ngày tạo:</span>
+                      <span className="text-gray-700 font-semibold">{formatDate(order.created_at)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Phụ trách:</span>
+                      <span className="text-gray-700 font-semibold truncate block">
+                        {order.owner?.full_name || 'Hệ thống'}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-gray-400 block mb-0.5">Tổng giá trị:</span>
+                      <span className="text-body-lg font-bold text-gray-800 tabular-nums">
+                        {formatCurrency(order.grand_total)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -474,6 +534,91 @@ export default function OrderListPage() {
               >
                 <ChevronRight size={18} />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Filter Bottom Sheet */}
+        {mobileFiltersOpen && (
+          <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end justify-center p-0">
+            <div className="bg-gray-0 w-full rounded-t-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-250 flex flex-col max-h-[85vh]">
+              <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25 shrink-0">
+                <h3 className="text-body-lg font-semibold text-gray-700">Bộ lọc đơn hàng</h3>
+                <button
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-all focus:outline-none"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4 overflow-y-auto flex-1 font-sans">
+                <div>
+                  <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Trạng thái đơn hàng</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    value={selectedStatus}
+                    onChange={e => { setSelectedStatus(e.target.value); setCurrentPage(1) }}
+                  >
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="draft">Nháp</option>
+                    <option value="confirmed">Đã xác nhận</option>
+                    <option value="shipping">Đang giao</option>
+                    <option value="delivered">Đã giao</option>
+                    <option value="paid">Đã thanh toán</option>
+                    <option value="completed">Hoàn tất</option>
+                    <option value="cancelled">Đã hủy</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Trạng thái thanh toán</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    value={selectedPaymentStatus}
+                    onChange={e => { setSelectedPaymentStatus(e.target.value); setCurrentPage(1) }}
+                  >
+                    <option value="">Tất cả thanh toán</option>
+                    <option value="unpaid">Chưa thanh toán</option>
+                    <option value="partially_paid">Thanh toán 1 phần</option>
+                    <option value="paid">Đã thanh toán đủ</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Thời gian tạo</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    value={selectedDateRange}
+                    onChange={e => { setSelectedDateRange(e.target.value); setCurrentPage(1) }}
+                  >
+                    <option value="all">Mọi thời gian</option>
+                    <option value="today">Hôm nay</option>
+                    <option value="7days">7 ngày qua</option>
+                    <option value="30days">30 ngày qua</option>
+                  </select>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    onClick={() => {
+                      setSelectedStatus('')
+                      setSelectedPaymentStatus('')
+                      setSelectedDateRange('all')
+                      setCurrentPage(1)
+                      setMobileFiltersOpen(false)
+                    }}
+                    className="flex-1 h-10 border border-gray-200 text-gray-500 bg-gray-0 rounded-lg text-body-md font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+                  >
+                    Đặt lại
+                  </button>
+                  <button
+                    onClick={() => setMobileFiltersOpen(false)}
+                    className="flex-1 h-10 bg-blue-500 text-white rounded-lg text-body-md font-semibold flex items-center justify-center hover:bg-blue-600 transition-colors"
+                  >
+                    Áp dụng
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -194,7 +194,7 @@ export default function ImportCustomersModal({
               // Tìm cột SĐT: chứa số dài >= 9 chữ số
               for (let c = 2; c < (sampleRows[0]?.length ?? 4); c++) {
                 const looksLikePhone = sampleRows.some(r =>
-                  /^[0+][\d\s.\-]{8,14}$/.test(String(r[c] ?? '').trim()))
+                  /^[0+][\d\s.-]{8,14}$/.test(String(r[c] ?? '').trim()))
                 if (looksLikePhone) { phoneColIdx = c; break }
               }
               if (phoneColIdx === -1) phoneColIdx = 2
@@ -203,7 +203,7 @@ export default function ImportCustomersModal({
               nameColIdx = 0
               for (let c = 1; c < (sampleRows[0]?.length ?? 3); c++) {
                 const looksLikePhone = sampleRows.some(r =>
-                  /^[0+][\d\s.\-]{8,14}$/.test(String(r[c] ?? '').trim()))
+                  /^[0+][\d\s.-]{8,14}$/.test(String(r[c] ?? '').trim()))
                 if (looksLikePhone) { phoneColIdx = c; break }
               }
               if (phoneColIdx === -1) phoneColIdx = 1
@@ -221,7 +221,7 @@ export default function ImportCustomersModal({
             const rawPhone = phoneColIdx >= 0 ? String(row[phoneColIdx] ?? '').trim() : ''
             // Chuẩn hóa: bỏ ký tự thừa, convert +84 → 0
             const phone = rawPhone
-              .replace(/[\s.\-()]/g, '')
+              .replace(/[\s.() -]/g, '')
               .replace(/^84(\d{9,10})$/, '0$1')
               .replace(/^\+84(\d{9,10})$/, '0$1')
 

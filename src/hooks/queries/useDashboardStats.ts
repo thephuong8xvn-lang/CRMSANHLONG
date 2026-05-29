@@ -46,7 +46,7 @@ async function fallbackCashflow6m(): Promise<CashflowMonth[]> {
     })
   }
 
-  ;(data ?? []).forEach((tx: any) => {
+  (data ?? []).forEach((tx: any) => {
     const txDate = new Date(tx.transaction_date)
     const key = new Date(txDate.getFullYear(), txDate.getMonth(), 1).toISOString().split('T')[0]
     const match = months.find(m => m.month === key)

@@ -21,6 +21,7 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 const CustomerListPage           = lazy(() => import('./pages/customers/CustomerListPage'))
 const CustomerDetailPage         = lazy(() => import('./pages/customers/CustomerDetailPage'))
 const CustomerSettingsPage       = lazy(() => import('./pages/customers/CustomerSettingsPage'))
+const CustomerMapPage            = lazy(() => import('./pages/customers/CustomerMapPage'))
 const ProductListPage            = lazy(() => import('./pages/products/ProductListPage'))
 const ProductDetailPage          = lazy(() => import('./pages/products/ProductDetailPage'))
 const PriceListPage              = lazy(() => import('./pages/products/PriceListPage'))
@@ -77,14 +78,6 @@ function FullPageSpinner() {
 // ─────────────────────────────────────────────────────────────
 // Guard: Bảo vệ route cần đăng nhập
 // ─────────────────────────────────────────────────────────────
-function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, loading } = useAuth()
-
-  if (loading) return <FullPageSpinner />
-  if (!isAuthenticated) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
-
 // ─────────────────────────────────────────────────────────────
 // Access Denied Component
 // ─────────────────────────────────────────────────────────────
@@ -160,6 +153,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
       <Route path="/customers" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerListPage /></ProtectedRoute>} />
       <Route path="/customers/settings" element={<ProtectedRoute perms={['users.manage']}><CustomerSettingsPage /></ProtectedRoute>} />
+      <Route path="/customers/map" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerMapPage /></ProtectedRoute>} />
       <Route path="/customers/:id" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerDetailPage /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute perms={['products.view', 'products.manage', 'pricing.manage', 'promotions.manage']}><ProductListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /products/:id */}

@@ -632,6 +632,7 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 | **[THÊM MỚI] Sửa lỗi phân quyền RBAC & RLS hệ thống** | ✅ Hoàn thành 2026-05-28 |
 | **[THÊM MỚI] Vá lỗi co giãn cột bảng nhập kho** | ✅ Hoàn thành 2026-05-28 |
 | **[THÊM MỚI] Đồng bộ giá vốn & Chi tiết phiếu nhập** | ✅ Hoàn thành 2026-05-28 |
+| **[THÊM MỚI] Tích hợp GPS chuồng trại & Bản đồ theo dõi Sales** | ✅ Hoàn thành 2026-05-29 |
 | P4-6 Excel export kế toán | 🔲 Chưa làm |
 | P4-7 2FA + Audit log | 🔲 Chưa làm |
 | P4-8 Capacitor mobile native | 🔲 Chưa làm |

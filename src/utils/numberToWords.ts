@@ -46,7 +46,7 @@ export function convertVndToWords(amount: number): string {
   if (isNaN(amount) || amount < 0) return 'Số tiền không hợp lệ';
 
   // Làm tròn số tiền
-  let cleanAmount = Math.round(amount);
+  const cleanAmount = Math.round(amount);
   
   let stringAmount = cleanAmount.toString();
   

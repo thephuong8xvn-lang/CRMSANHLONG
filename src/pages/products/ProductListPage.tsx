@@ -12,7 +12,9 @@ import {
   Download,
   Upload,
   Layers,
-  Award
+  Award,
+  Filter,
+  X
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
@@ -57,6 +59,7 @@ export default function ProductListPage() {
   const [selectedBrand, setSelectedBrand]     = useState('')
   const [selectedStatus, setSelectedStatus]   = useState<'active' | 'inactive' | 'all'>('active')
   const [currentPage, setCurrentPage]         = useState(1)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
 
   // Starred Products (Favorite) Local State
@@ -205,7 +208,7 @@ export default function ProductListPage() {
         {/* Outer Split Container */}
         <div className="flex flex-col md:flex-row gap-6 items-start">
           {/* 1. Left Filters Sidebar Pane */}
-          <aside className="w-full md:w-[22%] bg-white border border-gray-100 rounded-xl p-4 shrink-0 shadow-sm space-y-6">
+          <aside className="hidden md:block w-full md:w-[22%] bg-white border border-gray-100 rounded-xl p-4 shrink-0 shadow-sm space-y-6">
             {/* Nhóm sản phẩm */}
             <div className="space-y-2.5">
               <div className="flex justify-between items-center border-b border-gray-100 pb-2">
@@ -322,15 +325,27 @@ export default function ProductListPage() {
           <div className="flex-1 w-full bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex flex-col min-w-0">
             {/* Toolbar */}
             <div className="p-4 border-b border-gray-100 bg-gray-25 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-              <div className="relative w-full sm:max-w-xs text-gray-700">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                <input
-                  type="text"
-                  placeholder="Theo mã, tên hàng..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full h-9 pl-9 pr-4 bg-white border border-gray-205 rounded text-tiny focus:outline-none focus:border-blue-500"
-                />
+              <div className="flex w-full sm:max-w-xs items-center gap-2 text-gray-700">
+                <div className="relative flex-grow">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Theo mã, tên hàng..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full h-9 pl-9 pr-4 bg-white border border-gray-205 rounded text-tiny focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={() => setMobileFiltersOpen(true)}
+                  className="flex md:hidden h-9 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 items-center justify-center gap-1.5 shadow-sm transition-all"
+                >
+                  <Filter size={14} className="text-gray-400" />
+                  <span>Lọc</span>
+                  {(selectedCategory || selectedBrand || selectedStatus !== 'active') && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  )}
+                </button>
               </div>
 
               <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
@@ -350,7 +365,7 @@ export default function ProductListPage() {
             </div>
 
             {/* Table */}
-            <div className="flex-1 overflow-x-auto">
+            <div className="flex-1 overflow-x-auto hidden md:block">
               <table className="w-full border-collapse text-[13px] text-left">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-[10px] font-bold">
@@ -467,6 +482,80 @@ export default function ProductListPage() {
               </table>
             </div>
 
+            {/* Mobile Card List View */}
+            <div className="block md:hidden divide-y divide-gray-100 flex-1">
+              {loading && rows.length === 0 ? (
+                <div className="p-4 space-y-3">
+                  <Skeleton.TableRows count={5} cols={4} />
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="py-20 text-center text-gray-450 italic">Không tìm thấy sản phẩm nào khớp với bộ lọc.</div>
+              ) : (
+                rows.map(prod => {
+                  const image = prod.image_urls && prod.image_urls.length > 0 ? prod.image_urls[0] : null
+                  const daysLabel = formatDaysToOOS(prod.days_to_oos)
+                  return (
+                    <div
+                      key={prod.id}
+                      onClick={() => navigate(`/products/${prod.id}`)}
+                      className="p-4 hover:bg-gray-50/50 transition-colors cursor-pointer space-y-3 relative"
+                    >
+                      <div className="flex gap-3">
+                        <div className="w-16 h-16 rounded border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                          <ProductImage src={image} alt={prod.name} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start">
+                            <span className="font-mono text-[11px] text-gray-400 font-semibold">{prod.sku || '-'}</span>
+                            <button
+                              onClick={e => handleToggleStar(prod.id, e)}
+                              className="p-1 hover:bg-gray-100 rounded transition-all text-gray-300 hover:text-amber-500"
+                            >
+                              <Star size={14} className={starredProducts[prod.id] ? 'fill-amber-400 text-amber-400' : 'text-gray-300'} />
+                            </button>
+                          </div>
+                          <h4 className="font-bold text-gray-800 leading-snug break-words line-clamp-2 mt-0.5">
+                            {prod.name}
+                          </h4>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-gray-500 font-semibold">
+                        <span className="bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded">Nhóm: {prod.category_name || '-'}</span>
+                        <span className="bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded">Hãng: {prod.brand_name || '-'}</span>
+                        {prod.package_specs && (
+                          <span className="bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded">Quy cách: {prod.package_specs}</span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-50 text-tiny text-gray-500">
+                        <div>
+                          <span className="text-gray-400 block mb-0.5">Giá bán:</span>
+                          <span className="font-bold text-blue-600">{formatCurrency(prod.retail_price)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block mb-0.5">Giá vốn:</span>
+                          <span className="font-semibold text-gray-750">{formatCurrency(prod.retail_cost)}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block mb-0.5">Tồn kho / Khách đặt:</span>
+                          <span className="font-bold text-gray-800">{prod.stock_on_hand.toLocaleString('vi-VN')} / {prod.on_order_qty.toLocaleString('vi-VN')}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block mb-0.5">Dự kiến hết:</span>
+                          <span className={`px-1.5 py-0.2 rounded font-bold text-[11px] ${
+                            daysLabel === '0 ngày' ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-600'
+                          }`}>
+                            {daysLabel}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
             {/* Pagination */}
             {!loading && rows.length > 0 && (
               <div className="p-4 border-t border-gray-100 bg-gray-25 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
@@ -516,6 +605,109 @@ export default function ProductListPage() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Filter Sheet */}
+      {mobileFiltersOpen && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end justify-center p-0">
+          <div className="bg-gray-0 w-full rounded-t-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-250 flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25 shrink-0">
+              <div>
+                <h3 className="text-body-lg font-bold text-gray-800">Bộ lọc hàng hóa</h3>
+                <p className="text-tiny text-gray-400">Chọn nhóm sản phẩm, thương hiệu và trạng thái</p>
+              </div>
+              <button
+                onClick={() => setMobileFiltersOpen(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Nhóm sản phẩm */}
+              <div className="space-y-2">
+                <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider block border-b border-gray-100 pb-1">
+                  Nhóm sản phẩm
+                </span>
+                <select
+                  value={selectedCategory}
+                  onChange={e => setSelectedCategory(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">Tất cả nhóm sản phẩm</option>
+                  {categories.map((cat: any) => (
+                    <option key={cat.id} value={cat.id}>{cat.name} {!cat.is_active ? '(Ngừng)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Thương hiệu */}
+              <div className="space-y-2">
+                <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider block border-b border-gray-100 pb-1">
+                  Thương hiệu
+                </span>
+                <select
+                  value={selectedBrand}
+                  onChange={e => setSelectedBrand(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">Tất cả thương hiệu</option>
+                  {brands.map((brand: any) => (
+                    <option key={brand.id} value={brand.id}>{brand.name} {!brand.is_active ? '(Ngừng)' : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Trạng thái */}
+              <div className="space-y-2">
+                <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider block border-b border-gray-100 pb-1">
+                  Trạng thái kinh doanh
+                </span>
+                <div className="flex flex-col gap-2.5">
+                  {[
+                    { value: 'active',   label: 'Đang kinh doanh' },
+                    { value: 'inactive', label: 'Ngừng kinh doanh' },
+                    { value: 'all',      label: 'Tất cả trạng thái' },
+                  ].map(item => (
+                    <label key={item.value} className="flex items-center gap-2 text-body-md text-gray-600 cursor-pointer select-none">
+                      <input
+                        type="radio"
+                        name="mobile-status-filter"
+                        value={item.value}
+                        checked={selectedStatus === item.value}
+                        onChange={e => setSelectedStatus(e.target.value as 'active' | 'inactive' | 'all')}
+                        className="text-blue-500 focus:ring-blue-500 w-4 h-4"
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 bg-gray-25 flex gap-4 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('')
+                  setSelectedBrand('')
+                  setSelectedStatus('active')
+                }}
+                className="flex-1 h-10 border border-gray-205 rounded-lg text-body-md font-semibold hover:bg-gray-50 transition-colors text-gray-600 bg-white"
+              >
+                Đặt lại
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="flex-1 h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center"
+              >
+                Áp dụng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AddProductModal       isOpen={isAddModalOpen}       onClose={() => setIsAddModalOpen(false)}       onSuccess={invalidate} />
       <ManageCategoriesModal isOpen={isManageCatsOpen}     onClose={() => setIsManageCatsOpen(false)}     onSuccess={invalidate} />

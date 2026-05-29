@@ -91,9 +91,9 @@ export default function PrintPreviewPage() {
         if (linesErr) throw linesErr;
 
         // Resolve allocations to find lot details (Batch/Lot number and Expiry Date)
-        let allocationsMap: Record<string, { lot_number: string; expiry_date: string }> = {};
+        const allocationsMap: Record<string, { lot_number: string; expiry_date: string }> = {};
         if (lines && lines.length > 0) {
-          const lineIds = lines.map(l => l.id);
+          const lineIds = lines.map((l: any) => l.id);
           const { data: allocData } = await supabase
             .from('order_line_allocations')
             .select(`
@@ -132,7 +132,7 @@ export default function PrintPreviewPage() {
           taxAmount: 0,
           grandTotal: Number(order.grand_total),
           amountInWords: '',
-          lines: lines.map(line => ({
+          lines: lines.map((line: any) => ({
             productId: line.product_id,
             productCode: line.product_snapshot?.sku || 'SP',
             productName: line.product_snapshot?.name || 'Sản phẩm',
@@ -196,7 +196,7 @@ export default function PrintPreviewPage() {
           warehouseName: receipt.warehouses?.name || 'Kho nhận',
           poNumber: receipt.purchase_orders?.po_code,
           totalAmount: Number(receipt.total_amount),
-          lines: lines.map(line => ({
+          lines: lines.map((line: any) => ({
             productId: line.product_id,
             productCode: line.products?.code || 'SP',
             productName: line.products?.name || 'Sản phẩm',
@@ -256,7 +256,7 @@ export default function PrintPreviewPage() {
           refundMethod: retDoc.refund_method,
           warehouseName: retDoc.orders?.warehouses?.name || 'Kho Tổng',
           totalAmount: Number(retDoc.total_amount),
-          lines: lines.map(line => ({
+          lines: lines.map((line: any) => ({
             productId: line.product_id,
             productCode: line.products?.code || 'SP',
             productName: line.products?.name || 'Sản phẩm',
@@ -308,7 +308,7 @@ export default function PrintPreviewPage() {
           fromWarehouse: transfer.from_wh?.name || 'Kho xuất',
           toWarehouse: transfer.to_wh?.name || 'Kho nhận',
           transferReason: 'Điều chuyển hàng hóa giữa các kho nội bộ',
-          lines: lines.map(line => ({
+          lines: lines.map((line: any) => ({
             productId: line.product_id,
             productCode: line.products?.code || 'SP',
             productName: line.products?.name || 'Sản phẩm',

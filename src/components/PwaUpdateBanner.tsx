@@ -11,7 +11,9 @@ export function PwaUpdateBanner() {
         onNeedRefresh() { setNeedRefresh(true) },
         onOfflineReady() { setOfflineReady(true) },
         onRegistered(r) {
-          r && setInterval(() => r.update(), 60 * 60 * 1000)
+          if (r) {
+            setInterval(() => r.update(), 60 * 60 * 1000)
+          }
         },
       })
     }).catch(() => {})
