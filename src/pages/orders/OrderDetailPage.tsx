@@ -79,7 +79,7 @@ interface Order {
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { profile } = useAuth()
+  const { profile, userRole } = useAuth()
 
   // State
   const [order, setOrder] = useState<Order | null>(null)
@@ -124,7 +124,11 @@ export default function OrderDetailPage() {
     if (!order) return
     setLoading(true)
     try {
-      const { data: whData } = await supabase.from('warehouses').select('id, name')
+      let whQuery = supabase.from('warehouses').select('id, name, branch_id')
+      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+        whQuery = whQuery.eq('branch_id', profile.branch_id)
+      }
+      const { data: whData } = await whQuery
       setWarehouses(whData || [])
       setReturnWarehouseId(order.warehouse_id || (whData && whData[0]?.id) || '')
 

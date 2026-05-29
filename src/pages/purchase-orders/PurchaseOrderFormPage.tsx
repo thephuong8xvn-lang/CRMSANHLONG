@@ -50,7 +50,7 @@ interface POLineItem {
 
 export default function PurchaseOrderFormPage() {
   const navigate = useNavigate()
-  const { profile } = useAuth()
+  const { profile, userRole } = useAuth()
 
   // Selection list states
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -82,9 +82,11 @@ export default function PurchaseOrderFormPage() {
         if (supplierData) setSuppliers(supplierData)
 
         // Fetch warehouses
-        const { data: warehouseData } = await supabase
-          .from('warehouses')
-          .select('id, name')
+        let whQuery = supabase.from('warehouses').select('id, name, branch_id')
+        if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+          whQuery = whQuery.eq('branch_id', profile.branch_id)
+        }
+        const { data: warehouseData } = await whQuery
         if (warehouseData) setWarehouses(warehouseData)
 
         // Fetch products
@@ -97,7 +99,7 @@ export default function PurchaseOrderFormPage() {
       }
     }
     fetchData()
-  }, [])
+  }, [profile?.branch_id, userRole?.code])
 
   // Auto-clear alert
   useEffect(() => {

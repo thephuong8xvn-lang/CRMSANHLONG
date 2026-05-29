@@ -23,6 +23,7 @@ import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import EditProductModal from './EditProductModal'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface ProductCategory {
   id: string
@@ -112,6 +113,7 @@ export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { settings, formatCurrency } = useDisplaySettings()
+  const { profile, userRole } = useAuth()
 
   // State
   const [product, setProduct] = useState<Product | null>(null)
@@ -218,27 +220,38 @@ export default function ProductDetailPage() {
       if (varData) setVariants(varData)
 
       // 3. Fetch stock lots
-      const { data: lotData } = await supabase
+      let lotQuery = supabase
         .from('stock_lots')
         .select(`
           *,
-          warehouses:warehouses(id, code, name)
+          warehouses:warehouses!inner(id, code, name, branch_id)
         `)
         .eq('product_id', id)
-        .order('expiry_date', { ascending: true })
+
+      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+        lotQuery = lotQuery.eq('warehouses.branch_id', profile.branch_id)
+      }
+
+      const { data: lotData } = await lotQuery.order('expiry_date', { ascending: true })
 
       if (lotData) {
         setLots(lotData as unknown as StockLot[])
       }
 
       // 4. Fetch warehouses for lot dropdown
-      const { data: whData } = await supabase
+      let whQuery = supabase
         .from('warehouses')
-        .select('id, code, name')
+        .select('id, code, name, branch_id')
         .eq('is_active', true)
 
+      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+        whQuery = whQuery.eq('branch_id', profile.branch_id)
+      }
+
+      const { data: whData } = await whQuery
+
       if (whData) {
-        setWarehouses(whData)
+        setWarehouses(whData as unknown as WarehouseData[])
         if (whData.length > 0) {
           setNewWarehouseId(whData[0].id)
         }
@@ -259,7 +272,7 @@ export default function ProductDetailPage() {
       }
 
       // 6. Fetch stock movements (Thẻ kho)
-      const { data: moveData } = await supabase
+      let moveQuery = supabase
         .from('stock_movements')
         .select(`
           id,
@@ -271,11 +284,16 @@ export default function ProductDetailPage() {
           reference_type,
           notes,
           stock_lots:lot_id(lot_number),
-          warehouses:warehouse_id(code, name),
+          warehouses:warehouse_id!inner(code, name, branch_id),
           profiles:performed_by(full_name)
         `)
         .eq('product_id', id)
-        .order('created_at', { ascending: false })
+
+      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+        moveQuery = moveQuery.eq('warehouses.branch_id', profile.branch_id)
+      }
+
+      const { data: moveData } = await moveQuery.order('created_at', { ascending: false })
 
       if (moveData) {
         setMovements(moveData as unknown as StockMovement[])
@@ -289,7 +307,7 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     loadProductData()
-  }, [id])
+  }, [id, profile?.branch_id, userRole?.code])
 
   // FEFO Simulation Logic
   useEffect(() => {

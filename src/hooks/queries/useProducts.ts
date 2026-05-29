@@ -65,7 +65,7 @@ export function useProductsList(params: ProductListParams) {
         return qq
       }
 
-      // Trang hiện tại + count tổng
+      // Trang hiện tại + count tổng (catalog global)
       const pageQuery = buildFilter(
         supabase
           .from('product_stock_summary_view')
@@ -74,31 +74,122 @@ export function useProductsList(params: ProductListParams) {
           .range(from, to)
       )
 
-      // Aggregate tổng tồn + khách đặt qua toàn bộ filtered (không range)
-      // PostgREST hỗ trợ ?select=col.sum() từ Supabase 2024
-      const aggQuery = buildFilter(
-        supabase
-          .from('product_stock_summary_view')
-          .select('stock_on_hand.sum(), on_order_qty.sum()')
-      ) as any
-
-      const [page, agg] = await Promise.all([pageQuery, aggQuery])
+      const page = await pageQuery
 
       if (page.error) {
         logger.error('[useProductsList] view query error:', page.error.message)
         throw page.error
       }
 
+      const rows = (page.data ?? []) as ProductStockRow[]
+
+      // Nếu có chi nhánh, ghi đè tồn kho & khách đặt của từng sản phẩm trên trang
+      if (params.branchId && rows.length > 0) {
+        const productIds = rows.map(r => r.id)
+        
+        // Lấy tồn kho theo chi nhánh
+        const { data: lotsData } = await supabase
+          .from('stock_lots')
+          .select('product_id, quantity_on_hand, warehouse:warehouses!inner(branch_id)')
+          .in('product_id', productIds)
+          .eq('warehouse.branch_id', params.branchId)
+        
+        const stockMap: Record<string, number> = {}
+        lotsData?.forEach((lot: any) => {
+          const pid = lot.product_id
+          stockMap[pid] = (stockMap[pid] || 0) + Number(lot.quantity_on_hand || 0)
+        })
+
+        // Lấy khách đặt theo chi nhánh
+        const { data: orderLinesData } = await supabase
+          .from('order_lines')
+          .select('product_id, quantity, order:orders!inner(branch_id, status)')
+          .in('product_id', productIds)
+          .eq('order.branch_id', params.branchId)
+          .in('order.status', ['confirmed', 'shipping'])
+        
+        const orderMap: Record<string, number> = {}
+        orderLinesData?.forEach((line: any) => {
+          const pid = line.product_id
+          orderMap[pid] = (orderMap[pid] || 0) + Number(line.quantity || 0)
+        })
+
+        // Ghi đè vào các dòng hiển thị
+        rows.forEach(row => {
+          row.stock_on_hand = stockMap[row.id] || 0
+          row.on_order_qty = orderMap[row.id] || 0
+          if (row.sold_30d > 0 && row.stock_on_hand > 0) {
+            row.days_to_oos = Math.round(row.stock_on_hand / (row.sold_30d / 30.0))
+          } else if (row.stock_on_hand === 0) {
+            row.days_to_oos = 0
+          } else {
+            row.days_to_oos = null
+          }
+        })
+      }
+
       let totalStockAll = 0
       let totalOnOrderAll = 0
-      if (!agg.error && agg.data && Array.isArray(agg.data) && agg.data[0]) {
-        // PostgREST aggregate `col.sum()` returns the column with the same name as the original col
-        totalStockAll   = Number(agg.data[0].stock_on_hand ?? 0)
-        totalOnOrderAll = Number(agg.data[0].on_order_qty ?? 0)
+
+      if (params.branchId) {
+        // Tính tổng tồn kho của chi nhánh cho các sản phẩm khớp bộ lọc
+        let lotQuery = supabase
+          .from('stock_lots')
+          .select('quantity_on_hand.sum(), product:products!inner(category_id, brand_id, is_active, name, sku)')
+          .eq('warehouse:warehouses!inner(branch_id)', params.branchId)
+        
+        if (params.categoryId) lotQuery = lotQuery.eq('product.category_id', params.categoryId)
+        if (params.brandId) lotQuery = lotQuery.eq('product.brand_id', params.brandId)
+        if (params.status === 'active') lotQuery = lotQuery.eq('product.is_active', true)
+        if (params.status === 'inactive') lotQuery = lotQuery.eq('product.is_active', false)
+        if (params.search && params.search.trim()) {
+          const term = params.search.trim().replace(/[%_]/g, '\\$&')
+          lotQuery = lotQuery.or(`name.ilike.%${term}%,sku.ilike.%${term}%`, { foreignTable: 'product' })
+        }
+        
+        const { data: lotAgg } = await lotQuery
+        if (lotAgg && lotAgg[0]) {
+          const item = lotAgg[0] as any
+          totalStockAll = Number(item.quantity_on_hand ?? item.sum ?? 0)
+        }
+
+        // Tính tổng khách đặt của chi nhánh cho các sản phẩm khớp bộ lọc
+        let orderQuery = supabase
+          .from('order_lines')
+          .select('quantity.sum(), product:products!inner(category_id, brand_id, is_active, name, sku)')
+          .eq('order:orders!inner(branch_id, status)', params.branchId)
+          .in('order.status', ['confirmed', 'shipping'])
+        
+        if (params.categoryId) orderQuery = orderQuery.eq('product.category_id', params.categoryId)
+        if (params.brandId) orderQuery = orderQuery.eq('product.brand_id', params.brandId)
+        if (params.status === 'active') orderQuery = orderQuery.eq('product.is_active', true)
+        if (params.status === 'inactive') orderQuery = orderQuery.eq('product.is_active', false)
+        if (params.search && params.search.trim()) {
+          const term = params.search.trim().replace(/[%_]/g, '\\$&')
+          orderQuery = orderQuery.or(`name.ilike.%${term}%,sku.ilike.%${term}%`, { foreignTable: 'product' })
+        }
+
+        const { data: orderAgg } = await orderQuery
+        if (orderAgg && orderAgg[0]) {
+          const item = orderAgg[0] as any
+          totalOnOrderAll = Number(item.quantity ?? item.sum ?? 0)
+        }
+      } else {
+        // Tính tổng toàn cục
+        const aggQuery = buildFilter(
+          supabase
+            .from('product_stock_summary_view')
+            .select('stock_on_hand.sum(), on_order_qty.sum()')
+        ) as any
+        const agg = await aggQuery
+        if (!agg.error && agg.data && Array.isArray(agg.data) && agg.data[0]) {
+          totalStockAll   = Number(agg.data[0].stock_on_hand ?? 0)
+          totalOnOrderAll = Number(agg.data[0].on_order_qty ?? 0)
+        }
       }
 
       return {
-        rows: (page.data ?? []) as ProductStockRow[],
+        rows,
         total: page.count ?? 0,
         totalStockAll,
         totalOnOrderAll,

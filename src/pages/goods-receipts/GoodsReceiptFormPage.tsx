@@ -86,7 +86,7 @@ interface ReceiptVerificationState {
 export default function GoodsReceiptFormPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { profile, user } = useAuth()
+  const { profile, user, userRole } = useAuth()
   
   const poIdParam = searchParams.get('po_id')
 
@@ -127,7 +127,11 @@ export default function GoodsReceiptFormPage() {
     const fetchInitialData = async () => {
       try {
         // 1. Fetch warehouses
-        const { data: whData } = await supabase.from('warehouses').select('id, name')
+        let whQuery = supabase.from('warehouses').select('id, name, branch_id')
+        if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+          whQuery = whQuery.eq('branch_id', profile.branch_id)
+        }
+        const { data: whData } = await whQuery
         if (whData) {
           setWarehouses(whData)
           if (whData.length > 0) {
@@ -144,7 +148,7 @@ export default function GoodsReceiptFormPage() {
         if (supData) setSuppliers(supData)
 
         // 3. Fetch POs in 'sent' or 'partially_received' statuses
-        const { data: poData, error: poErr } = await supabase
+        let poQuery = supabase
           .from('purchase_orders')
           .select(`
             id,
@@ -152,9 +156,16 @@ export default function GoodsReceiptFormPage() {
             status,
             created_at,
             warehouse_id,
+            warehouse:warehouses!inner(branch_id),
             supplier:suppliers(id, name)
           `)
           .in('status', ['sent', 'partially_received'])
+        
+        if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+          poQuery = poQuery.eq('warehouse.branch_id', profile.branch_id)
+        }
+
+        const { data: poData, error: poErr } = await poQuery
           .order('created_at', { ascending: false })
 
         if (poErr) throw poErr

@@ -714,11 +714,15 @@ export default function InventoryPage() {
 
   useEffect(() => {
     const fetchWarehouses = async () => {
-      const { data } = await supabase.from('warehouses').select('id, name')
+      let query = supabase.from('warehouses').select('id, name, branch_id')
+      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+        query = query.eq('branch_id', profile.branch_id)
+      }
+      const { data } = await query
       if (data) setWarehouses(data)
     }
     fetchWarehouses()
-  }, [])
+  }, [profile?.branch_id, userRole?.code])
 
   // Load Tab Specific Data
   useEffect(() => {
@@ -727,7 +731,7 @@ export default function InventoryPage() {
       try {
         if (activeTab === 'lots') {
           // Fetch stock lots
-          const { data, error } = await supabase
+          let query = supabase
             .from('stock_lots')
             .select(`
               id,
@@ -743,9 +747,15 @@ export default function InventoryPage() {
                 name,
                 category:product_categories(name)
               ),
-              warehouse:warehouses(id, name),
+              warehouse:warehouses!inner(id, name, branch_id),
               supplier:suppliers(id, name)
             `)
+          
+          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+            query = query.eq('warehouse.branch_id', profile.branch_id)
+          }
+
+          const { data, error } = await query
             .order('expiry_date', { ascending: true })
             .limit(100)
 
@@ -790,7 +800,7 @@ export default function InventoryPage() {
           setLots(formattedLots)
         } else if (activeTab === 'pos') {
           // Fetch Purchase Orders
-          const { data, error } = await supabase
+          let query = supabase
             .from('purchase_orders')
             .select(`
               id,
@@ -800,8 +810,14 @@ export default function InventoryPage() {
               grand_total,
               created_at,
               supplier:suppliers(name),
-              warehouse:warehouses(name)
+              warehouse:warehouses!inner(name, branch_id)
             `)
+
+          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+            query = query.eq('warehouse.branch_id', profile.branch_id)
+          }
+
+          const { data, error } = await query
             .order('created_at', { ascending: false })
             .limit(100)
 
@@ -825,7 +841,7 @@ export default function InventoryPage() {
           setPOs(formattedPOs)
         } else if (activeTab === 'receipts') {
           // Fetch Goods Receipts
-          const { data, error } = await supabase
+          let query = supabase
             .from('goods_receipts')
             .select(`
               id,
@@ -834,9 +850,15 @@ export default function InventoryPage() {
               total_amount,
               notes,
               supplier:suppliers(name),
-              warehouse:warehouses(name),
+              warehouse:warehouses!inner(name, branch_id),
               profile:profiles(full_name)
             `)
+
+          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+            query = query.eq('warehouse.branch_id', profile.branch_id)
+          }
+
+          const { data, error } = await query
             .order('receipt_date', { ascending: false })
             .limit(100)
 
@@ -862,7 +884,7 @@ export default function InventoryPage() {
           setReceipts(formattedReceipts)
         } else if (activeTab === 'settings') {
           // Fetch low stock settings
-          const { data: settingsData } = await supabase
+          let query = supabase
             .from('inventory_settings')
             .select(`
               id,
@@ -873,8 +895,14 @@ export default function InventoryPage() {
               reorder_point,
               reorder_quantity,
               product:products(sku, name),
-              warehouse:warehouses(name)
+              warehouse:warehouses!inner(name, branch_id)
             `)
+
+          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+            query = query.eq('warehouse.branch_id', profile.branch_id)
+          }
+
+          const { data: settingsData } = await query
 
           const formattedSettings = (settingsData || []).map((set: any) => ({
             id: set.id,
@@ -899,7 +927,7 @@ export default function InventoryPage() {
           const { data: prodData } = await supabase.from('products').select('id, name, sku')
           if (prodData) setProductList(prodData)
         } else if (activeTab === 'transfers') {
-          const { data, error } = await supabase
+          let query = supabase
             .from('stock_transfers')
             .select(`
               id, transfer_code, from_warehouse, to_warehouse, status,
@@ -909,12 +937,27 @@ export default function InventoryPage() {
               creator:profiles!created_by(full_name),
               receiver:profiles!received_by(full_name)
             `)
+
+          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+            const { data: whs } = await supabase
+              .from('warehouses')
+              .select('id')
+              .eq('branch_id', profile.branch_id)
+            const myWhIds = whs?.map(w => w.id) || []
+            if (myWhIds.length > 0) {
+              query = query.or(`from_warehouse.in.(${myWhIds.map(id => `"${id}"`).join(',')}),to_warehouse.in.(${myWhIds.map(id => `"${id}"`).join(',')})`)
+            } else {
+              query = query.eq('id', '00000000-0000-0000-0000-000000000000')
+            }
+          }
+
+          const { data, error } = await query
             .order('created_at', { ascending: false })
             .limit(100)
           if (error) throw error
           setTransfers(data || [])
         } else if (activeTab === 'purchase_returns') {
-          const { data, error } = await supabase
+          let query = supabase
             .from('purchase_returns')
             .select(`
               id,
@@ -930,9 +973,15 @@ export default function InventoryPage() {
               approved_by,
               created_at,
               supplier:suppliers(name),
-              warehouse:warehouses(name),
+              warehouse:warehouses!inner(name, branch_id),
               creator:profiles!created_by(full_name)
             `)
+
+          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+            query = query.eq('warehouse.branch_id', profile.branch_id)
+          }
+
+          const { data, error } = await query
             .order('created_at', { ascending: false })
             .limit(100)
           if (error) throw error
@@ -998,14 +1047,20 @@ export default function InventoryPage() {
   }), [receipts, debouncedReceiptSearch])
 
   const reloadInvSettings = async () => {
-    const { data: settingsData } = await supabase
+    let query = supabase
       .from('inventory_settings')
       .select(`
         id, product_id, warehouse_id, min_stock_level, max_stock_level,
         reorder_point, reorder_quantity,
         product:products(sku, name),
-        warehouse:warehouses(name)
+        warehouse:warehouses!inner(name, branch_id)
       `)
+    
+    if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+      query = query.eq('warehouse.branch_id', profile.branch_id)
+    }
+
+    const { data: settingsData } = await query
     const formatted = (settingsData || []).map((set: any) => ({
       id: set.id,
       product_id: set.product_id,

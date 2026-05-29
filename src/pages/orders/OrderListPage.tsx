@@ -20,6 +20,7 @@ import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
 import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface Order {
   id: string
@@ -30,6 +31,7 @@ interface Order {
   grand_total: number
   paid_amount: number
   customer_id: string
+  branch_id?: string
   customers?: {
     farm_name: string
   }
@@ -40,6 +42,7 @@ interface Order {
 
 export default function OrderListPage() {
   const navigate = useNavigate()
+  const { profile, userRole } = useAuth()
 
   // State
   const [orders, setOrders] = useState<Order[]>([])
@@ -61,7 +64,7 @@ export default function OrderListPage() {
   const loadOrders = useCallback(async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`
           id,
@@ -72,10 +75,16 @@ export default function OrderListPage() {
           grand_total,
           paid_amount,
           customer_id,
+          branch_id,
           customers:customers(farm_name),
           owner:profiles!orders_owner_user_id_fkey(full_name)
         `)
-        .order('created_at', { ascending: false })
+
+      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
+        query = query.eq('branch_id', profile.branch_id)
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false })
 
       if (!error && data) {
         setOrders(data as unknown as Order[])
@@ -87,7 +96,7 @@ export default function OrderListPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [profile?.branch_id, userRole?.code])
 
   useEffect(() => {
     loadOrders()

@@ -44,7 +44,7 @@ export default function ProductListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { formatCurrency } = useDisplaySettings()
-  const { profile } = useAuth()
+  const { profile, userRole } = useAuth()
 
   // Modal Dialogs States
   const [isAddModalOpen, setIsAddModalOpen]       = useState(false)
@@ -79,8 +79,8 @@ export default function ProductListPage() {
     categoryId: selectedCategory || undefined,
     brandId: selectedBrand || undefined,
     status: selectedStatus,
-    branchId: profile?.branch_id || undefined,
-  }), [currentPage, debouncedSearch, selectedCategory, selectedBrand, selectedStatus, profile?.branch_id])
+    branchId: (userRole?.code !== 'admin' && userRole?.code !== 'ceo') ? profile?.branch_id || undefined : undefined,
+  }), [currentPage, debouncedSearch, selectedCategory, selectedBrand, selectedStatus, profile?.branch_id, userRole?.code])
 
   const productsQuery   = useProductsList(listParams)
   const categoriesQuery = useProductCategories()
