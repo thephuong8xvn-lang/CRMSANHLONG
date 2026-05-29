@@ -943,9 +943,9 @@ export default function InventoryPage() {
               .from('warehouses')
               .select('id')
               .eq('branch_id', profile.branch_id)
-            const myWhIds = whs?.map(w => w.id) || []
+            const myWhIds = whs?.map((w: { id: string }) => w.id) || []
             if (myWhIds.length > 0) {
-              query = query.or(`from_warehouse.in.(${myWhIds.map(id => `"${id}"`).join(',')}),to_warehouse.in.(${myWhIds.map(id => `"${id}"`).join(',')})`)
+              query = query.or(`from_warehouse.in.(${myWhIds.map((id: string) => `"${id}"`).join(',')}),to_warehouse.in.(${myWhIds.map((id: string) => `"${id}"`).join(',')})`)
             } else {
               query = query.eq('id', '00000000-0000-0000-0000-000000000000')
             }
