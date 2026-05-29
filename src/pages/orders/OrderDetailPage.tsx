@@ -673,7 +673,7 @@ export default function OrderDetailPage() {
                       <div>
                         <p className="text-body-md font-bold text-gray-800 leading-tight">{line.product_snapshot?.name || 'Sản phẩm'}</p>
                         <p className="text-tiny text-gray-400 mt-0.5 font-semibold">
-                          {line.quantity} {line.product_snapshot?.unit || 'lọ'} x {line.unit_price.toLocaleString('vi-VN')} ₫
+                          {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} x {line.unit_price.toLocaleString('vi-VN')} ₫
                           {line.discount > 0 && <span className="text-red-500 ml-1.5">-{(line.discount * line.quantity).toLocaleString('vi-VN')} ₫</span>}
                         </p>
                       </div>
@@ -781,7 +781,7 @@ export default function OrderDetailPage() {
                   <div className="space-y-2 text-left mb-4">
                     {lines.map(line => (
                       <div key={line.id} className="flex justify-between text-[11px]">
-                        <span>{line.product_snapshot?.name || 'SP'} (x{line.quantity})</span>
+                        <span>{line.product_snapshot?.name || 'SP'} (x{line.quantity.toLocaleString('vi-VN')})</span>
                         <span>{line.line_total.toLocaleString('vi-VN')}</span>
                       </div>
                     ))}

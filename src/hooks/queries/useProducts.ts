@@ -33,6 +33,7 @@ export interface ProductListParams {
   categoryId?: string
   brandId?: string
   status?: 'active' | 'inactive' | 'all'
+  branchId?: string       // Dùng cho cache isolation của từng chi nhánh
 }
 
 export interface ProductListResult {

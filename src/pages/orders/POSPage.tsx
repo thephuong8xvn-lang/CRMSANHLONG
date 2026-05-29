@@ -160,6 +160,8 @@ export default function POSPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerDebt, setCustomerDebt] = useState(0)
   const [products, setProducts] = useState<Product[]>([])
+  const [productStock, setProductStock] = useState<Record<string, number>>({})
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('')
   const [categories, setCategories] = useState<{ id: string; code: string; name: string }[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
   const [priceLists, setPriceLists] = useState<PriceList[]>([])
@@ -391,6 +393,68 @@ export default function POSPage() {
     loadData()
   }, [])
 
+  // Fetch stock levels and warehouses of cashier's branch
+  const fetchStockData = useCallback(async () => {
+    try {
+      let currentBranchId = profile?.branch_id
+
+      if (!currentBranchId && profile?.id) {
+        const { data: profData } = await supabase
+          .from('profiles')
+          .select('branch_id')
+          .eq('id', profile.id)
+          .single()
+        if (profData?.branch_id) {
+          currentBranchId = profData.branch_id
+        }
+      }
+
+      let whIds: string[] = []
+      if (currentBranchId) {
+        const { data: whData } = await supabase
+          .from('warehouses')
+          .select('id, type')
+          .eq('branch_id', currentBranchId)
+          .eq('is_active', true)
+        
+        if (whData && whData.length > 0) {
+          const mainWh = whData.find((w: any) => w.type === 'main') || whData[0]
+          if (mainWh) {
+            setSelectedWarehouseId((mainWh as any).id)
+          }
+          whIds = whData.map((w: any) => w.id)
+        }
+      }
+
+      let stockQuery = supabase
+        .from('stock_lots')
+        .select('product_id, quantity_on_hand, quantity_reserved')
+        .eq('status', 'active')
+
+      if (whIds.length > 0) {
+        stockQuery = stockQuery.in('warehouse_id', whIds)
+      }
+
+      const { data: stockData, error } = await stockQuery
+      if (!error && stockData) {
+        const stockMap: Record<string, number> = {}
+        stockData.forEach((item: any) => {
+          const avail = item.quantity_on_hand - item.quantity_reserved
+          stockMap[item.product_id] = (stockMap[item.product_id] || 0) + avail
+        })
+        setProductStock(stockMap)
+      }
+    } catch (err) {
+      console.error('Error fetching stock data:', err)
+    }
+  }, [profile])
+
+  useEffect(() => {
+    if (products.length > 0) {
+      fetchStockData()
+    }
+  }, [products, fetchStockData])
+
   // Fetch customer debt
   useEffect(() => {
     if (!selectedCustomerId) {
@@ -614,7 +678,7 @@ export default function POSPage() {
       const index = prev.findIndex(item => item.id === rowId)
       if (index === -1) return prev
       const updated = [...prev]
-      updated[index] = { ...updated[index], quantity: Math.max(1, qty) }
+      updated[index] = { ...updated[index], quantity: Math.max(0, qty) }
       return updated
     })
   }, [])
@@ -854,13 +918,15 @@ export default function POSPage() {
       const rand = Math.floor(10000 + Math.random() * 90000)
       const orderCode = `DH-${rand}`
 
-      const orderInsert = {
+      const orderInsertDraft = {
         order_code: orderCode,
         customer_id: selectedCustomerId,
-        status: 'confirmed',
+        status: 'draft',
         payment_status: paymentMethod === 'credit' ? 'unpaid' : 'paid',
         payment_method: paymentMethod,
         owner_user_id: profile.id,
+        branch_id: profile?.branch_id || null,
+        warehouse_id: selectedWarehouseId || null,
         price_list_id: selectedPriceListId || null,
         subtotal: subtotal,
         discount_total: invoiceDiscount,
@@ -874,7 +940,7 @@ export default function POSPage() {
 
       const { data: orderData, error: orderErr } = await supabase
         .from('orders')
-        .insert([orderInsert])
+        .insert([orderInsertDraft])
         .select()
         .single()
 
@@ -893,7 +959,25 @@ export default function POSPage() {
         .from('order_lines')
         .insert(linesInsert)
 
-      if (linesErr) throw linesErr
+      if (linesErr) {
+        await supabase.from('orders').delete().eq('id', orderData.id)
+        throw linesErr
+      }
+
+      // Update order status to 'confirmed' to trigger stock deduction trigger
+      const { error: confirmErr } = await supabase
+        .from('orders')
+        .update({
+          status: 'confirmed',
+          confirmed_by: profile.id
+        })
+        .eq('id', orderData.id)
+
+      if (confirmErr) {
+        await supabase.from('order_lines').delete().eq('order_id', orderData.id)
+        await supabase.from('orders').delete().eq('id', orderData.id)
+        throw confirmErr
+      }
 
       if (paymentMethod !== 'credit') {
         const { error: payErr } = await supabase
@@ -942,6 +1026,10 @@ export default function POSPage() {
         selectedDiseaseId: '',
         treatmentPurpose: ''
       })
+      
+      // Refresh stock levels on UI
+      fetchStockData()
+
       setAlertMsg({ type: 'success', text: `Hóa đơn ${orderCode} đã thanh toán thành công.` })
 
     } catch (err: any) {
@@ -1003,7 +1091,9 @@ export default function POSPage() {
               >
                 <div className="flex flex-col">
                   <span className="font-semibold">{prod.name}</span>
-                  <span className="text-[10px] text-gray-400 font-mono">SKU: {prod.sku || '-'} | ĐVT: {prod.unit || '-'}</span>
+                  <span className="text-[10px] text-gray-400 font-mono">
+                    SKU: {prod.sku || '-'} | ĐVT: {prod.unit || '-'} | Tồn: <span className={(productStock[prod.id] || 0) > 0 ? "text-emerald-600 font-bold" : "text-red-500 font-bold"}>{(productStock[prod.id] || 0).toLocaleString('vi-VN')}</span>
+                  </span>
                 </div>
                 <span className="font-bold text-blue-600">{formatCurrency(price)}</span>
               </div>
@@ -1204,10 +1294,11 @@ export default function POSPage() {
                           </button>
                           <input
                             type="number"
-                            min="1"
+                            min="0"
+                            step="any"
                             value={item.quantity}
-                            onChange={e => updateQuantity(item.id, parseInt(e.target.value) || 1)}
-                            className="w-10 h-7 text-center text-[12px] font-bold focus:outline-none bg-white text-gray-900"
+                            onChange={e => updateQuantity(item.id, parseFloat(e.target.value) || 0)}
+                            className="w-14 h-7 text-center text-[12px] font-bold focus:outline-none bg-white text-gray-900"
                           />
                           <button
                             onClick={() => adjustQuantity(item.id, 1)}
@@ -1372,9 +1463,12 @@ export default function POSPage() {
                                   </div>
                                 )}
                                 <h4 className="text-[12px] font-bold text-gray-800 line-clamp-2 leading-tight h-8 select-none">{prod.name}</h4>
-                                <div className="my-1.5 flex items-center">
-                                  <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 uppercase font-mono tracking-wider">
+                                <div className="my-1.5 flex items-center justify-between">
+                                  <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 uppercase font-mono tracking-wider animate-none">
                                     ĐVT: {prod.unit || 'N/A'}
+                                  </span>
+                                  <span className="text-[10px] text-gray-500 font-bold select-none">
+                                    Tồn: <span className={(productStock[prod.id] || 0) > 0 ? "text-emerald-650 font-extrabold" : "text-red-500 font-extrabold"}>{(productStock[prod.id] || 0).toLocaleString('vi-VN')}</span>
                                   </span>
                                 </div>
                               </div>
@@ -1690,7 +1784,7 @@ export default function POSPage() {
                 <div className="space-y-2 text-left mb-4">
                   {cart.map(item => (
                     <div key={item.id} className="flex justify-between text-[11px]">
-                      <span>{item.product.name} (x{item.quantity})</span>
+                      <span>{item.product.name} (x{item.quantity.toLocaleString('vi-VN')})</span>
                       <span>{((item.unitPrice * (1 - item.discountPercent / 100)) * item.quantity).toLocaleString('vi-VN')}</span>
                     </div>
                   ))}

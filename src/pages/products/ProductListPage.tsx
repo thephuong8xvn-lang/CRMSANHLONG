@@ -34,6 +34,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../lib/queryClient'
 import { supabase } from '../../lib/supabase'
 import { logger } from '../../lib/logger'
+import { useAuth } from '../../contexts/AuthContext'
 
 const PAGE_SIZE = 10
 
@@ -41,6 +42,7 @@ export default function ProductListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { formatCurrency } = useDisplaySettings()
+  const { profile } = useAuth()
 
   // Modal Dialogs States
   const [isAddModalOpen, setIsAddModalOpen]       = useState(false)
@@ -74,7 +76,8 @@ export default function ProductListPage() {
     categoryId: selectedCategory || undefined,
     brandId: selectedBrand || undefined,
     status: selectedStatus,
-  }), [currentPage, debouncedSearch, selectedCategory, selectedBrand, selectedStatus])
+    branchId: profile?.branch_id || undefined,
+  }), [currentPage, debouncedSearch, selectedCategory, selectedBrand, selectedStatus, profile?.branch_id])
 
   const productsQuery   = useProductsList(listParams)
   const categoriesQuery = useProductCategories()
