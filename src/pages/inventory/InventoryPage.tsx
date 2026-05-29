@@ -104,6 +104,7 @@ export default function InventoryPage() {
 
   // Shared States
   const [warehouses, setWarehouses] = useState<{ id: string; name: string }[]>([])
+  const [allWarehouses, setAllWarehouses] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
@@ -714,7 +715,18 @@ export default function InventoryPage() {
 
   useEffect(() => {
     const fetchWarehouses = async () => {
-      let query = supabase.from('warehouses').select('id, name, branch_id')
+      // Fetch all warehouses for destination selection
+      const { data: allData } = await supabase
+        .from('warehouses')
+        .select('id, name, branch_id')
+        .eq('is_active', true)
+      if (allData) setAllWarehouses(allData)
+
+      // Fetch warehouses in branch
+      let query = supabase
+        .from('warehouses')
+        .select('id, name, branch_id')
+        .eq('is_active', true)
       if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
         query = query.eq('branch_id', profile.branch_id)
       }
@@ -2368,9 +2380,11 @@ export default function InventoryPage() {
                   <select
                     value={newTransfer.fromWarehouse}
                     onChange={(e) => {
+                      const val = e.target.value
                       setNewTransfer({
                         ...newTransfer,
-                        fromWarehouse: e.target.value,
+                        fromWarehouse: val,
+                        toWarehouse: val === newTransfer.toWarehouse ? '' : newTransfer.toWarehouse,
                         lines: [] // Reset lines when changing warehouse
                       })
                       setModalLotId('')
@@ -2394,9 +2408,11 @@ export default function InventoryPage() {
                     required
                   >
                     <option value="">-- Chọn kho đích --</option>
-                    {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
+                    {allWarehouses
+                      .filter(w => w.id !== newTransfer.fromWarehouse)
+                      .map(w => (
+                        <option key={w.id} value={w.id}>{w.name}</option>
+                      ))}
                   </select>
                 </div>
               </div>
