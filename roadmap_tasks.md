@@ -24,6 +24,27 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] Gán nhân viên phụ trách chính (primary sales) và chuyển đổi Khách hàng thành tài nguyên chung hiển thị cho tất cả chi nhánh và nhân viên (mở chính sách SELECT RLS cho `customers` và các thực thể phụ thuộc: liên hệ, trang trại, đàn vật nuôi, lịch sử bệnh). Các cấu trúc giao dịch trả hàng (`sales_returns`) và hóa đơn (`invoices`) vẫn tuân thủ logic phân quyền hạn chi nhánh/nhân viên.
 - [x] **Sổ chi tiết giao dịch (Customer Transaction Ledger)**: Bổ sung tab Sổ chi tiết giao dịch trong màn hình Chi tiết khách hàng, cho dõi chi tiết các giao dịch mua hàng (Hóa đơn), thanh toán (Tiền mặt/Chuyển khoản), trả hàng, và điều chỉnh công nợ theo trình tự thời gian với tính năng tính Dư nợ cuối (running balance) tự động sau mỗi giao dịch.
 
+#### 🔍 Kiểm tra toàn diện 2026-05-29 — Customer Module Bugfix
+
+**Đã phát hiện & fix (migration `20260529000015_fix_customer_rls_for_all_roles.sql`):**
+- [x] **Bug 1 (RLS)**: `customer_business_info` và `customer_personal_info` policy `cust_biz_manage_active` / `cust_personal_manage` thiếu role `branch_manager` → quản lý chi nhánh không sửa được thông tin bổ sung doanh nghiệp/cá nhân của KH. Đã thêm điều kiện `branch_manager AND c.branch_id = fn_my_branch_id()`.
+- [x] **Bug 2 (RLS)**: `customer_contacts` DELETE policy `contacts_delete_admin_lead` thiếu `branch_manager` → Đã thêm điều kiện branch_manager.
+- [x] **Bug 3 (RLS)**: `farms` policy `farms_manage_active` (FOR ALL) thiếu `branch_manager` → quản lý chi nhánh không thêm/sửa/xóa được trang trại của KH trong chi nhánh mình. Đã fix.
+- [x] **Bug 4 (RLS)**: `herds` policy `herds_manage_active` (FOR ALL) thiếu `branch_manager`. Đã fix.
+- [x] **Bug 5 (RLS)**: `disease_history` policy `disease_hist_manage_active` thiếu `branch_manager`. Đã fix.
+
+**Đã fix Frontend (`CustomerDetailPage.tsx`):**
+- [x] **Bug 6**: Nút "Chỉnh sửa hồ sơ" luôn hiển thị cho mọi user dù thiếu quyền → Đã ẩn nút bằng `canEditCustomer()` check: chỉ hiện cho owner/team_lead/branch_manager/admin.
+- [x] **Bug 7**: Error handler `handleEditCustomer` chỉ hiển thị thông báo chung → Đã thêm phân biệt lỗi RLS (`violates row-level security`) với thông báo tiếng Việt rõ ràng.
+- [x] **Bug 8**: Tương tự với `handleAddContact`, `handleDeleteContact`, `handleEditFarm` → Đã cải thiện thông báo lỗi.
+- [x] **Bug 9**: `updated_at: new Date().toISOString()` bị set thủ công từ frontend → Đã bỏ, để DB trigger tự cập nhật.
+- [x] Load `currentUserId` và `userRoles` khi khởi tạo component để phục vụ permission check.
+
+**Nguyên nhân gốc của "user không sửa được thông tin KH":**
+- SELECT đã được mở rộng (migration `20260524000001`) nhưng UPDATE chỉ cho phép: `owner_user_id = auth.uid()` (role sales), team_lead trong nhóm, branch_manager, admin/ceo. Nếu user thử sửa KH mà không phải owner → RLS từ chối thầm lặng, frontend chỉ báo lỗi chung.
+- Với `branch_manager`: lỗi xảy ra tại `customer_business_info` và `customer_personal_info` do thiếu policy phù hợp.
+
+
 ---
 
 ### 3. Phân Hệ Sản Phẩm & Quản Lý Lô/Hạn Dùng (Product & Batch Module) - `[HOÀN THÀNH]`

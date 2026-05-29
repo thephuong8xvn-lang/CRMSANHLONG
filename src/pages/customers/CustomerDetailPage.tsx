@@ -271,6 +271,10 @@ export default function CustomerDetailPage() {
   const navigate = useNavigate()
   const { formatCurrency, formatDate, formatPhone, maskData, hasFieldAccess } = useDisplaySettings()
 
+  // Current user info for permission checks
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [userRoles, setUserRoles] = useState<string[]>([])
+
   // State
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [farms, setFarms] = useState<Farm[]>([])
@@ -816,6 +820,26 @@ export default function CustomerDetailPage() {
     }
   }
 
+  // Load current user session for permission checks
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentUserId(user.id)
+        // Load roles
+        const { data: rolesData } = await supabase
+          .from('user_roles')
+          .select('roles(code)')
+          .eq('user_id', user.id)
+        if (rolesData) {
+          const codes = rolesData.map((r: any) => r.roles?.code).filter(Boolean)
+          setUserRoles(codes)
+        }
+      }
+    }
+    loadCurrentUser()
+  }, [])
+
   useEffect(() => {
     loadCustomerData()
     loadLookupData()
@@ -964,6 +988,16 @@ export default function CustomerDetailPage() {
   // Action Handlers
   // ─────────────────────────────────────────────────────────────
   // Add Contact Handler
+  // Helper: check if current user can edit this customer
+  const canEditCustomer = () => {
+    if (!customer || !currentUserId) return false
+    const isAdmin = userRoles.includes('admin') || userRoles.includes('ceo')
+    const isBranchManager = userRoles.includes('branch_manager')
+    const isTeamLead = userRoles.includes('team_lead')
+    const isOwner = customer.owner_user_id === currentUserId
+    return isAdmin || isBranchManager || isTeamLead || isOwner
+  }
+
   const handleAddContact = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!contactName.trim() || !contactPhone.trim() || !id) return
@@ -1006,9 +1040,12 @@ export default function CustomerDetailPage() {
 
       // Reload
       loadCustomerData()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error adding contact:', err)
-      alert('Không thể lưu thông tin liên hệ!')
+      const msg = err?.message?.includes('violates row-level security')
+        ? 'Bạn không có quyền thêm liên hệ cho khách hàng này.'
+        : `Không thể lưu thông tin liên hệ! ${err?.message || ''}`
+      alert(msg)
     }
   }
 
@@ -1023,9 +1060,12 @@ export default function CustomerDetailPage() {
 
       if (error) throw error
       loadCustomerData()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting contact:', err)
-      alert('Không thể xóa liên hệ!')
+      const msg = err?.message?.includes('violates row-level security')
+        ? 'Bạn không có quyền xóa liên hệ này.'
+        : `Không thể xóa liên hệ! ${err?.message || ''}`
+      alert(msg)
     }
   }
 
@@ -1084,9 +1124,12 @@ export default function CustomerDetailPage() {
       setIsEditFarmModalOpen(false)
       setEditingFarm(null)
       loadCustomerData()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating farm:', err)
-      alert('Không thể cập nhật thông tin chuồng trại!')
+      const msg = err?.message?.includes('violates row-level security')
+        ? 'Bạn không có quyền cập nhật trang trại này.'
+        : `Không thể cập nhật thông tin chuồng trại! ${err?.message || ''}`
+      alert(msg)
     }
   }
 
@@ -1233,8 +1276,8 @@ export default function CustomerDetailPage() {
           address: editAddress.trim() || null,
           gps_lat: editGpsLat ? Number(editGpsLat) : null,
           gps_lng: editGpsLng ? Number(editGpsLng) : null,
-          is_active: editIsActive,
-          updated_at: new Date().toISOString()
+          is_active: editIsActive
+          // updated_at: bỏ — để Supabase trigger tự cập nhật
         })
         .eq('id', id)
 
@@ -1268,9 +1311,12 @@ export default function CustomerDetailPage() {
 
       setIsEditModalOpen(false)
       loadCustomerData()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error editing customer:', err)
-      alert('Có lỗi xảy ra khi cập nhật hồ sơ khách hàng.')
+      const msg = err?.message?.includes('violates row-level security')
+        ? 'Bạn không có quyền chỉnh sửa khách hàng này. Chỉ nhân viên phụ trách, trưởng nhóm, quản lý chi nhánh hoặc admin mới có thể sửa.'
+        : `Có lỗi xảy ra khi cập nhật hồ sơ khách hàng: ${err?.message || 'Không rõ nguyên nhân'}`
+      alert(msg)
     }
   }
 
@@ -1335,13 +1381,15 @@ export default function CustomerDetailPage() {
           </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="bg-blue-50 text-blue-500 border border-blue-100 px-4 h-10 rounded-lg font-semibold text-body-md hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-2 shadow-sm"
-            >
-              <Edit size={16} />
-              Chỉnh sửa hồ sơ
-            </button>
+            {canEditCustomer() && (
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="bg-blue-50 text-blue-500 border border-blue-100 px-4 h-10 rounded-lg font-semibold text-body-md hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <Edit size={16} />
+                Chỉnh sửa hồ sơ
+              </button>
+            )}
           </div>
         </div>
 
