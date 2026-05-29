@@ -119,6 +119,11 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **Bug 6**: Luồng sinh đơn hàng tự động (`handleAutoGenerateOrder`) insert các trường không tồn tại vào bảng `order_lines` (như `quantity_in_unit`, `product_snapshot`, ...) dẫn tới lỗi SQL. Đã sửa lại map cột chuẩn xác (`product_id`, `quantity`, `unit_price`, `discount`).
 - [x] **Bug 7**: Đơn hàng được insert trực tiếp dưới trạng thái `status: 'confirmed'` trước khi insert `order_lines` → trigger FEFO allocation chạy khi chưa có dòng sản phẩm nào. Đã sửa thành insert dưới dạng `status: 'draft'` trước, sau đó insert `order_lines`, rồi mới cập nhật status sang `confirmed` (giống POSPage).
 
+**Đã tối ưu luồng trạng thái đơn hàng POS tại quầy và Mobile (2026-05-29):**
+- [x] **Cửa hàng (Store Sales)**: Bán tại cửa hàng (nhận diện qua `delivery_address: 'Giao trực tiếp tại quầy POS'`) sẽ bỏ qua bước nháp (draft) và các bước giao hàng (shipping/delivered). Trong POSPage, đơn hàng được insert nháp, insert các dòng sản phẩm, xác nhận và hoàn tất ngay lập tức.
+- [x] **Chi tiết Đơn hàng (OrderDetailPage)**: Stepper cho các đơn hàng bán tại cửa hàng chỉ hiển thị 2 trạng thái: "Xác nhận" và "Hoàn tất". Khi ở trạng thái "Xác nhận", nút thao tác sẽ hiển thị "Hoàn tất đơn hàng" thay vì "Bắt đầu giao hàng".
+- [x] **Đơn di động (MobileOrderPage)**: Sửa bug tương tự cho MobileOrderPage (insert status `'draft'` trước khi insert lines, sau đó mới cập nhật sang `'confirmed'` để chạy trigger FEFO chuẩn xác). Bán giao hàng (Mobile orders) chỉ áp dụng cho bán xa nên vẫn giữ nguyên các bước giao hàng đầy đủ.
+
 ---
 
 ### 6. Phân Hệ Sổ Quỹ & Duyệt Chi (Cashbook & Disbursements) - `[HOÀN THÀNH]`
