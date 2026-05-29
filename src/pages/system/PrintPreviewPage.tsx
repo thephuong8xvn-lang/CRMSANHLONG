@@ -74,7 +74,7 @@ export default function PrintPreviewPage() {
             notes,
             customer_id,
             warehouse_id,
-            customers:customers(farm_name, phone, address),
+            customers:customers(farm_name, address, customer_contacts(phone, is_primary)),
             owner:profiles!orders_owner_user_id_fkey(full_name),
             warehouses:warehouses(name)
           `)
@@ -140,7 +140,9 @@ export default function PrintPreviewPage() {
           createdBy: order.owner?.full_name || 'Hệ thống',
           notes: order.notes,
           customerName: order.customers?.farm_name || 'Khách vãng lai',
-          customerPhone: order.customers?.phone,
+          customerPhone: order.customers?.customer_contacts?.find((c: any) => c.is_primary)?.phone 
+            || order.customers?.customer_contacts?.[0]?.phone 
+            || '',
           customerAddress: order.customers?.address,
           deliveryAddress: order.delivery_address,
           paymentMethod: order.payment_method,
@@ -239,7 +241,7 @@ export default function PrintPreviewPage() {
             total_amount,
             refund_method,
             created_at,
-            orders:orders(order_code, customers(farm_name, phone, address), warehouses(name)),
+            orders:orders(order_code, customers(farm_name, address, customer_contacts(phone, is_primary)), warehouses(name)),
             profiles:profiles(full_name)
           `)
           .eq('id', id)
@@ -269,7 +271,9 @@ export default function PrintPreviewPage() {
           notes: retDoc.reason,
           partnerType: 'customer',
           partnerName: retDoc.orders?.customers?.farm_name || 'Khách hàng',
-          partnerPhone: retDoc.orders?.customers?.phone,
+          partnerPhone: retDoc.orders?.customers?.customer_contacts?.find((c: any) => c.is_primary)?.phone 
+            || retDoc.orders?.customers?.customer_contacts?.[0]?.phone 
+            || '',
           partnerAddress: retDoc.orders?.customers?.address,
           returnReason: retDoc.reason,
           refundMethod: retDoc.refund_method,
@@ -351,7 +355,7 @@ export default function PrintPreviewPage() {
             transaction_date,
             description,
             reference_no,
-            customers:customers(farm_name, phone, address),
+            customers:customers(farm_name, address, customer_contacts(phone, is_primary)),
             suppliers:suppliers(name, phone, address),
             employee:profiles!cashbook_transactions_employee_id_fkey(full_name, phone, address),
             created_by_profile:profiles!cashbook_transactions_created_by_fkey(full_name)
@@ -368,7 +372,9 @@ export default function PrintPreviewPage() {
         
         if (tx.customers) {
           partnerName = tx.customers.farm_name;
-          partnerPhone = tx.customers.phone || '';
+          partnerPhone = tx.customers.customer_contacts?.find((c: any) => c.is_primary)?.phone 
+            || tx.customers.customer_contacts?.[0]?.phone 
+            || '';
           partnerAddress = tx.customers.address || '';
         } else if (tx.suppliers) {
           partnerName = tx.suppliers.name;
