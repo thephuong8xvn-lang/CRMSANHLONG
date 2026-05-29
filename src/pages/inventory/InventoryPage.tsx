@@ -99,7 +99,7 @@ interface InventorySetting {
 
 export default function InventoryPage() {
   const navigate = useNavigate()
-  const { profile } = useAuth()
+  const { profile, userRole } = useAuth()
   const [activeTab, setActiveTab] = useState<'lots' | 'pos' | 'receipts' | 'transfers' | 'purchase_returns' | 'settings'>('lots')
 
   // Shared States
