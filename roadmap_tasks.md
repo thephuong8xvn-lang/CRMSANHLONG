@@ -114,6 +114,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 
 **Đã fix Frontend (`OrderDetailPage.tsx` & `PrintPreviewPage.tsx`):**
 - [x] **Bug 5**: Frontend query trường không tồn tại `product_snapshot` trực tiếp từ bảng `order_lines` (gây ra lỗi 400 Bad Request và lỗi toast "Không thể tải thông tin đơn hàng"). Đã sửa thành JOIN sang bảng `products` (`products:products(name, sku, unit)`) và map ngược lại thuộc tính `product_snapshot` ở client để đảm bảo tính tương thích và hiển thị đúng tên, mã SKU, ĐVT thực tế của sản phẩm trên trang chi tiết đơn hàng và trang in.
+- [x] **Bug 8**: Lỗi truy vấn dữ liệu Supabase `column customers_1.phone does not exist` tại trang in (`PrintPreviewPage.tsx`) do bảng `customers` không chứa trực tiếp số điện thoại mà lưu ở bảng liên kết `customer_contacts`. Đã sửa thành truy vấn nested `customer_contacts(phone, is_primary)` và giải quyết thông tin số điện thoại từ liên hệ chính.
 
 **Đã fix logic sinh đơn hàng tự động từ dự án chăn nuôi (`HerdProjectDetailPage.tsx`):**
 - [x] **Bug 6**: Luồng sinh đơn hàng tự động (`handleAutoGenerateOrder`) insert các trường không tồn tại vào bảng `order_lines` (như `quantity_in_unit`, `product_snapshot`, ...) dẫn tới lỗi SQL. Đã sửa lại map cột chuẩn xác (`product_id`, `quantity`, `unit_price`, `discount`).
