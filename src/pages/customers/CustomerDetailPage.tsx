@@ -3770,6 +3770,7 @@ export default function CustomerDetailPage() {
             </form>
           </div>
         </div>
+      )}
       {/* 3.6 ADJUST DEBT MODAL */}
       {isAdjustDebtModalOpen && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
