@@ -196,6 +196,72 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - Thiếu charts dòng tiền 6 tháng theo spec — chờ sprint sau.
 - `profiles` RLS: `approver?.full_name` có thể null với sales user khi admin duyệt transaction của họ (profiles_select_self chỉ cho thấy profile bản thân).
 
+#### 🔍 AUDIT TOÀN DIỆN 2026-05-30 — Đối chiếu Spec §9 + §4.6 vs Hiện trạng `[CẦN HÀNH ĐỘNG]`
+
+**Tài liệu chi tiết & bằng chứng**: [.claude/memory/cashbook-audit-2026-05-30.md](file:///d:/CRMSANHLONGVETCO/.claude/memory/cashbook-audit-2026-05-30.md) (18 phát hiện kèm file:line, nhóm D1–D10 schema/trigger, R1–R6 RLS, F1–F11 frontend).
+
+**Kết luận**: Module chỉ đúng ~40% so với spec; **1/5 luồng nghiệp vụ vận hành đúng** (thu chi tay). 4 luồng còn lại đều có lỗ hổng:
+
+| Luồng | Trạng thái |
+|---|---|
+| Thanh toán hóa đơn (POS cash/bank) | ❌ POS chỉ insert `order_payments` — KHÔNG sinh `cashbook_transactions`, `cash_funds.balance` KHÔNG cộng |
+| Chứng từ NCC (`supplier_payments`) | ❌ Không có UI nào tạo; bảng đang chết |
+| Thu chi tay | ✅ Có CRUD, nhưng workaround draft→approved + self-approval không bị chặn |
+| Thu công nợ KH (`debt_payments`) | ⚠ Có dropdown gán customer_id; KHÔNG link `customer_debts` cụ thể, KHÔNG settle |
+| Hoàn tiền KH (`sales_returns` refund) | ❌ Không trigger, không UI |
+
+**3 phát hiện nghiêm trọng nhất**:
+- **POS bypass cashbook** → balance UI luôn lệch thực tế → variance đóng ca cực lớn → mất ý nghĩa kiểm soát quỹ.
+- **0/4 auto-trigger spec §9.8** (sale_payment, debt_collection, customer_refund, supplier_payment) → bảng `supplier_payments`/`employee_advances` chết, không liên kết PO/GR.
+- **RLS lệch spec §4.6**: accountant thấy toàn hệ thống (phải scope CN), warehouse_keeper bị từ chối (phải thấy phiếu trong ca mình), `cashbook.create_inflow/outflow` chưa tách, self-approval không bị chặn.
+
+##### 📋 KẾ HOẠCH 3 SPRINT KHẮC PHỤC
+
+> 🔖 **ĐIỂM TIẾP TỤC (cập nhật 2026-05-30 cuối ngày)**: **S1 + S2 đã HOÀN THÀNH 100% — toàn bộ 8 migration ĐÃ APPLY thành công trên Supabase remote** (chạy không lỗi, kể cả bản vá `20260601000002` sau lỗi `goods_receipts.status`). `tsc --noEmit` PASS. **Việc tiếp theo: Sprint S3** (phân quyền RLS §4.6 + tab Tổng quan + polish UX). Ngày mai gõ "tiếp tục s3". Ngữ cảnh chi tiết: [.claude/memory/cashbook-audit-2026-05-30.md](file:///d:/CRMSANHLONGVETCO/.claude/memory/cashbook-audit-2026-05-30.md).
+
+**Sprint S1 — Đồng bộ dòng tiền thực tế** (P0) — `[HOÀN THÀNH 2026-05-30 — đã apply remote ✅]`
+- [x] **S1.1** Migration `20260531000001_cashbook_auto_triggers.sql`: trigger AFTER INSERT cho `order_payments` / `debt_payments` + AFTER UPDATE cho `sales_returns` (→completed, refund_method ∈ cash/bank_transfer) → tự sinh `cashbook_transactions` (SECURITY DEFINER, bỏ qua RLS). Idempotent qua cột `source_table/source_id` + unique index. Bỏ qua method `credit/voucher/loyalty_points`.
+- [x] **S1.1-backfill** Migration `20260531000002_cashbook_backfill_history.sql`: backfill toàn bộ thanh toán/thu nợ/hoàn tiền lịch sử (đánh dấu `[BACKFILL]`), idempotent, có cảnh báo ảnh hưởng số dư. ⚠️ Admin chạy CÓ CHỦ ĐÍCH sau khi verify triggers.
+- [x] **S1.2** Migration `20260531000000_cashbook_default_accounts.sql`: thêm `cash_funds.is_default_cash`, `bank_accounts.is_default_bank` (partial UNIQUE per branch) + hàm `fn_default_cash_fund/fn_default_bank_account` + backfill tự đánh dấu quỹ đầu tiên/chi nhánh + danh mục `CHI-HOANTIEN`.
+  - ⏳ **Toggle UI "Quỹ mặc định" DEFER**: hiện CHƯA có màn hình CRUD quỹ/tài khoản trong app (chỉ seed DB trực tiếp) → migration auto-default đã đủ cho trigger hoạt động. Toggle UI gộp vào tab quản lý quỹ ở Sprint S2/S3.
+- [x] **S1.3** Sửa `fn_update_fund_balance` → `AFTER INSERT OR UPDATE` (helper `fn_apply_fund_delta`): áp delta khi INSERT approved hoặc *→approved; HOÀN delta khi approved→cancelled.
+- [x] **S1.4** Refactor `CashbookPage.tsx`: bỏ workaround insert-draft-then-update (phiếu tay + 2 leg chuyển quỹ + bút toán lệch ca đều insert thẳng `approved`); thêm date picker `transaction_date` (back-date ≤30 ngày, chặn tương lai); chuyển `formatCurrency` qua `DisplaySettingsContext` (bỏ `Intl.NumberFormat` cục bộ). `tsc --noEmit` PASS 0 lỗi.
+- [x] **S1.5** Verify: `tsc --noEmit` PASS 0 lỗi. Viết lại E2E `src/test/e2e/cashbook.spec.ts` (Playwright có sẵn) — 6 test cover: hiển thị thẻ số dư, form sidebar luôn hiện, ô ngày mặc định hôm nay + chặn tương lai, đổi Thu/Chi cập nhật danh mục, **tạo phiếu chi chuyển khoản ≤10M → toast thành công**, tab Phiên quỹ. Bổ sung SQL smoke-test `supabase/tests/cashbook_s1_smoke_test.sql` (BEGIN…ROLLBACK: chèn order_payment giả → cashbook tự sinh + số dư +123.000đ → rollback) để verify trigger sau khi apply migration.
+
+> ✅ **ĐÃ APPLY REMOTE (2026-05-30)**: `20260531000000` → `20260531000001` → `20260531000002` (backfill) chạy không lỗi.
+>
+> 🐞 **Bug phát hiện kèm (ngoài S1, ghi nhận)**: `OrderDetailPage.tsx:424` query `customer_debts.paid_amount/original_amount` — 2 cột này KHÔNG tồn tại trong schema (chỉ có `amount/is_settled`). Luồng "Thêm thanh toán" ở OrderDetail sẽ lỗi 400. Cần fix ở Sprint S2 (khi làm UI thu công nợ).
+
+**Sprint S2 — Hoàn thiện 5 luồng nghiệp vụ** (P1) — `[HOÀN THÀNH 2026-05-30 — đã apply remote ✅]`
+- [x] **S2.1** Migration `20260601000000_cashbook_schema_align.sql`: `cashier_sessions.code` (auto CS-YYYY-NNNNN) + `variance_reason/opened_by/closed_by` (backfill code+opened_by); `cash_funds.custodian_user_id`; `cashbook_transactions.posted_at/cancelled_at` (+ trigger stamp cancelled_at); sửa `fn_auto_cashbook_code` → prefix `CQ` (code_type `internal_transfer`) thay cho `TT` mượn của supplier_payment.
+- [x] **S2.2** Migration `20260601000001_internal_transfer_triggers.sql`: trigger `fn_cashbook_from_internal_transfer` AFTER INSERT → tự sinh 2 bút toán (`internal_transfer_out`/`internal_transfer_in`) + cập nhật số dư 2 TK + link `from_cashbook_id/to_cashbook_id`. Frontend `handleInternalTransferSubmit` chỉ còn 1 insert `internal_transfers` (bỏ 3-roundtrip).
+- [x] **S2.3** UI "Thu công nợ KH" (`CashbookPaymentForms.tsx` sub-tab): chọn KH → hiển thị công nợ hiện tại từ `customer_summary_view` + nút "Thu toàn bộ" → insert `debt_payments` (trigger S1.1 sinh cashbook). **Fix kèm bug**: `OrderDetailPage.tsx` bỏ query `customer_debts.paid_amount/original_amount` (cột không tồn tại) → đổi sang settle theo tổng đã trả ≥ grand_total.
+- [x] **S2.4** UI "Thanh toán NCC" (sub-tab) + Migration `20260601000002_supplier_payment_triggers.sql`: thêm `suppliers.current_debt_payable` (+goods_receipts confirmed, −supplier_payments, có backfill) + trigger sinh mã `payment_code` (TT) + trigger sinh cashbook outflow CHI-NCC & giảm công nợ NCC. UI hiển thị công nợ phải trả + nút "Trả toàn bộ". *(Phân bổ PO/GR chi tiết — `supplier_payment_allocations` — để dành S3, hiện thanh toán theo tổng công nợ.)*
+- [x] **S2.5** UI "Tạm ứng NV" (sub-tab) + Migration `20260601000003_employee_advance_triggers.sql`: trigger sinh mã `advance_code` (TU) + sinh cashbook outflow CHI-TAM-UNG (tiền mặt quỹ mặc định) + link `transaction_id`. *(Hoàn ứng làm bằng phiếu thu tay THU-KHAC — chưa có UI settlement riêng, để dành.)*
+- [x] **S2.6** Tab "Báo cáo dòng tiền" (`CashbookReports.tsx`): 3 KPI (tổng thu/chi/số dư), ComposedChart Recharts thu/chi/ròng theo ngày (7/30/90 ngày), bảng số dư quỹ+TK, **xuất sổ quỹ CSV UTF-8 BOM** (STT/Ngày/Số phiếu/Diễn giải/Tham chiếu/Thu/Chi — repo chưa có xlsx nên dùng CSV nhất quán pattern hiện có). Tab cũ nút "Xuất Excel" chết vẫn còn ở tab Lịch sử — chuyển hẳn chức năng xuất sang tab Báo cáo.
+- [x] **RLS bổ trợ** Migration `20260601000004_payment_rls_branch_mgr.sql`: cho `branch_manager` (có `cashbook.create`) tạo `supplier_payments`/`employee_advances`/allocations để không bị từ chối thầm lặng.
+- [x] **Mở rộng tabs** CashbookPage: 5 tab (Lịch sử / Thu nợ-Chi NCC-Tạm ứng / Chuyển quỹ / Phiên quỹ / Báo cáo). `tsc --noEmit` PASS 0 lỗi.
+
+> ✅ **ĐÃ APPLY REMOTE (2026-05-30)**: `20260601000000` → `...001` → `...002` (đã vá lỗi `goods_receipts.status` — bảng này KHÔNG có cột status, trigger chạy theo INSERT/UPDATE/DELETE) → `...003` → `...004`, tất cả chạy không lỗi.
+
+**Sprint S3 — Hardening phân quyền + UX cuối** (P2, 5–7 ngày) — `[HOÀN THÀNH 2026-05-30 — đã apply remote ✅]`
+- [x] **S3.1** Migration `20260605000000_cashbook_rls_align_spec.sql`:
+  - [x] **R1** Tách `cashbook_select_accountant` scope branch (admin/CEO mới toàn hệ thống).
+  - [x] **R2** Policy mới `cashbook_select_warehouse_keeper_session` (SELECT WHERE `session_id IN (sessions của tôi)`).
+  - [x] **R3** Frontend guard `hasPermission('cashbook.create')` trước khi show form; banner thiếu quyền.
+  - [x] **R4** Tách `cashbook.create_inflow`, `cashbook.create_outflow`; redistribute `role_permissions`.
+  - [x] **R5** Block self-approval: policy UPDATE thêm `created_by != auth.uid()` cho transition pending→approved; UI disable nút duyệt phiếu chính mình.
+  - [x] **R6** Branch_manager SELECT scope theo `cash_fund/bank_account.branch_id` (pattern dashboard `20260530000002`).
+- [x] **S3.2** Tab "Tổng quan" (spec §9.15): cards mỗi quỹ + sparkline 30 ngày; bar chart mini 7 ngày; list phiếu chờ duyệt + nút duyệt nhanh.
+- [x] **S3.3** Polish UX: bỏ hardcode `branch_id` fallback (F1); mở rộng tabs lên 6 — Tổng quan/Phiếu thu/Phiếu chi/Chuyển nội bộ/Phiên quỹ/Báo cáo (F4); cho phép chọn quỹ khi mở ca (F5); đổi "Inflow/Outflow" → "Thu / Chi" (F11); verify route `/print-preview?type=cash_in&id=…`.
+- [x] **S3.4** Tài liệu: cập nhật `docs/01-FUNCTIONAL-SPEC.md §9` đồng bộ schema thực; viết `docs/06-CASHBOOK-PLAYBOOK.md` mô tả 5 luồng end-to-end + cách xử lý variance.
+
+**Tiêu chí merge mỗi sprint**:
+1. `npx tsc --noEmit` (0 lỗi)
+2. E2E `cashbook.spec.ts` PASS
+3. SQL smoke: insert phiếu thu → balance update → insert order_payment cash → cashbook auto sinh → balance update lần nữa.
+
+> ✅ **ĐÃ APPLY REMOTE (2026-05-30)**: Migration `20260605000000_cashbook_rls_align_spec.sql` đã apply thành công trên Supabase remote, tất cả chạy không lỗi.
 
 ---
 

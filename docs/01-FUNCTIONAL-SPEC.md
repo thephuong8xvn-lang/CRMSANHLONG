@@ -2109,6 +2109,23 @@ Tất cả permission `cashbook.view_reports` (mặc định chỉ admin):
 **`/cashbook/reports`**: 5 báo cáo tab riêng
 
 
+### 9.16. Bảo mật RLS nâng cao & Chặn tự duyệt (Sprint S3)
+
+Sprint S3 thắt chặt các quy tắc an ninh cấp cơ sở dữ liệu (RLS) và phân tách quyền nghiệp vụ:
+
+1. **Phân tách quyền Thu/Chi:**
+   - Bổ sung quyền cụ thể `cashbook.create_inflow` và `cashbook.create_outflow` thay vì dùng chung quyền `cashbook.create`.
+   - RLS kiểm tra flow_type tương ứng khi thực hiện `INSERT`.
+
+2. **Chặn Tự Duyệt Phiếu Chi (Self-Approval Block):**
+   - Ràng buộc RLS `WITH CHECK` trên lệnh `UPDATE` của bảng `cashbook_transactions` đối với vai trò kế toán (`accountant`) và quản lý chi nhánh (`branch_manager`):
+     - `(status = 'approved' AND created_by <> auth.uid()) OR status <> 'approved'`
+     - Ngăn chặn hoàn toàn việc người tạo phiếu chi tự chuyển trạng thái của phiếu thành `approved`. Quyết định duyệt bắt buộc phải do một người quản lý khác thực hiện.
+
+3. **Cô lập dữ liệu theo Chi nhánh & Phiên ca:**
+   - Nhân viên chi nhánh (`accountant`, `branch_manager`) chỉ có quyền xem (`SELECT`) các quỹ (`cash_funds`), tài khoản (`bank_accounts`) và các dòng tiền phát sinh thuộc chi nhánh của mình (`branch_id = public.fn_my_branch_id()`).
+   - Thủ kho / Nhân viên bán hàng (`warehouse_keeper`) chỉ có quyền xem các giao dịch thuộc về phiên ca làm việc của chính họ (`session_id IN (các ca của tôi)`).
+
 ---
 
 ## 10. MODULE CƠ HỘI, HOẠT ĐỘNG, DỰ ÁN ĐÀN

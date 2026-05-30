@@ -418,25 +418,15 @@ export default function OrderDetailPage() {
 
       if (orderErr) throw orderErr
 
-      // 4. Update customer_debts if any
-      const { data: debtList } = await supabase
-        .from('customer_debts')
-        .select('id, paid_amount, original_amount')
-        .eq('order_id', order.id)
-        .eq('is_settled', false)
-
-      if (debtList && debtList.length > 0) {
-        const debt = debtList[0]
-        const nextDebtPaid = Number(debt.paid_amount) + payAmount
-        const remaining = Number(debt.original_amount) - nextDebtPaid
+      // 4. Đánh dấu công nợ đơn hàng đã tất toán nếu đơn đã trả đủ.
+      //    Bảng customer_debts chỉ có amount/is_settled (không có paid_amount).
+      //    Khi tổng đã trả ≥ grand_total → settle các dòng nợ của đơn này.
+      if (nextPaidAmount >= Number(order.grand_total)) {
         await supabase
           .from('customer_debts')
-          .update({
-            paid_amount: nextDebtPaid,
-            is_settled: remaining <= 0,
-            settled_at: remaining <= 0 ? new Date().toISOString() : null
-          })
-          .eq('id', debt.id)
+          .update({ is_settled: true, settled_at: new Date().toISOString() })
+          .eq('order_id', order.id)
+          .eq('is_settled', false)
       }
 
       setAlertMsg({ type: 'success', text: `Ghi nhận giao dịch thanh toán ${formatCurrency(payAmount)} thành công.` })

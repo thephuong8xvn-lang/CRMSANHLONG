@@ -21,6 +21,10 @@ import { useRealtimeTable } from '../../hooks/useRealtimeTable'
 import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import CashbookPaymentForms from './CashbookPaymentForms'
+import CashbookReports from './CashbookReports'
+import CashbookOverview from './CashbookOverview'
 
 interface CashFund {
   id: string
@@ -130,10 +134,11 @@ interface CashbookTransaction {
 }
 
 export default function CashbookPage() {
-  const { profile } = useAuth()
+  const { profile, userRole, hasPermission } = useAuth()
+  const { formatCurrency } = useDisplaySettings()
 
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'overview' | 'transfers' | 'sessions'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'payments' | 'transfers' | 'sessions' | 'reports'>('overview')
 
   // Master lists
   const [cashFunds, setCashFunds] = useState<CashFund[]>([])
@@ -179,12 +184,14 @@ export default function CashbookPage() {
   const [formReferenceNo, setFormReferenceNo] = useState('')
   const [formAttachmentUrl, setFormAttachmentUrl] = useState('')
   const [formAttachments, setFormAttachments] = useState<string[]>([])
+  const [formDate, setFormDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD theo giờ địa phương
 
   // Cashier Session Form State
   const [sessionOpeningBal, setSessionOpeningBal] = useState(0)
   const [sessionActualClose, setSessionActualClose] = useState(0)
   const [sessionNotes, setSessionNotes] = useState('')
   const [sessionVarianceReason, setSessionVarianceReason] = useState('')
+  const [sessionFundId, setSessionFundId] = useState('') // Chọn quỹ mở ca
 
   // Internal Transfer Form State
   const [transferFromType, setTransferFromType] = useState<'cash_fund' | 'bank_account'>('cash_fund')
@@ -201,27 +208,81 @@ export default function CashbookPage() {
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false)
   const [isFormOpen, setIsFormOpen] = useState(false)
   
+  // Sparkline data
+  const [sparklineTransactions, setSparklineTransactions] = useState<any[]>([])
+  const [sparklineLoading, setSparklineLoading] = useState(true)
+
+  // Pending transactions for quick approval on Overview tab
+  const [pendingTx, setPendingTx] = useState<CashbookTransaction[]>([])
+  const [pendingLoading, setPendingLoading] = useState(true)
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const pageSize = 10
 
-  const userBranchId = profile?.branch_id || '11111111-0000-0000-0000-000000000001' // default CN-HCM
+  // Branch management
+  const isAdmin = userRole.code === 'admin' || userRole.code === 'ceo'
+  const [branches, setBranches] = useState<any[]>([])
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('')
+  const [branchName, setBranchName] = useState('Chi nhánh')
+
+  const userBranchId = useMemo(() => {
+    if (isAdmin) {
+      return selectedBranchId || (branches[0]?.id ?? '')
+    }
+    return profile?.branch_id || ''
+  }, [isAdmin, selectedBranchId, profile?.branch_id, branches])
+
+  // Granular Inflow/Outflow permissions
+  const canCreateInflow = hasPermission('cashbook.create_inflow') || hasPermission('cashbook.create')
+  const canCreateOutflow = hasPermission('cashbook.create_outflow') || hasPermission('cashbook.create')
 
   // Load Master Metadata
   const loadMetadata = useCallback(async () => {
     try {
+      let currentBranchId = userBranchId
+
+      // If user is Admin/CEO and branches are not loaded, load them
+      if (isAdmin && branches.length === 0) {
+        const { data: brData } = await supabase
+          .from('branches')
+          .select('id, code, name')
+          .eq('is_active', true)
+          .order('name', { ascending: true })
+        if (brData && brData.length > 0) {
+          setBranches(brData)
+          if (!selectedBranchId) {
+            setSelectedBranchId(brData[0].id)
+            currentBranchId = brData[0].id
+          }
+        }
+      }
+
+      if (!currentBranchId) return
+
+      // Fetch active branch name for display
+      const { data: activeBr } = await supabase
+        .from('branches')
+        .select('name')
+        .eq('id', currentBranchId)
+        .single()
+      if (activeBr) {
+        setBranchName(activeBr.name)
+      }
+
       // 1. Fetch cash funds of user branch
       const { data: funds } = await supabase
         .from('cash_funds')
         .select('*')
-        .eq('branch_id', userBranchId)
+        .eq('branch_id', currentBranchId)
         .eq('is_active', true)
       if (funds) {
         setCashFunds(funds)
         if (funds.length > 0) {
           setFormAccountId(funds[0].id)
           setTransferFromId(funds[0].id)
+          setSessionFundId(funds[0].id)
         }
       }
 
@@ -229,7 +290,7 @@ export default function CashbookPage() {
       const { data: banks } = await supabase
         .from('bank_accounts')
         .select('*')
-        .eq('branch_id', userBranchId)
+        .eq('branch_id', currentBranchId)
         .eq('is_active', true)
       if (banks) {
         setBankAccounts(banks)
@@ -253,7 +314,7 @@ export default function CashbookPage() {
       // 4. Fetch customers
       const { data: custs } = await supabase
         .from('customers')
-        .select('id, name, farm_name')
+        .select('id, farm_name')
         .eq('is_active', true)
       if (custs) setCustomers(custs)
 
@@ -274,7 +335,7 @@ export default function CashbookPage() {
     } catch (err) {
       console.error('Error loading cashbook metadata:', err)
     }
-  }, [userBranchId])
+  }, [userBranchId, isAdmin, branches.length, selectedBranchId])
 
   // Load active cashier session
   const checkActiveSession = useCallback(async () => {
@@ -316,6 +377,104 @@ export default function CashbookPage() {
     }
   }, [cashFunds])
 
+  // Reconstruct balance history for 30 days
+  const computeBalanceHistory = useCallback((currentBalance: number, txs: any[]) => {
+    const points: { date: string; balance: number }[] = []
+    let balance = Number(currentBalance)
+    const sortedTxs = [...txs].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date))
+
+    const txsByDay: Record<string, any[]> = {}
+    sortedTxs.forEach(t => {
+      if (!txsByDay[t.transaction_date]) txsByDay[t.transaction_date] = []
+      txsByDay[t.transaction_date].push(t)
+    })
+
+    for (let i = 0; i < 30; i++) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toLocaleDateString('en-CA')
+      points.push({ date: dateStr, balance })
+
+      const dayTxs = txsByDay[dateStr] || []
+      dayTxs.forEach(t => {
+        const amt = Number(t.amount || 0)
+        if (t.flow_type === 'inflow') {
+          balance -= amt
+        } else if (t.flow_type === 'outflow') {
+          balance += amt
+        }
+      })
+    }
+    return points.reverse()
+  }, [])
+
+  const loadSparklineData = useCallback(async () => {
+    if (cashFunds.length === 0 && bankAccounts.length === 0) return
+    setSparklineLoading(true)
+    try {
+      const fundIds = cashFunds.map(f => f.id)
+      const bankIds = bankAccounts.map(b => b.id)
+      const ids = [...fundIds, ...bankIds]
+      if (ids.length === 0) return
+
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      const dateStr = thirtyDaysAgo.toLocaleDateString('en-CA')
+
+      const { data, error } = await supabase
+        .from('cashbook_transactions')
+        .select('cash_fund_id, bank_account_id, flow_type, amount, transaction_date')
+        .eq('status', 'approved')
+        .neq('flow_type', 'internal_transfer')
+        .gte('transaction_date', dateStr)
+
+      if (error) throw error
+      setSparklineTransactions(data || [])
+    } catch (err) {
+      console.error('Error loading sparkline transactions:', err)
+    } finally {
+      setSparklineLoading(false)
+    }
+  }, [cashFunds, bankAccounts])
+
+  const fetchPendingTransactions = useCallback(async () => {
+    setPendingLoading(true)
+    try {
+      const fundIds = cashFunds.map(f => f.id)
+      const bankIds = bankAccounts.map(b => b.id)
+      const orParts: string[] = []
+      if (fundIds.length > 0) orParts.push(`cash_fund_id.in.(${fundIds.join(',')})`)
+      if (bankIds.length > 0) orParts.push(`bank_account_id.in.(${bankIds.join(',')})`)
+
+      let query = supabase
+        .from('cashbook_transactions')
+        .select(`
+          *,
+          customer:customers(farm_name),
+          supplier:suppliers(name),
+          employee:profiles!employee_id(full_name),
+          creator:profiles!created_by(full_name)
+        `)
+        .eq('status', 'pending_approval')
+
+      if (orParts.length > 0) {
+        query = query.or(orParts.join(','))
+      } else {
+        setPendingTx([])
+        setPendingLoading(false)
+        return
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false })
+      if (error) throw error
+      setPendingTx(data as unknown as CashbookTransaction[])
+    } catch (err) {
+      console.error('Error fetching pending transactions:', err)
+    } finally {
+      setPendingLoading(false)
+    }
+  }, [cashFunds, bankAccounts])
+
   // Load Cashbook Transactions
   const fetchTransactions = useCallback(async () => {
     setLoading(true)
@@ -324,7 +483,7 @@ export default function CashbookPage() {
         .from('cashbook_transactions')
         .select(`
           *,
-          customer:customers(name, farm_name),
+          customer:customers(farm_name),
           supplier:suppliers(name),
           employee:profiles!employee_id(full_name),
           creator:profiles!created_by(full_name),
@@ -405,19 +564,21 @@ export default function CashbookPage() {
 
   // Check cashier session and load lists once metadata loads
   useEffect(() => {
-    if (cashFunds.length > 0) {
+    if (cashFunds.length > 0 || bankAccounts.length > 0) {
       checkActiveSession()
       loadSessions()
+      fetchPendingTransactions()
+      loadSparklineData()
     }
-  }, [cashFunds, checkActiveSession, loadSessions])
+  }, [cashFunds, bankAccounts, checkActiveSession, loadSessions, fetchPendingTransactions, loadSparklineData])
 
   // Reload list when tab/filters change
   useEffect(() => {
     fetchTransactions()
   }, [currentPage, flowFilter, statusFilter, categoryFilter, accountFilter, startDate, endDate, fetchTransactions])
 
-  useRealtimeTable({ table: 'cashbook_transactions', event: 'INSERT', onData: fetchTransactions })
-  useRealtimeTable({ table: 'cashbook_transactions', event: 'UPDATE', onData: fetchTransactions })
+  useRealtimeTable({ table: 'cashbook_transactions', event: 'INSERT', onData: () => { fetchTransactions(); fetchPendingTransactions(); loadSparklineData(); } })
+  useRealtimeTable({ table: 'cashbook_transactions', event: 'UPDATE', onData: () => { fetchTransactions(); fetchPendingTransactions(); loadSparklineData(); } })
 
   // Reset alert messages automatically
   useEffect(() => {
@@ -427,10 +588,31 @@ export default function CashbookPage() {
     }
   }, [alertMsg])
 
-  // Format currency helper
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val)
-  }
+  // Set default form flow type based on permissions
+  useEffect(() => {
+    if (!canCreateInflow && canCreateOutflow) {
+      setFormFlowType('outflow')
+      const match = categories.find(c => c.flow_type === 'outflow')
+      if (match) setFormCategoryId(match.id)
+    } else if (canCreateInflow && !canCreateOutflow) {
+      setFormFlowType('inflow')
+      const match = categories.find(c => c.flow_type === 'inflow')
+      if (match) setFormCategoryId(match.id)
+    }
+  }, [canCreateInflow, canCreateOutflow, categories])
+
+  // Sync formAccountId when formAccountType or lists load/change
+  useEffect(() => {
+    if (formAccountType === 'cash_fund') {
+      if (cashFunds.length > 0 && !cashFunds.some(f => f.id === formAccountId)) {
+        setFormAccountId(cashFunds[0].id)
+      }
+    } else {
+      if (bankAccounts.length > 0 && !bankAccounts.some(b => b.id === formAccountId)) {
+        setFormAccountId(bankAccounts[0].id)
+      }
+    }
+  }, [formAccountType, cashFunds, bankAccounts, formAccountId])
 
   // Handle flow type change in form
   const handleFlowTypeChange = (type: 'inflow' | 'outflow') => {
@@ -467,6 +649,18 @@ export default function CashbookPage() {
       setAlertMsg({ type: 'error', text: 'Vui lòng chọn tài khoản thanh toán.' })
       return
     }
+    // Validate transaction date: không cho ngày tương lai, lùi tối đa 30 ngày
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const txDate = new Date(formDate + 'T00:00:00')
+    const minDate = new Date(today); minDate.setDate(minDate.getDate() - 30)
+    if (txDate > today) {
+      setAlertMsg({ type: 'error', text: 'Ngày giao dịch không được ở tương lai.' })
+      return
+    }
+    if (txDate < minDate) {
+      setAlertMsg({ type: 'error', text: 'Chỉ cho phép ghi nhận giao dịch trong vòng 30 ngày gần nhất.' })
+      return
+    }
 
     // Cash cashier session checks
     if (formAccountType === 'cash_fund') {
@@ -495,17 +689,21 @@ export default function CashbookPage() {
 
       const insertData: any = {
         flow_type: formFlowType,
-        status: 'draft', // Insert initially as draft to allow transition to approved (triggering AFTER UPDATE)
-        cash_fund_id: isCash ? formAccountId : null,
-        bank_account_id: !isCash ? formAccountId : null,
+        // Ghi trực tiếp trạng thái đích — trigger fn_update_fund_balance (AFTER INSERT)
+        // tự cập nhật số dư quỹ khi status='approved'. Không cần bước draft→update nữa.
+        status: targetStatus,
+        cash_fund_id: isCash ? (formAccountId || null) : null,
+        bank_account_id: !isCash ? (formAccountId || null) : null,
         session_id: isCash ? (activeSession?.id || null) : null,
         amount: formAmount,
-        transaction_date: new Date().toISOString().split('T')[0],
+        transaction_date: formDate,
         description: formDescription.trim(),
         reference_no: formReferenceNo.trim() || null,
         attachments: formAttachments,
         expense_category_id: formCategoryId || null,
-        created_by: profile.id
+        created_by: profile.id,
+        approved_by: targetStatus === 'approved' ? profile.id : null,
+        approved_at: targetStatus === 'approved' ? new Date().toISOString() : null
       }
 
       // Counterparty links
@@ -517,30 +715,11 @@ export default function CashbookPage() {
         insertData.employee_id = formEmployeeId
       }
 
-      // 1. Insert as draft
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('cashbook_transactions')
         .insert([insertData])
-        .select()
 
       if (error) throw error
-
-      if (data && data[0]) {
-        const txId = data[0].id
-        
-        // 2. If target status is approved or pending, update it.
-        // Transitioning status -> approved fires the AFTER UPDATE database trigger, updating the account balance automatically!
-        const { error: updateErr } = await supabase
-          .from('cashbook_transactions')
-          .update({
-            status: targetStatus,
-            approved_by: targetStatus === 'approved' ? profile.id : null,
-            approved_at: targetStatus === 'approved' ? new Date().toISOString() : null
-          })
-          .eq('id', txId)
-
-        if (updateErr) throw updateErr
-      }
 
       setAlertMsg({ 
         type: 'success', 
@@ -554,6 +733,7 @@ export default function CashbookPage() {
       setFormDescription('')
       setFormReferenceNo('')
       setFormAttachments([])
+      setFormDate(new Date().toLocaleDateString('en-CA'))
       
       // Reload lists
       fetchTransactions()
@@ -625,9 +805,15 @@ export default function CashbookPage() {
     e.preventDefault()
     if (!profile?.id || cashFunds.length === 0) return
     
+    const selectedFundId = sessionFundId || cashFunds[0].id
+    const fund = cashFunds.find(f => f.id === selectedFundId)
+    if (!fund) {
+      setAlertMsg({ type: 'error', text: 'Quỹ tiền mặt không hợp lệ.' })
+      return
+    }
+    
     setSubmitting(true)
     try {
-      const fund = cashFunds[0] // Main branch fund
       const insertData = {
         cash_fund_id: fund.id,
         cashier_id: profile.id,
@@ -722,30 +908,21 @@ export default function CashbookPage() {
 
         const insertData: any = {
           flow_type: flow,
-          status: 'draft',
+          status: 'approved', // Ghi thẳng approved — trigger AFTER INSERT tự cập nhật số dư
           cash_fund_id: activeSession.cash_fund_id,
           amount: adjustAmount,
-          transaction_date: new Date().toISOString().split('T')[0],
+          transaction_date: new Date().toLocaleDateString('en-CA'),
           description: `Điều chỉnh lệch phiên ca #${activeSession.id.slice(0,8)}. Lý do: ${sessionVarianceReason.trim()}`,
           expense_category_id: cat ? cat.id : null,
-          created_by: profile?.id
+          created_by: profile?.id,
+          approved_by: profile?.id,
+          approved_at: new Date().toISOString()
         }
 
-        const { data: newTx } = await supabase
+        const { error: adjErr } = await supabase
           .from('cashbook_transactions')
           .insert([insertData])
-          .select()
-
-        if (newTx && newTx[0]) {
-          await supabase
-            .from('cashbook_transactions')
-            .update({
-              status: 'approved',
-              approved_by: profile?.id,
-              approved_at: new Date().toISOString()
-            })
-            .eq('id', newTx[0].id)
-        }
+        if (adjErr) throw adjErr
       }
 
       setAlertMsg({ type: 'success', text: 'Đóng ca và đối soát ca thành công. Số dư quỹ đã hoàn tất ghi sổ!' })
@@ -790,7 +967,9 @@ export default function CashbookPage() {
 
     setSubmitting(true)
     try {
-      // 1. Create entry in internal_transfers for bookkeeping
+      // Chỉ insert 1 phiếu internal_transfers — trigger DB (S2.2)
+      // fn_cashbook_from_internal_transfer tự sinh 2 bút toán đối ứng
+      // (chi ở TK nguồn + thu ở TK đích) và cập nhật số dư cả hai, atomic.
       const { error: transErr } = await supabase
         .from('internal_transfers')
         .insert([{
@@ -799,75 +978,13 @@ export default function CashbookPage() {
           to_fund_id: transferToType === 'cash_fund' ? transferToId : null,
           to_bank_id: transferToType === 'bank_account' ? transferToId : null,
           amount: transferAmount,
-          transfer_date: new Date().toISOString().split('T')[0],
+          transfer_date: new Date().toLocaleDateString('en-CA'),
           notes: transferNotes.trim() || 'Chuyển quỹ nội bộ.',
           created_by: profile.id,
           approved_by: profile.id // Auto approved since accountant transfers
         }])
 
       if (transErr) throw transErr
-
-      // 2. Insert Outflow (Source Account)
-      // Transitioning to approved fires the trigger to deduct balance
-      const outflowTx = {
-        flow_type: 'outflow',
-        status: 'draft',
-        cash_fund_id: transferFromType === 'cash_fund' ? transferFromId : null,
-        bank_account_id: transferFromType === 'bank_account' ? transferFromId : null,
-        session_id: transferFromType === 'cash_fund' ? activeSession?.id : null,
-        amount: transferAmount,
-        transaction_date: new Date().toISOString().split('T')[0],
-        description: `Chi chuyển tiền nội bộ. Ghi chú: ${transferNotes.trim()}`,
-        created_by: profile.id
-      }
-
-      const { data: outData, error: outErr } = await supabase
-        .from('cashbook_transactions')
-        .insert([outflowTx])
-        .select()
-
-      if (outErr) throw outErr
-      if (outData && outData[0]) {
-        await supabase
-          .from('cashbook_transactions')
-          .update({
-            status: 'approved',
-            approved_by: profile.id,
-            approved_at: new Date().toISOString()
-          })
-          .eq('id', outData[0].id)
-      }
-
-      // 3. Insert Inflow (Destination Account)
-      // Transitioning to approved fires the trigger to add balance
-      const inflowTx = {
-        flow_type: 'inflow',
-        status: 'draft',
-        cash_fund_id: transferToType === 'cash_fund' ? transferToId : null,
-        bank_account_id: transferToType === 'bank_account' ? transferToId : null,
-        session_id: null, // Bank or cash receiver ca doesn't bind automatically
-        amount: transferAmount,
-        transaction_date: new Date().toISOString().split('T')[0],
-        description: `Thu nhận chuyển tiền nội bộ. Ghi chú: ${transferNotes.trim()}`,
-        created_by: profile.id
-      }
-
-      const { data: inData, error: inErr } = await supabase
-        .from('cashbook_transactions')
-        .insert([inflowTx])
-        .select()
-
-      if (inErr) throw inErr
-      if (inData && inData[0]) {
-        await supabase
-          .from('cashbook_transactions')
-          .update({
-            status: 'approved',
-            approved_by: profile.id,
-            approved_at: new Date().toISOString()
-          })
-          .eq('id', inData[0].id)
-      }
 
       setAlertMsg({ type: 'success', text: 'Chuyển quỹ nội bộ thành công. Cả hai tài khoản đã cập nhật số dư!' })
       
@@ -888,6 +1005,77 @@ export default function CashbookPage() {
 
   const totalCashBalance = useMemo(() => cashFunds.reduce((sum, f) => sum + Number(f.balance), 0), [cashFunds])
   const totalBankBalance = useMemo(() => bankAccounts.reduce((sum, b) => sum + Number(b.balance), 0), [bankAccounts])
+
+  // Sparkline data mapping
+  const sparklines = useMemo(() => {
+    const res: Record<string, { date: string; balance: number }[]> = {}
+    
+    // Process cash funds
+    cashFunds.forEach(fund => {
+      const fundTxs = sparklineTransactions.filter(t => t.cash_fund_id === fund.id)
+      res[fund.id] = computeBalanceHistory(fund.balance, fundTxs)
+    })
+    
+    // Process bank accounts
+    bankAccounts.forEach(bank => {
+      const bankTxs = sparklineTransactions.filter(t => t.bank_account_id === bank.id)
+      res[bank.id] = computeBalanceHistory(bank.balance, bankTxs)
+    })
+    
+    return res
+  }, [cashFunds, bankAccounts, sparklineTransactions, computeBalanceHistory])
+
+  // 7-day flow chart data mapping
+  const last7DaysData = useMemo(() => {
+    const dataMap: Record<string, { inflow: number; outflow: number }> = {}
+    
+    // Pre-populate last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const dateStr = d.toLocaleDateString('en-CA')
+      dataMap[dateStr] = { inflow: 0, outflow: 0 }
+    }
+    
+    // Sum up amounts
+    sparklineTransactions.forEach(t => {
+      const dateStr = t.transaction_date
+      if (dataMap[dateStr]) {
+        const amt = Number(t.amount || 0)
+        if (t.flow_type === 'inflow') {
+          dataMap[dateStr].inflow += amt
+        } else if (t.flow_type === 'outflow') {
+          dataMap[dateStr].outflow += amt
+        }
+      }
+    })
+    
+    // Convert to array of DayPoint
+    return Object.entries(dataMap).map(([dateStr, val]) => {
+      const parts = dateStr.split('-')
+      const label = parts.length === 3 ? `${parts[2]}/${parts[1]}` : dateStr
+      return {
+        label,
+        inflow: val.inflow,
+        outflow: val.outflow,
+        net: val.inflow - val.outflow
+      }
+    })
+  }, [sparklineTransactions])
+
+  // Guard check at top
+  const canView = hasPermission('cashbook.view')
+  if (!canView) {
+    return (
+      <Layout activeMenu="Sổ quỹ">
+        <div className="p-4 md:p-10 max-w-4xl mx-auto flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+          <AlertTriangle className="text-red-500 w-16 h-16 animate-bounce" />
+          <h2 className="text-h1 font-bold text-gray-700">Truy cập bị từ chối</h2>
+          <p className="text-gray-400 font-medium">Bạn không có quyền xem thông tin Sổ quỹ tiền tệ. Vui lòng liên hệ quản trị viên để được phân quyền.</p>
+        </div>
+      </Layout>
+    )
+  }
 
   return (
     <Layout activeMenu="Sổ quỹ">
@@ -910,35 +1098,47 @@ export default function CashbookPage() {
               <ChevronRight size={12} />
               <span className="text-blue-500 font-bold">Sổ quỹ tiền tệ</span>
             </nav>
-            <h2 className="text-[28px] font-bold text-gray-700">Quản lý Sổ quỹ & Dòng tiền</h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-[28px] font-bold text-gray-700">Quản lý Sổ quỹ & Dòng tiền</h2>
+              {isAdmin && branches.length > 0 && (
+                <select
+                  value={selectedBranchId}
+                  onChange={(e) => setSelectedBranchId(e.target.value)}
+                  className="h-9 px-3 rounded-lg border border-gray-200 bg-white text-body-md font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm"
+                >
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              )}
+              {!isAdmin && branchName && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-[11px] font-bold shadow-sm">
+                  {branchName}
+                </span>
+              )}
+            </div>
           </div>
           
           {/* Tabs switch */}
-          <div className="flex bg-gray-100 p-1 rounded-lg self-start sm:self-auto">
-            <button
-              onClick={() => setActiveTab('overview')}
-              className={`px-4 py-1.5 rounded-md text-body-md font-semibold transition-all ${
-                activeTab === 'overview' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Lịch sử giao dịch
-            </button>
-            <button
-              onClick={() => setActiveTab('transfers')}
-              className={`px-4 py-1.5 rounded-md text-body-md font-semibold transition-all ${
-                activeTab === 'transfers' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Chuyển quỹ nội bộ
-            </button>
-            <button
-              onClick={() => setActiveTab('sessions')}
-              className={`px-4 py-1.5 rounded-md text-body-md font-semibold transition-all ${
-                activeTab === 'sessions' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Phiên quỹ (Ca làm việc)
-            </button>
+          <div className="flex flex-wrap bg-gray-100 p-1 rounded-lg self-start sm:self-auto gap-0.5 shadow-inner">
+            {([
+              ['overview', 'Tổng quan'],
+              ['history', 'Phiếu thu / chi'],
+              ['payments', 'Thu nợ / Chi NCC / Tạm ứng'],
+              ['transfers', 'Chuyển quỹ nội bộ'],
+              ['sessions', 'Phiên quỹ'],
+              ['reports', 'Báo cáo'],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`px-4 py-1.5 rounded-md text-body-md font-semibold transition-all ${
+                  activeTab === key ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -961,7 +1161,7 @@ export default function CashbookPage() {
             
             <div className="mt-4 border-t border-gray-50 pt-3 flex justify-between items-center text-tiny text-gray-400">
               <span>{cashFunds.length} Quỹ tiền mặt hoạt động</span>
-              <span className="font-semibold text-gray-500">HCM Branch</span>
+              <span className="font-semibold text-gray-500">{branchName}</span>
             </div>
           </div>
 
@@ -982,7 +1182,9 @@ export default function CashbookPage() {
 
             <div className="mt-4 border-t border-gray-50 pt-3 flex justify-between items-center text-tiny text-gray-400">
               <span>{bankAccounts.length} Tài khoản đang liên kết</span>
-              <span className="font-semibold text-gray-500">VCB & TCB</span>
+              <span className="font-semibold text-gray-500 truncate max-w-[150px]">
+                {bankAccounts.map(b => b.bank_name).join(' & ') || 'Chưa liên kết'}
+              </span>
             </div>
           </div>
 
@@ -1047,8 +1249,24 @@ export default function CashbookPage() {
           </div>
         </div>
 
-        {/* Main Content Area depends on Active Tab */}
+        {/* Tab 1: Tổng quan */}
         {activeTab === 'overview' && (
+          <CashbookOverview
+            cashFunds={cashFunds}
+            bankAccounts={bankAccounts}
+            formatCurrency={formatCurrency}
+            sparklines={sparklines}
+            last7DaysData={last7DaysData}
+            pendingTx={pendingTx}
+            onApprove={handleApproveTransaction}
+            onCancel={handleCancelTransaction}
+            submitting={submitting}
+            profileId={profile?.id}
+          />
+        )}
+
+        {/* Tab 2: Lịch sử giao dịch / Phiếu thu chi */}
+        {activeTab === 'history' && (
           <div className="grid grid-cols-12 gap-8 items-start">
             
             {/* Transactions List Table (8 cols) */}
@@ -1399,24 +1617,26 @@ export default function CashbookPage() {
                 <div className="grid grid-cols-2 bg-gray-100 p-1 rounded-lg mb-4">
                   <button
                     type="button"
+                    disabled={!canCreateInflow}
                     onClick={() => handleFlowTypeChange('inflow')}
                     className={`py-1.5 rounded-md text-tiny font-bold transition-all flex items-center justify-center gap-1 ${
                       formFlowType === 'inflow' 
                         ? 'bg-white text-emerald-700 shadow-sm' 
                         : 'text-gray-500'
-                    }`}
+                    } ${!canCreateInflow ? 'opacity-30 cursor-not-allowed' : ''}`}
                   >
                     <TrendingUp size={14} />
                     Phiếu Thu tiền
                   </button>
                   <button
                     type="button"
+                    disabled={!canCreateOutflow}
                     onClick={() => handleFlowTypeChange('outflow')}
                     className={`py-1.5 rounded-md text-tiny font-bold transition-all flex items-center justify-center gap-1 ${
                       formFlowType === 'outflow' 
                         ? 'bg-white text-orange-700 shadow-sm' 
                         : 'text-gray-500'
-                    }`}
+                    } ${!canCreateOutflow ? 'opacity-30 cursor-not-allowed' : ''}`}
                   >
                     <TrendingDown size={14} />
                     Phiếu Chi tiền
@@ -1453,6 +1673,18 @@ export default function CashbookPage() {
                       />
                       <span className="absolute right-3 text-tiny text-gray-400 font-bold">₫</span>
                     </div>
+                  </div>
+
+                  {/* Transaction Date */}
+                  <div className="space-y-1">
+                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Ngày giao dịch</label>
+                    <input
+                      type="date"
+                      value={formDate}
+                      max={new Date().toLocaleDateString('en-CA')}
+                      onChange={e => setFormDate(e.target.value)}
+                      className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    />
                   </div>
 
                   {/* Account Payment Type */}
@@ -1647,11 +1879,20 @@ export default function CashbookPage() {
                   <div className="pt-2">
                     <button
                       type="submit"
-                      disabled={submitting}
-                      className="w-full h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-all text-body-md"
+                      disabled={
+                        submitting || 
+                        (formFlowType === 'inflow' && !canCreateInflow) || 
+                        (formFlowType === 'outflow' && !canCreateOutflow)
+                      }
+                      className="w-full h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-all text-body-md disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Xác nhận lưu phiếu
+                      {submitting ? 'Đang lưu...' : 'Xác nhận lưu phiếu'}
                     </button>
+                    {((formFlowType === 'inflow' && !canCreateInflow) || (formFlowType === 'outflow' && !canCreateOutflow)) && (
+                      <p className="text-[10px] text-red-500 mt-1 font-semibold text-center">
+                        Bạn không có quyền lập phiếu {formFlowType === 'inflow' ? 'thu' : 'chi'}.
+                      </p>
+                    )}
                   </div>
                 </form>
               </div>
@@ -1666,6 +1907,35 @@ export default function CashbookPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Tab: Thu nợ / Chi NCC / Tạm ứng */}
+        {activeTab === 'payments' && profile?.id && (
+          <CashbookPaymentForms
+            profileId={profile.id}
+            branchId={userBranchId || null}
+            customers={customers}
+            suppliers={suppliers}
+            employees={employees}
+            formatCurrency={formatCurrency}
+            onSuccess={(msg) => {
+              setAlertMsg({ type: 'success', text: msg })
+              fetchTransactions()
+              loadMetadata()
+            }}
+            onError={(msg) => setAlertMsg({ type: 'error', text: msg })}
+          />
+        )}
+
+        {/* Tab: Báo cáo dòng tiền */}
+        {activeTab === 'reports' && (
+          <CashbookReports
+            cashFunds={cashFunds}
+            bankAccounts={bankAccounts}
+            fundIds={cashFunds.map(f => f.id)}
+            bankIds={bankAccounts.map(b => b.id)}
+            formatCurrency={formatCurrency}
+          />
         )}
 
         {/* Tab 2: Chuyển tiền nội bộ (Internal Transfers) */}
@@ -2159,6 +2429,20 @@ export default function CashbookPage() {
                     </p>
                     
                     <div className="space-y-1">
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Quỹ tiền mặt *</label>
+                      <select
+                        className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                        value={sessionFundId}
+                        onChange={e => setSessionFundId(e.target.value)}
+                        disabled={cashFunds.length <= 1}
+                      >
+                        {cashFunds.map(f => (
+                          <option key={f.id} value={f.id}>{f.name} ({formatCurrency(f.balance)})</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-1">
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Tiền mặt đầu ca (₫) *</label>
                       <div className="relative flex items-center">
                         <input
@@ -2272,7 +2556,7 @@ export default function CashbookPage() {
           </div>
         )}
         {/* Mobile FAB Button */}
-        {activeTab === 'overview' && !isFormOpen && (
+        {activeTab === 'history' && !isFormOpen && (
           <button
             onClick={() => setIsFormOpen(true)}
             className="lg:hidden fixed bottom-6 right-6 z-40 w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
