@@ -179,6 +179,7 @@ export default function POSPage() {
   const [categories, setCategories] = useState<{ id: string; code: string; name: string }[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
   const [priceLists, setPriceLists] = useState<PriceList[]>([])
+  const [branchDefaultPriceListId, setBranchDefaultPriceListId] = useState<string | null>(null)
   const [compatibilities, setCompatibilities] = useState<Compatibility[]>([])
   const [species, setSpecies] = useState<Species[]>([])
   const [diseases, setDiseases] = useState<Disease[]>([])
@@ -350,13 +351,41 @@ export default function POSPage() {
           .eq('is_active', true)
         if (catData) setCategories(catData)
 
+        let currentBranchId = profile?.branch_id
+        if (!currentBranchId && profile?.id) {
+          const { data: profData } = await supabase
+            .from('profiles')
+            .select('branch_id')
+            .eq('id', profile.id)
+            .single()
+          if (profData?.branch_id) {
+            currentBranchId = profData.branch_id
+          }
+        }
+
+        let branchPlId: string | null = null
+        if (currentBranchId) {
+          const { data: branchData } = await supabase
+            .from('branches')
+            .select('default_price_list_id')
+            .eq('id', currentBranchId)
+            .single()
+          if (branchData?.default_price_list_id) {
+            branchPlId = branchData.default_price_list_id
+            setBranchDefaultPriceListId(branchPlId)
+          }
+        }
+
         const { data: plData } = await supabase
           .from('price_lists')
           .select('id, code, name, is_default')
           .eq('is_active', true)
         if (plData) {
           setPriceLists(plData)
-          const def = plData.find((pl: any) => pl.is_default) || plData.find((pl: any) => pl.code === 'GIA-LE') || plData[0]
+          const def = plData.find((pl: any) => pl.id === branchPlId) ||
+                      plData.find((pl: any) => pl.is_default) ||
+                      plData.find((pl: any) => pl.code === 'GIA-LE') ||
+                      plData[0]
           if (def) {
             setTabs(prev => prev.map(t => t.id === '1' ? { ...t, selectedPriceListId: def.id } : t))
           }
@@ -564,13 +593,16 @@ export default function POSPage() {
       if (selectedCustomer?.price_list_id) {
         setSelectedPriceListId(selectedCustomer.price_list_id)
       } else {
-        const def = priceLists.find(pl => pl.is_default) || priceLists.find(pl => pl.code === 'GIA-LE') || priceLists[0]
+        const def = priceLists.find(pl => pl.id === branchDefaultPriceListId) ||
+                    priceLists.find(pl => pl.is_default) ||
+                    priceLists.find(pl => pl.code === 'GIA-LE') ||
+                    priceLists[0]
         if (def) {
           setSelectedPriceListId(def.id)
         }
       }
     }
-  }, [selectedCustomerId, customers, priceLists])
+  }, [selectedCustomerId, customers, priceLists, branchDefaultPriceListId])
 
   // Recalculate cart item prices when price list changes
   useEffect(() => {
@@ -849,7 +881,10 @@ export default function POSPage() {
       nextNum++
     }
     const newId = crypto.randomUUID()
-    const def = priceLists.find(pl => pl.is_default) || priceLists.find(pl => pl.code === 'GIA-LE') || priceLists[0]
+    const def = priceLists.find(pl => pl.id === branchDefaultPriceListId) ||
+                priceLists.find(pl => pl.is_default) ||
+                priceLists.find(pl => pl.code === 'GIA-LE') ||
+                priceLists[0]
     const defPlId = def ? def.id : ''
 
     const newTab: InvoiceTab = {
@@ -873,7 +908,10 @@ export default function POSPage() {
   const handleCloseTab = (idToClose: string, e: React.MouseEvent) => {
     e.stopPropagation()
     if (tabs.length === 1) {
-      const def = priceLists.find(pl => pl.is_default) || priceLists.find(pl => pl.code === 'GIA-LE') || priceLists[0]
+      const def = priceLists.find(pl => pl.id === branchDefaultPriceListId) ||
+                  priceLists.find(pl => pl.is_default) ||
+                  priceLists.find(pl => pl.code === 'GIA-LE') ||
+                  priceLists[0]
       const defPlId = def ? def.id : ''
       setTabs([
         {
@@ -1152,10 +1190,10 @@ export default function POSPage() {
         <header className="h-12 bg-[#007edb] flex items-center justify-between px-4 text-white shrink-0 shadow-md">
           {/* Logo & Invoices Tabs */}
           <div className="flex items-center gap-4 h-full overflow-hidden flex-1">
-            <span className="font-bold text-sm tracking-wider uppercase flex items-center gap-1.5 border-r border-[#006cc0] pr-4 select-none shrink-0 whitespace-nowrap">
+            <h1 className="font-bold text-sm tracking-wider uppercase flex items-center gap-1.5 border-r border-[#006cc0] pr-4 select-none shrink-0 whitespace-nowrap">
               <Package size={18} />
               Sanh Long POS
-            </span>
+            </h1>
 
             {/* Invoices Tab List - Scrollable and Non-Shrinking to handle 18+ tabs */}
             <div className="flex items-end gap-1 h-full pt-1.5 overflow-x-auto flex-nowrap shrink-0 max-w-[40vw] sm:max-w-[45vw] md:max-w-[50vw] lg:max-w-[60vw] xl:max-w-[70vw] scrollbar-none">

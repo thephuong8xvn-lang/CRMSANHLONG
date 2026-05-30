@@ -116,6 +116,7 @@ export default function OrderDetailPage() {
     returnedQty: number;
     currentReturnQty: number;
     unitPrice: number;
+    originalUnitPrice: number;
     lotId: string | null;
   }>>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
@@ -176,6 +177,7 @@ export default function OrderDetailPage() {
         returnedQty: returnMap[line.product_id] || 0,
         currentReturnQty: 0,
         unitPrice: line.unit_price,
+        originalUnitPrice: line.unit_price,
         lotId: allocMap[line.id] || null
       }))
 
@@ -1109,11 +1111,23 @@ export default function OrderDetailPage() {
                                 }}
                                 disabled={maxAvail <= 0}
                                 placeholder={maxAvail > 0 ? `Tối đa: ${maxAvail}` : 'Hết'}
-                                className="w-full text-center h-8 border border-gray-150 rounded focus:outline-none focus:border-blue-500 font-semibold"
+                                className="w-full text-center h-8 border border-gray-155 border-gray-150 rounded focus:outline-none focus:border-blue-500 font-semibold"
                               />
                             </td>
                             <td className="px-4 py-3 text-right text-gray-700 font-medium">
-                              {line.unitPrice.toLocaleString('vi-VN')} ₫
+                              <input
+                                type="number"
+                                min="0"
+                                value={line.unitPrice}
+                                onChange={(e) => {
+                                  const val = Math.max(0, parseInt(e.target.value) || 0);
+                                  const updated = [...returnLines];
+                                  updated[idx].unitPrice = val;
+                                  setReturnLines(updated);
+                                }}
+                                className="w-28 text-right h-8 px-2 border border-gray-150 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-850"
+                              />
+                              <span className="block text-[10px] text-gray-400 font-vietnamese mt-0.5">Gốc: {line.originalUnitPrice.toLocaleString('vi-VN')} ₫</span>
                             </td>
                             <td className="px-4 py-3 text-right text-gray-800 font-bold">
                               {(line.currentReturnQty * line.unitPrice).toLocaleString('vi-VN')} ₫

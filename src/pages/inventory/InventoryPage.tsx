@@ -161,7 +161,7 @@ export default function InventoryPage() {
     fromWarehouse: string;
     toWarehouse: string;
     notes: string;
-    lines: Array<{ lotId: string; productId: string; quantity: number; maxQty: number; name: string; sku: string; lotNumber: string }>;
+    lines: Array<{ lotId: string; productId: string; quantity: number; maxQty: number; name: string; sku: string; lotNumber: string; unitPrice: number; costPrice: number }>;
   }>({
     fromWarehouse: '',
     toWarehouse: '',
@@ -185,7 +185,7 @@ export default function InventoryPage() {
     reasonCode: string;
     reasonDetail: string;
     refundMethod: string;
-    lines: Array<{ lotId: string; productId: string; quantity: number; maxQty: number; unitPrice: number; name: string; sku: string; lotNumber: string }>;
+    lines: Array<{ lotId: string; productId: string; quantity: number; maxQty: number; unitPrice: number; name: string; sku: string; lotNumber: string; costPrice: number }>;
   }>({
     supplierId: '',
     warehouseId: '',
@@ -203,7 +203,7 @@ export default function InventoryPage() {
       return {
         value: l.id,
         label: l.product_id ? l.name : `Lô: ${l.lot_number}`,
-        desc: `Lô: ${l.lot_number} | Tồn: ${avail}`,
+        desc: `Lô: ${l.lot_number} | Tồn: ${avail} | Vốn: ${l.cost_price?.toLocaleString()}₫`,
         disabled: avail <= 0 || isAlreadyAdded
       };
     });
@@ -342,10 +342,11 @@ export default function InventoryPage() {
       .select(`
         id,
         quantity,
+        unit_price,
         lot_id,
         product_id,
         product:products(name, sku, unit),
-        lot:stock_lots(lot_number, expiry_date)
+        lot:stock_lots(lot_number, expiry_date, cost_price)
       `)
       .eq('transfer_id', transferId)
 
@@ -430,6 +431,7 @@ export default function InventoryPage() {
     }
     setSubmitting(true)
     try {
+      const totalAmount = newTransfer.lines.reduce((sum, line) => sum + (line.quantity * (line.unitPrice || 0)), 0)
       const { data: transferData, error: txError } = await supabase
         .from('stock_transfers')
         .insert([{
@@ -437,7 +439,8 @@ export default function InventoryPage() {
           to_warehouse: newTransfer.toWarehouse,
           notes: newTransfer.notes || null,
           created_by: profile?.id,
-          status: 'draft'
+          status: 'draft',
+          total_amount: totalAmount
         }])
         .select()
         .single()
@@ -448,7 +451,8 @@ export default function InventoryPage() {
         transfer_id: transferData.id,
         lot_id: line.lotId,
         product_id: line.productId,
-        quantity: line.quantity
+        quantity: line.quantity,
+        unit_price: line.unitPrice
       }))
 
       const { error: linesError } = await supabase
@@ -465,7 +469,7 @@ export default function InventoryPage() {
         .from('stock_transfers')
         .select(`
           id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by,
+          transfer_date, notes, created_by, received_by, total_amount,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
@@ -498,7 +502,7 @@ export default function InventoryPage() {
         .from('stock_transfers')
         .select(`
           id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by,
+          transfer_date, notes, created_by, received_by, total_amount,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
@@ -531,7 +535,7 @@ export default function InventoryPage() {
         .from('stock_transfers')
         .select(`
           id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by,
+          transfer_date, notes, created_by, received_by, total_amount,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
@@ -564,7 +568,7 @@ export default function InventoryPage() {
         .from('stock_transfers')
         .select(`
           id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by,
+          transfer_date, notes, created_by, received_by, total_amount,
           from_wh:warehouses!from_warehouse(name),
           to_wh:warehouses!to_warehouse(name),
           creator:profiles!created_by(full_name),
@@ -979,7 +983,7 @@ export default function InventoryPage() {
             .from('stock_transfers')
             .select(`
               id, transfer_code, from_warehouse, to_warehouse, status,
-              transfer_date, notes, created_by, received_by,
+              transfer_date, notes, created_by, received_by, total_amount,
               from_wh:warehouses!from_warehouse(name),
               to_wh:warehouses!to_warehouse(name),
               creator:profiles!created_by(full_name),
@@ -1873,6 +1877,7 @@ export default function InventoryPage() {
                         <th className="px-6 py-4">Kho đích</th>
                         <th className="px-6 py-4 text-center">Ngày chuyển</th>
                         <th className="px-6 py-4">Người tạo</th>
+                        <th className="px-6 py-4 text-right">Tổng giá trị</th>
                         <th className="px-6 py-4 text-center">Trạng thái</th>
                         <th className="px-6 py-4 w-20 text-center">Hành động</th>
                       </tr>
@@ -1887,6 +1892,9 @@ export default function InventoryPage() {
                             {new Date(t.transfer_date).toLocaleDateString('vi-VN')}
                           </td>
                           <td className="px-6 py-4 font-medium text-gray-700">{t.creator?.full_name || 'Hệ thống'}</td>
+                          <td className="px-6 py-4 text-right font-bold text-gray-700">
+                            {t.total_amount ? `${Number(t.total_amount).toLocaleString('vi-VN')} ₫` : '0 ₫'}
+                          </td>
                           <td className="px-6 py-4 text-center">
                             <span className={`px-2.5 py-0.5 rounded text-tiny font-bold uppercase ${
                               t.status === 'received' 
@@ -1958,7 +1966,10 @@ export default function InventoryPage() {
                       </div>
 
                       <div className="flex justify-between items-center pt-2 border-t border-gray-50">
-                        <span className="text-[11px] text-gray-400 font-vietnamese">Người tạo: <strong className="text-gray-600 font-semibold">{t.creator?.full_name || 'Hệ thống'}</strong></span>
+                        <div className="flex flex-col">
+                          <span className="text-[11px] text-gray-400 font-vietnamese">Người tạo: <strong className="text-gray-600 font-semibold">{t.creator?.full_name || 'Hệ thống'}</strong></span>
+                          <span className="text-[11px] text-gray-400">Tổng tiền: <strong className="text-gray-850 font-bold">{t.total_amount ? `${Number(t.total_amount).toLocaleString('vi-VN')} ₫` : '0 ₫'}</strong></span>
+                        </div>
                         <button
                           onClick={async () => {
                             setSelectedTransfer(t)
@@ -2457,13 +2468,17 @@ export default function InventoryPage() {
               {newTransfer.fromWarehouse && (
                 <div className="bg-gray-25 border border-gray-100 rounded-lg p-4 space-y-4">
                   <h4 className="text-body-md font-bold text-gray-700">Thêm sản phẩm từ kho nguồn</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="block text-tiny font-semibold text-gray-600">Chọn lô hàng</label>
                       <SmartSearchSelect
                         options={transferLotOptions}
                         value={modalLotId}
-                        onChange={(val) => setModalLotId(val)}
+                        onChange={(val) => {
+                          setModalLotId(val);
+                          const lot = lotsForTransfer.find((l: any) => l.id === val);
+                          if (lot) setModalUnitPrice(lot.cost_price);
+                        }}
                         placeholder="-- Chọn lô hàng còn tồn --"
                         searchPlaceholder="Tìm kiếm lô hàng..."
                       />
@@ -2471,12 +2486,23 @@ export default function InventoryPage() {
 
                     <div className="space-y-1.5">
                       <label className="block text-tiny font-semibold text-gray-600">Số lượng chuyển</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={modalQty}
+                        onChange={(e) => setModalQty(Math.max(1, parseInt(e.target.value) || 0))}
+                        className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-tiny font-semibold text-gray-600">Đơn giá chuyển (₫)</label>
                       <div className="flex gap-2">
                         <input
                           type="number"
-                          min="1"
-                          value={modalQty}
-                          onChange={(e) => setModalQty(Math.max(1, parseInt(e.target.value) || 0))}
+                          min="0"
+                          value={modalUnitPrice}
+                          onChange={(e) => setModalUnitPrice(Math.max(0, parseInt(e.target.value) || 0))}
                           className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                         />
                         <button
@@ -2496,6 +2522,8 @@ export default function InventoryPage() {
                               productId: lot.product_id,
                               quantity: modalQty,
                               maxQty: avail,
+                              unitPrice: modalUnitPrice,
+                              costPrice: lot.cost_price,
                               name: lot.name,
                               sku: lot.sku,
                               lotNumber: lot.lot_number
@@ -2507,6 +2535,7 @@ export default function InventoryPage() {
                             // Reset inputs
                             setModalLotId('');
                             setModalQty(1);
+                            setModalUnitPrice(0);
                           }}
                           className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 h-11 rounded-lg text-body-md transition-colors"
                         >
@@ -2524,27 +2553,64 @@ export default function InventoryPage() {
                 <div className="border border-gray-100 rounded-lg overflow-hidden">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-500 font-bold text-tiny uppercase">
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-550 text-gray-500 font-bold text-tiny uppercase">
                         <th className="px-4 py-2">Sản phẩm / SKU</th>
                         <th className="px-4 py-2">Số lô</th>
-                        <th className="px-4 py-2 text-center">Số lượng</th>
+                        <th className="px-4 py-2 text-center w-24">Số lượng</th>
+                        <th className="px-4 py-2 text-right w-36">Đơn giá chuyển</th>
+                        <th className="px-4 py-2 text-right w-32">Thành tiền</th>
                         <th className="px-4 py-2 w-12"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
                       {newTransfer.lines.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="px-4 py-6 text-center text-gray-400 italic">Chưa chọn sản phẩm nào. Vui lòng thêm từ form ở trên.</td>
+                          <td colSpan={6} className="px-4 py-6 text-center text-gray-400 italic">Chưa chọn sản phẩm nào. Vui lòng thêm từ form ở trên.</td>
                         </tr>
                       ) : (
                         newTransfer.lines.map((line, idx) => (
                           <tr key={idx} className="hover:bg-gray-25/30">
                             <td className="px-4 py-2.5">
                               <p className="font-bold text-gray-700">{line.name}</p>
-                              <span className="text-tiny text-gray-455 font-mono">SKU: {line.sku}</span>
+                              <div className="flex gap-2 items-center text-tiny">
+                                <span className="text-gray-455 font-mono">SKU: {line.sku}</span>
+                                <span className="text-gray-300">|</span>
+                                <span className="text-amber-600 font-medium">Vốn: {line.costPrice?.toLocaleString('vi-VN')} ₫</span>
+                              </div>
                             </td>
                             <td className="px-4 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
-                            <td className="px-4 py-2.5 text-center font-bold text-gray-800">{line.quantity}</td>
+                            <td className="px-4 py-2.5 text-center">
+                              <input
+                                type="number"
+                                min="1"
+                                max={line.maxQty}
+                                value={line.quantity}
+                                onChange={(e) => {
+                                  const val = Math.min(line.maxQty, Math.max(1, parseInt(e.target.value) || 1))
+                                  const updated = [...newTransfer.lines]
+                                  updated[idx] = { ...line, quantity: val }
+                                  setNewTransfer({ ...newTransfer, lines: updated })
+                                }}
+                                className="w-20 text-center h-8 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-800"
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                value={line.unitPrice}
+                                onChange={(e) => {
+                                  const val = Math.max(0, parseInt(e.target.value) || 0)
+                                  const updated = [...newTransfer.lines]
+                                  updated[idx] = { ...line, unitPrice: val }
+                                  setNewTransfer({ ...newTransfer, lines: updated })
+                                }}
+                                className="w-28 text-right h-8 px-2 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-850"
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-bold text-gray-800">
+                              {(line.quantity * (line.unitPrice || 0)).toLocaleString('vi-VN')} ₫
+                            </td>
                             <td className="px-4 py-2.5 text-center">
                               <button
                                 type="button"
@@ -2670,7 +2736,7 @@ export default function InventoryPage() {
 
               {/* Items Table */}
               <div className="space-y-2">
-                <h4 className="text-body-md font-bold text-gray-750">Sản phẩm luân chuyển</h4>
+                <h4 className="text-body-md font-bold text-gray-755">Sản phẩm luân chuyển</h4>
                 <div className="border border-gray-100 rounded-lg overflow-hidden">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -2679,27 +2745,50 @@ export default function InventoryPage() {
                         <th className="px-4 py-3">Số lô</th>
                         <th className="px-4 py-3 text-center">Hạn sử dụng</th>
                         <th className="px-4 py-3 text-center">Số lượng</th>
+                        <th className="px-4 py-3 text-right">Đơn giá chuyển</th>
+                        <th className="px-4 py-3 text-right">Thành tiền</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {selectedTransferLines.map((line) => (
-                        <tr key={line.id} className="hover:bg-gray-25/30">
-                          <td className="px-4 py-3">
-                            <p className="font-bold text-gray-700">{line.product?.name}</p>
-                            <span className="text-tiny text-gray-400 font-mono">SKU: {line.product?.sku}</span>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-blue-500 font-semibold">{line.lot?.lot_number || 'N/A'}</td>
-                          <td className="px-4 py-3 text-center text-gray-500">
-                            {line.lot?.expiry_date ? new Date(line.lot.expiry_date).toLocaleDateString('vi-VN') : '---'}
-                          </td>
-                          <td className="px-4 py-3 text-center font-bold text-gray-800">
-                            {line.quantity} {line.product?.unit}
-                          </td>
-                        </tr>
-                      ))}
+                      {selectedTransferLines.map((line) => {
+                        const costPrice = line.lot?.cost_price;
+                        return (
+                          <tr key={line.id} className="hover:bg-gray-25/30">
+                            <td className="px-4 py-3">
+                              <p className="font-bold text-gray-700">{line.product?.name}</p>
+                              <span className="text-tiny text-gray-400 font-mono">SKU: {line.product?.sku}</span>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-blue-500 font-semibold">{line.lot?.lot_number || 'N/A'}</td>
+                            <td className="px-4 py-3 text-center text-gray-500">
+                              {line.lot?.expiry_date ? new Date(line.lot.expiry_date).toLocaleDateString('vi-VN') : '---'}
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold text-gray-800">
+                              {line.quantity} {line.product?.unit}
+                            </td>
+                            <td className="px-4 py-3 text-right text-gray-700">
+                              <div>
+                                <span>{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</span>
+                                {costPrice !== undefined && (
+                                  <span className="block text-[10px] text-gray-400 font-vietnamese">Vốn: {Number(costPrice).toLocaleString('vi-VN')} ₫</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-800">
+                              {Number((line.unit_price || 0) * line.quantity).toLocaleString('vi-VN')} ₫
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
+                {selectedTransferLines.length > 0 && (
+                  <div className="flex justify-end p-2">
+                    <span className="text-body-md text-gray-500">Tổng tiền chuyển kho: <strong className="text-body-lg text-gray-800">
+                      {selectedTransferLines.reduce((sum, line) => sum + (line.quantity * (line.unit_price || 0)), 0).toLocaleString('vi-VN')} ₫
+                    </strong></span>
+                  </div>
+                )}
               </div>
 
               {/* Transition actions */}
@@ -2917,6 +3006,7 @@ export default function InventoryPage() {
                               quantity: modalQty,
                               maxQty: avail,
                               unitPrice: modalUnitPrice,
+                              costPrice: lot.cost_price,
                               name: lot.name,
                               sku: lot.sku,
                               lotNumber: lot.lot_number
@@ -2965,11 +3055,42 @@ export default function InventoryPage() {
                           <tr key={idx} className="hover:bg-gray-25/30">
                             <td className="px-4 py-2.5">
                               <p className="font-bold text-gray-700">{line.name}</p>
-                              <span className="text-tiny text-gray-450 font-mono">SKU: {line.sku}</span>
+                              <div className="flex gap-2 items-center text-tiny">
+                                <span className="text-gray-455 font-mono">SKU: {line.sku}</span>
+                                <span className="text-gray-300">|</span>
+                                <span className="text-amber-600 font-medium">Gốc: {line.costPrice?.toLocaleString('vi-VN')} ₫</span>
+                              </div>
                             </td>
                             <td className="px-4 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
-                            <td className="px-4 py-2.5 text-center font-bold text-gray-800">{line.quantity}</td>
-                            <td className="px-4 py-2.5 text-right text-gray-700">{line.unitPrice.toLocaleString('vi-VN')} ₫</td>
+                            <td className="px-4 py-2.5 text-center">
+                              <input
+                                type="number"
+                                min="1"
+                                max={line.maxQty}
+                                value={line.quantity}
+                                onChange={(e) => {
+                                  const val = Math.min(line.maxQty, Math.max(1, parseInt(e.target.value) || 1))
+                                  const updated = [...newReturn.lines]
+                                  updated[idx] = { ...line, quantity: val }
+                                  setNewReturn({ ...newReturn, lines: updated })
+                                }}
+                                className="w-20 text-center h-8 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-800"
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                value={line.unitPrice}
+                                onChange={(e) => {
+                                  const val = Math.max(0, parseInt(e.target.value) || 0)
+                                  const updated = [...newReturn.lines]
+                                  updated[idx] = { ...line, unitPrice: val }
+                                  setNewReturn({ ...newReturn, lines: updated })
+                                }}
+                                className="w-28 text-right h-8 px-2 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-850"
+                              />
+                            </td>
                             <td className="px-4 py-2.5 text-right font-bold text-gray-800">
                               {(line.quantity * line.unitPrice).toLocaleString('vi-VN')} ₫
                             </td>
@@ -2980,7 +3101,7 @@ export default function InventoryPage() {
                                   const updated = newReturn.lines.filter((_, i) => i !== idx);
                                   setNewReturn({ ...newReturn, lines: updated });
                                 }}
-                                className="text-red-500 hover:text-red-650 p-1 rounded hover:bg-red-50"
+                                className="text-red-500 hover:text-red-655 p-1 rounded hover:bg-red-50"
                               >
                                 <Trash2 size={16} />
                               </button>

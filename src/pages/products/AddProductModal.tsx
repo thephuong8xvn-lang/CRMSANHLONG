@@ -431,7 +431,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
 
   return (
     <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all duration-300">
-      <div className="bg-white rounded-2xl w-full max-w-5xl h-[85vh] max-h-[750px] shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden border border-gray-100">
+      <div role="dialog" aria-modal="true" className="bg-white rounded-2xl w-full max-w-5xl h-[85vh] max-h-[750px] shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden border border-gray-100">
         
         {/* Header */}
         <div className="flex justify-between items-center border-b border-gray-100 px-8 py-4 bg-gray-25 shrink-0">
@@ -520,10 +520,11 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
+                      <label htmlFor="product-name" className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
                         Tên sản phẩm <span className="text-danger-500">*</span>
                       </label>
                       <input
+                        id="product-name"
                         type="text"
                         required
                         className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
@@ -628,9 +629,10 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                     
                     <div className="grid grid-cols-1 gap-6">
                       <div>
-                        <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">Giá vốn nhập hàng ({settings.currency_symbol})</label>
+                        <label htmlFor="product-cost-price" className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">Giá vốn nhập hàng ({settings.currency_symbol})</label>
                         <div className="relative">
                           <input
+                            id="product-cost-price"
                             type="number"
                             min={0}
                             className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold"

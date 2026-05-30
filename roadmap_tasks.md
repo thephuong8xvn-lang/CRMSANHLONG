@@ -681,6 +681,8 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 | **[THÊM MỚI] Đồng bộ giá vốn & Chi tiết phiếu nhập** | ✅ Hoàn thành 2026-05-28 |
 | **[THÊM MỚI] Tích hợp GPS chuồng trại & Bản đồ theo dõi Sales** | ✅ Hoàn thành 2026-05-29 |
 | **[THÊM MỚI] Vá lỗi phân quyền & hiển thị sai chi nhánh (PO, Nhập kho, Đơn hàng, Tồn kho, Điều chuyển, Trả NCC)** | ✅ Hoàn thành 2026-05-29 |
+| **[THÊM MỚI] Bảng giá chi nhánh mặc định & linh hoạt giá hoàn trả / chuyển kho (Bán nội bộ gán giá vốn)** | ✅ Hoàn thành 2026-05-30 |
+| **[THÊM MỚI] Sửa lỗi kiểm thử E2E & tối ưu hóa accessibility các modal** | ✅ Hoàn thành 2026-05-30 |
 | P4-6 Excel export kế toán | 🔲 Chưa làm |
 | P4-7 2FA + Audit log | 🔲 Chưa làm |
 | P4-8 Capacitor mobile native | 🔲 Chưa làm |

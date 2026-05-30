@@ -250,7 +250,7 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
   return (
     <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
       {/* Drawer Panel */}
-      <div className="bg-gray-0 w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-250">
+      <div role="dialog" aria-modal="true" className="bg-gray-0 w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-250">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
@@ -286,10 +286,11 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
               {/* Row 1: Tên khách hàng & SĐT */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
-                  <label className="text-body-md font-semibold text-gray-600 flex items-center gap-1">
+                  <label htmlFor="customer-farm-name" className="text-body-md font-semibold text-gray-600 flex items-center gap-1">
                     Tên trang trại / doanh nghiệp <span className="text-danger-500">*</span>
                   </label>
                   <input
+                    id="customer-farm-name"
                     type="text"
                     required
                     className="w-full h-10 px-3 bg-white border border-gray-100 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-body-md text-body-md"
@@ -300,12 +301,13 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-body-md font-semibold text-gray-600 flex items-center gap-1">
+                  <label htmlFor="customer-phone" className="text-body-md font-semibold text-gray-600 flex items-center gap-1">
                     Số điện thoại chính <span className="text-danger-500">*</span>
                   </label>
                   <div className="relative">
                     <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
+                      id="customer-phone"
                       type="tel"
                       required
                       className="w-full h-10 pl-9 pr-3 bg-white border border-gray-100 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-body-md text-body-md"

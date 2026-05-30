@@ -5,11 +5,16 @@ const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'Admin@SanhLong2026!'
 
 async function loginIfNeeded(page: import('@playwright/test').Page) {
   await page.goto('/')
-  await page.waitForURL(/\/(login|dashboard)/)
-  if (page.url().includes('login')) {
-    await page.getByLabel(/email/i).fill(ADMIN_EMAIL)
-    await page.getByLabel(/mật khẩu|password/i).fill(ADMIN_PASSWORD)
-    await page.getByRole('button', { name: /đăng nhập|login/i }).click()
+  await page.waitForFunction(() => {
+    return !!document.getElementById('login-email') || window.location.pathname.includes('/dashboard')
+  }, null, { timeout: 15_000 })
+
+  const emailInput = page.locator('#login-email')
+  if (await emailInput.count() > 0) {
+    await emailInput.waitFor({ state: 'visible', timeout: 5000 })
+    await emailInput.fill(ADMIN_EMAIL)
+    await page.locator('#login-password').fill(ADMIN_PASSWORD)
+    await page.locator('button[type="submit"]').click()
     await page.waitForURL(/dashboard/, { timeout: 15_000 })
   }
 }

@@ -29,6 +29,7 @@ interface Branch {
   phone: string | null
   manager_id: string | null
   is_active: boolean
+  default_price_list_id: string | null
   manager?: {
     id: string
     full_name: string
@@ -123,6 +124,7 @@ export default function SystemSettingsPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [teams, setTeams] = useState<Team[]>([])
   const [roles, setRoles] = useState<Role[]>([])
+  const [priceLists, setPriceLists] = useState<{ id: string; name: string; code: string }[]>([])
 
   // Loading states
   const [loading, setLoading] = useState(true)
@@ -168,6 +170,7 @@ export default function SystemSettingsPage() {
   const [brAddress, setBrAddress] = useState('')
   const [brPhone, setBrPhone] = useState('')
   const [brManagerId, setBrManagerId] = useState('')
+  const [brDefaultPriceListId, setBrDefaultPriceListId] = useState('')
 
   // Warehouse Form
   const [whCode, setWhCode] = useState('')
@@ -182,11 +185,19 @@ export default function SystemSettingsPage() {
   const loadData = async () => {
     setLoading(true)
     try {
+      // Fetch active price lists
+      const { data: plData } = await supabase
+        .from('price_lists')
+        .select('id, code, name')
+        .eq('is_active', true)
+        .order('name')
+      if (plData) setPriceLists(plData)
+
       // 1. Fetch branches
       const { data: brData } = await supabase
         .from('branches')
         .select(`
-          id, code, name, address, phone, manager_id, is_active,
+          id, code, name, address, phone, manager_id, is_active, default_price_list_id,
           manager:profiles!manager_id(id, full_name)
         `)
         .order('code')
@@ -494,6 +505,7 @@ export default function SystemSettingsPage() {
     setBrAddress('')
     setBrPhone('')
     setBrManagerId('')
+    setBrDefaultPriceListId('')
     setShowBranchModal(true)
   }
 
@@ -504,6 +516,7 @@ export default function SystemSettingsPage() {
     setBrAddress(br.address || '')
     setBrPhone(br.phone || '')
     setBrManagerId(br.manager_id || '')
+    setBrDefaultPriceListId(br.default_price_list_id || '')
     setShowBranchModal(true)
   }
 
@@ -521,7 +534,8 @@ export default function SystemSettingsPage() {
         name: brName.trim(),
         address: brAddress.trim() || null,
         phone: brPhone.trim() || null,
-        manager_id: brManagerId || null
+        manager_id: brManagerId || null,
+        default_price_list_id: brDefaultPriceListId || null
       }
 
       if (!selectedBranch) {
@@ -991,6 +1005,12 @@ export default function SystemSettingsPage() {
                                 <span className="font-semibold text-gray-400">Điện thoại:</span>
                                 <span>{br.phone || 'Chưa cập nhật'}</span>
                               </p>
+                              <p className="text-tiny text-gray-450 mt-1 font-medium flex items-center gap-1">
+                                <span className="font-semibold text-gray-400">Bảng giá mặc định:</span>
+                                <span className="font-bold text-gray-700">
+                                  {priceLists.find(pl => pl.id === br.default_price_list_id)?.name || 'Mặc định hệ thống'}
+                                </span>
+                              </p>
                             </div>
                           </div>
 
@@ -1438,6 +1458,20 @@ export default function SystemSettingsPage() {
                     <option value="">-- Chưa chỉ định --</option>
                     {activeProfiles.map(p => (
                       <option key={p.id} value={p.id}>{p.full_name} ({p.job_title || 'Thành viên'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Bảng giá mặc định của chi nhánh</label>
+                  <select
+                    value={brDefaultPriceListId}
+                    onChange={(e) => setBrDefaultPriceListId(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">-- Dùng cấu hình mặc định hệ thống --</option>
+                    {priceLists.map(pl => (
+                      <option key={pl.id} value={pl.id}>{pl.name} ({pl.code})</option>
                     ))}
                   </select>
                 </div>
