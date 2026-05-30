@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { X, Phone, User, MapPin, ShieldAlert } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import SmartSearchSelect from '../../components/SmartSearchSelect'
 
 interface AddCustomerModalProps {
   isOpen: boolean
@@ -10,10 +11,13 @@ interface AddCustomerModalProps {
 
 // Danh sách dữ liệu tỉnh thành - quận huyện mẫu của các tỉnh trọng điểm chăn nuôi
 const LOCATION_DATA: Record<string, string[]> = {
-  'Đồng Nai': ['Biên Hòa', 'Long Thành', 'Trảng Bom', 'Thống Nhất', 'Xuân Lộc'],
-  'Hà Nội': ['Ba Vì', 'Ứng Hòa', 'Mỹ Đức', 'Chương Mỹ', 'Đông Anh'],
-  'Tiền Giang': ['Mỹ Tho', 'Chợ Gạo', 'Cai Lậy', 'Gò Công Tây'],
-  'Bến Tre': ['Thành phố Bến Tre', 'Ba Tri', 'Mỏ Cày Nam', 'Chợ Lách']
+  'Đồng Nai': ['Biên Hòa', 'Long Thành', 'Trảng Bom', 'Thống Nhất', 'Xuân Lộc', 'Cẩm Mỹ', 'Định Quán', 'Tân Phú', 'Nhơn Trạch'],
+  'Hà Nội': ['Ba Vì', 'Ứng Hòa', 'Mỹ Đức', 'Chương Mỹ', 'Đông Anh', 'Sóc Sơn', 'Quốc Oai', 'Mê Linh', 'Thường Tín'],
+  'Tiền Giang': ['Mỹ Tho', 'Chợ Gạo', 'Cai Lậy', 'Gò Công Tây', 'Gò Công Đông', 'Cái Bè', 'Châu Thành', 'Tân Phước'],
+  'Bến Tre': ['Thành phố Bến Tre', 'Ba Tri', 'Mỏ Cày Nam', 'Mỏ Cày Bắc', 'Chợ Lách', 'Châu Thành', 'Giồng Trôm', 'Thạnh Phú', 'Bình Đại'],
+  'Bình Dương': ['Thủ Dầu Một', 'Dĩ An', 'Thuận An', 'Bến Cát', 'Tân Uyên', 'Bàu Bàng', 'Dầu Tiếng', 'Phú Giáo'],
+  'Lâm Đồng': ['Đà Lạt', 'Bảo Lộc', 'Đức Trọng', 'Đơn Dương', 'Lâm Hà', 'Di Linh', 'Cát Tiên', 'Đạ Tẻh'],
+  'Long An': ['Tân An', 'Bến Lức', 'Đức Hòa', 'Cần Đước', 'Cần Giuộc', 'Thủ Thừa', 'Châu Thành', 'Thạnh Hóa']
 }
 
 export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCustomerModalProps) {
@@ -46,6 +50,15 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+
+  const provinceOptions = useMemo(() => {
+    return Object.keys(LOCATION_DATA).map(p => ({ value: p, label: p }))
+  }, [])
+
+  const districtOptions = useMemo(() => {
+    if (!province) return []
+    return (LOCATION_DATA[province] || []).map(d => ({ value: d, label: d }))
+  }, [province])
 
   // Load lookup data
   useEffect(() => {
@@ -369,31 +382,25 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
                   <label className="text-body-md font-semibold text-gray-600">Tỉnh / Thành phố</label>
-                  <select
-                    className="w-full h-10 px-3 bg-white border border-gray-100 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-body-md text-body-md"
+                  <SmartSearchSelect
+                    options={provinceOptions}
                     value={province}
-                    onChange={(e) => handleProvinceChange(e.target.value)}
-                  >
-                    <option value="">-- Chọn tỉnh thành --</option>
-                    {Object.keys(LOCATION_DATA).map(p => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => handleProvinceChange(val)}
+                    placeholder="-- Chọn tỉnh thành --"
+                    searchPlaceholder="Tìm kiếm tỉnh thành..."
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="text-body-md font-semibold text-gray-600">Quận / Huyện</label>
-                  <select
-                    disabled={!province}
-                    className="w-full h-10 px-3 bg-white border border-gray-100 rounded-lg focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-body-md text-body-md disabled:bg-gray-50 disabled:text-gray-300"
+                  <SmartSearchSelect
+                    options={districtOptions}
                     value={district}
-                    onChange={(e) => setDistrict(e.target.value)}
-                  >
-                    <option value="">-- Chọn quận huyện --</option>
-                    {province && LOCATION_DATA[province].map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setDistrict(val)}
+                    placeholder="-- Chọn quận huyện --"
+                    searchPlaceholder="Tìm kiếm quận huyện..."
+                    disabled={!province}
+                  />
                 </div>
               </div>
 

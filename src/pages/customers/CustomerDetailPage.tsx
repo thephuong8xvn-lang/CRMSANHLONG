@@ -41,6 +41,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 // ─────────────────────────────────────────────────────────────
@@ -260,10 +261,13 @@ const TIER_LABELS: Record<string, string> = {
 }
 
 const LOCATION_DATA: Record<string, string[]> = {
-  'Đồng Nai': ['Biên Hòa', 'Long Thành', 'Trảng Bom', 'Thống Nhất', 'Xuân Lộc'],
-  'Hà Nội': ['Ba Vì', 'Ứng Hòa', 'Mỹ Đức', 'Chương Mỹ', 'Đông Anh'],
-  'Tiền Giang': ['Mỹ Tho', 'Chợ Gạo', 'Cai Lậy', 'Gò Công Tây'],
-  'Bến Tre': ['Thành phố Bến Tre', 'Ba Tri', 'Mỏ Cày Nam', 'Chợ Lách']
+  'Đồng Nai': ['Biên Hòa', 'Long Thành', 'Trảng Bom', 'Thống Nhất', 'Xuân Lộc', 'Cẩm Mỹ', 'Định Quán', 'Tân Phú', 'Nhơn Trạch'],
+  'Hà Nội': ['Ba Vì', 'Ứng Hòa', 'Mỹ Đức', 'Chương Mỹ', 'Đông Anh', 'Sóc Sơn', 'Quốc Oai', 'Mê Linh', 'Thường Tín'],
+  'Tiền Giang': ['Mỹ Tho', 'Chợ Gạo', 'Cai Lậy', 'Gò Công Tây', 'Gò Công Đông', 'Cái Bè', 'Châu Thành', 'Tân Phước'],
+  'Bến Tre': ['Thành phố Bến Tre', 'Ba Tri', 'Mỏ Cày Nam', 'Mỏ Cày Bắc', 'Chợ Lách', 'Châu Thành', 'Giồng Trôm', 'Thạnh Phú', 'Bình Đại'],
+  'Bình Dương': ['Thủ Dầu Một', 'Dĩ An', 'Thuận An', 'Bến Cát', 'Tân Uyên', 'Bàu Bàng', 'Dầu Tiếng', 'Phú Giáo'],
+  'Lâm Đồng': ['Đà Lạt', 'Bảo Lộc', 'Đức Trọng', 'Đơn Dương', 'Lâm Hà', 'Di Linh', 'Cát Tiên', 'Đạ Tẻh'],
+  'Long An': ['Tân An', 'Bến Lức', 'Đức Hòa', 'Cần Đước', 'Cần Giuộc', 'Thủ Thừa', 'Châu Thành', 'Thạnh Hóa']
 }
 
 export default function CustomerDetailPage() {
@@ -396,6 +400,23 @@ export default function CustomerDetailPage() {
   const [editBankName, setEditBankName] = useState('')
   const [editBankAccountNo, setEditBankAccountNo] = useState('')
   const [editIdCardNo, setEditIdCardNo] = useState('')
+
+  const editProvinceOptions = useMemo(() => {
+    return Object.keys(LOCATION_DATA).map(p => ({ value: p, label: p }))
+  }, [])
+
+  const editDistrictOptions = useMemo(() => {
+    if (!editProvince) return []
+    return (LOCATION_DATA[editProvince] || []).map(d => ({ value: d, label: d }))
+  }, [editProvince])
+
+  // Debt Adjustment State
+  const [isAdjustDebtModalOpen, setIsAdjustDebtModalOpen] = useState(false)
+  const [adjustType, setAdjustType] = useState<'increase' | 'decrease'>('increase')
+  const [adjustAmount, setAdjustAmount] = useState('')
+  const [adjustNotes, setAdjustNotes] = useState('')
+  const [submittingAdjust, setSubmittingAdjust] = useState(false)
+  const [adjustErrorMsg, setAdjustErrorMsg] = useState('')
 
   // Load Data function
   const loadCustomerData = async () => {
@@ -996,6 +1017,65 @@ export default function CustomerDetailPage() {
     const isTeamLead = userRoles.includes('team_lead')
     const isOwner = customer.owner_user_id === currentUserId
     return isAdmin || isBranchManager || isTeamLead || isOwner
+  }
+
+  const canAdjustDebt = () => {
+    if (!currentUserId) return false
+    return userRoles.some(r => ['admin', 'ceo', 'accountant', 'branch_manager', 'team_lead', 'sales'].includes(r))
+  }
+
+  const handleAdjustDebt = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!id || !canAdjustDebt()) {
+      setAdjustErrorMsg('Bạn không có quyền điều chỉnh công nợ.')
+      return
+    }
+
+    const amountNum = Number(adjustAmount)
+    if (isNaN(amountNum) || amountNum === 0) {
+      setAdjustErrorMsg('Số tiền điều chỉnh phải khác 0.')
+      return
+    }
+
+    if (!adjustNotes.trim()) {
+      setAdjustErrorMsg('Vui lòng nhập lý do điều chỉnh.')
+      return
+    }
+
+    setSubmittingAdjust(true)
+    setAdjustErrorMsg('')
+
+    try {
+      const finalAmount = adjustType === 'increase' ? Math.abs(amountNum) : -Math.abs(amountNum)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Người dùng chưa đăng nhập.')
+
+      const { error } = await supabase
+        .from('customer_debts')
+        .insert([{
+          customer_id: id,
+          order_id: null,
+          debt_type: 'order_debt',
+          amount: finalAmount,
+          due_date: null,
+          is_settled: false,
+          notes: adjustNotes.trim(),
+          created_by: user.id
+        }])
+
+      if (error) throw error
+
+      setAdjustAmount('')
+      setAdjustNotes('')
+      setIsAdjustDebtModalOpen(false)
+
+      await loadCustomerData()
+    } catch (err: any) {
+      console.error('Error adjusting debt:', err)
+      setAdjustErrorMsg(err.message || 'Lỗi khi điều chỉnh công nợ. Vui lòng thử lại.')
+    } finally {
+      setSubmittingAdjust(false)
+    }
   }
 
   const handleAddContact = async (e: React.FormEvent) => {
@@ -1964,13 +2044,30 @@ export default function CustomerDetailPage() {
                     </div>
 
                     {subTab === 'ledger' && (
-                      <div className="flex gap-4 text-body-md font-semibold bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
-                        <div className="text-gray-600">
-                          Tổng nợ phát sinh: <span className="text-danger-500 font-bold">{formatVND(ledgerItems.reduce((s, i) => s + (i.debtImpact > 0 ? i.debtImpact : 0), 0))}</span>
+                      <div className="flex items-center justify-between w-full bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
+                        <div className="flex gap-4 text-body-md font-semibold">
+                          <div className="text-gray-600">
+                            Tổng nợ phát sinh: <span className="text-danger-500 font-bold">{formatVND(ledgerItems.reduce((s, i) => s + (i.debtImpact > 0 ? i.debtImpact : 0), 0))}</span>
+                          </div>
+                          <div className="text-gray-600 border-l border-blue-200 pl-4">
+                            Tổng thu/trả: <span className="text-emerald-700 font-bold">{formatVND(Math.abs(ledgerItems.reduce((s, i) => s + (i.debtImpact < 0 ? i.debtImpact : 0), 0)))}</span>
+                          </div>
                         </div>
-                        <div className="text-gray-600 border-l border-blue-200 pl-4">
-                          Tổng thu/trả: <span className="text-emerald-700 font-bold">{formatVND(Math.abs(ledgerItems.reduce((s, i) => s + (i.debtImpact < 0 ? i.debtImpact : 0), 0)))}</span>
-                        </div>
+                        {canAdjustDebt() && (
+                          <button
+                            onClick={() => {
+                              setAdjustType('increase')
+                              setAdjustAmount('')
+                              setAdjustNotes('')
+                              setAdjustErrorMsg('')
+                              setIsAdjustDebtModalOpen(true)
+                            }}
+                            className="h-8 px-3.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white font-bold text-tiny rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                          >
+                            <PlusCircle size={14} />
+                            Điều chỉnh công nợ
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2928,33 +3025,27 @@ export default function CustomerDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-1.5">
                     <label className="text-body-md font-semibold text-gray-600">Tỉnh / Thành phố</label>
-                    <select
-                      className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    <SmartSearchSelect
+                      options={editProvinceOptions}
                       value={editProvince}
-                      onChange={(e) => {
-                        setEditProvince(e.target.value)
+                      onChange={(val) => {
+                        setEditProvince(val)
                         setEditDistrict('')
                       }}
-                    >
-                      <option value="">Chọn Tỉnh / Thành phố</option>
-                      {Object.keys(LOCATION_DATA).map(p => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                    </select>
+                      placeholder="Chọn Tỉnh / Thành phố"
+                      searchPlaceholder="Tìm kiếm tỉnh thành..."
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-body-md font-semibold text-gray-600">Quận / Huyện</label>
-                    <select
-                      className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    <SmartSearchSelect
+                      options={editDistrictOptions}
                       value={editDistrict}
-                      onChange={(e) => setEditDistrict(e.target.value)}
+                      onChange={(val) => setEditDistrict(val)}
+                      placeholder="Chọn Quận / Huyện"
+                      searchPlaceholder="Tìm kiếm quận huyện..."
                       disabled={!editProvince}
-                    >
-                      <option value="">Chọn Quận / Huyện</option>
-                      {editProvince && LOCATION_DATA[editProvince]?.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
                 </div>
 
@@ -3674,6 +3765,99 @@ export default function CustomerDetailPage() {
                   className="px-5 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50"
                 >
                   {submittingDisease ? 'Đang lưu...' : 'Ghi nhận bệnh án'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {/* 3.6 ADJUST DEBT MODAL */}
+      {isAdjustDebtModalOpen && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-gray-0 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-250">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
+              <h3 className="text-body-lg font-bold text-gray-700">Điều chỉnh công nợ</h3>
+              <button 
+                onClick={() => setIsAdjustDebtModalOpen(false)} 
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleAdjustDebt} className="p-6 space-y-4">
+              {adjustErrorMsg && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-danger-500 text-body-sm font-semibold flex items-center gap-2">
+                  <ShieldAlert size={16} className="shrink-0" />
+                  <span>{adjustErrorMsg}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-body-md font-semibold text-gray-600">Loại điều chỉnh</label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-lg border border-gray-150">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustType('increase')}
+                    className={`py-2 text-body-md font-bold rounded-md transition-all ${
+                      adjustType === 'increase'
+                        ? 'bg-white text-blue-700 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Tăng nợ (+)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdjustType('decrease')}
+                    className={`py-2 text-body-md font-bold rounded-md transition-all ${
+                      adjustType === 'decrease'
+                        ? 'bg-white text-danger-500 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-850'
+                    }`}
+                  >
+                    Giảm nợ (-)
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-body-md font-semibold text-gray-600">Số tiền điều chỉnh (VND) *</label>
+                <input
+                  type="number"
+                  value={adjustAmount}
+                  onChange={(e) => setAdjustAmount(e.target.value)}
+                  placeholder="VD: 500000"
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none font-semibold"
+                  required
+                  min="1"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-body-md font-semibold text-gray-600">Lý do điều chỉnh / Ghi chú *</label>
+                <textarea
+                  value={adjustNotes}
+                  onChange={(e) => setAdjustNotes(e.target.value)}
+                  placeholder="Nhập chi tiết lý do điều chỉnh công nợ..."
+                  className="w-full p-3 bg-gray-25 border border-gray-100 rounded-lg focus:border-blue-500 focus:outline-none resize-none text-body-md"
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAdjustDebtModalOpen(false)}
+                  className="px-4 py-2 border border-gray-150 text-gray-400 rounded-lg font-semibold"
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={submittingAdjust}
+                  className="px-5 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50"
+                >
+                  {submittingAdjust ? 'Đang thực hiện...' : 'Xác nhận điều chỉnh'}
                 </button>
               </div>
             </form>
