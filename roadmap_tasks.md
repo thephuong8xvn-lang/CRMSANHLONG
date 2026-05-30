@@ -15,6 +15,20 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] Xây dựng trang Bảng điều khiển ([DashboardPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/dashboard/DashboardPage.tsx)) hoàn chỉnh, co giãn responsive, biểu đồ dòng tiền (Recharts), danh sách công việc & phiếu chi.
 - [x] Tích hợp nút tác vụ nhanh "Bán hàng POS" nổi bật ngay tại Dashboard Header giúp nhân viên truy cập nhanh module bán hàng.
 
+#### 🔍 Kiểm tra UX & Phân quyền Chi nhánh Dashboard — 2026-05-30 `[ĐANG THỰC HIỆN]`
+
+**Vấn đề:** Trang Tổng quan vẫn hiển thị **tổng số liệu của TẤT CẢ chi nhánh** dù tài khoản đã được phân quyền giới hạn. Gốc rễ: RPC `get_dashboard_stats()` chạy SUM thô dưới RLS, nhưng RLS mở toàn hệ thống ở nhiều bảng (cashbook_transactions & activities cho `branch_manager`, orders cho accountant/warehouse_keeper); riêng `customer_debts` thiếu hẳn policy cho `branch_manager`. Hai bảng `cashbook_transactions` và `customer_debts` không có cột `branch_id` nên phải suy ra qua JOIN.
+
+**Quyết định sản phẩm:** Admin/CEO có bộ chọn chi nhánh (mặc định "Tất cả chi nhánh"); các vai trò khác bị khóa cứng vào chi nhánh trong hồ sơ. Sửa toàn diện cả 3 lớp RLS + RPC + Frontend.
+
+- [x] **Lớp 1 — Database** (migration `20260530000002_dashboard_branch_scope.sql`):
+  - Nâng cấp `get_dashboard_stats(p_branch_id UUID DEFAULT NULL)`: lọc tường minh theo chi nhánh trong SQL. `admin/ceo` → dùng `p_branch_id` (NULL = toàn hệ thống); vai trò khác → ép về `fn_my_branch_id()`. Trả thêm field `branch_id`. Branch suy ra: `orders.branch_id`; nợ qua `COALESCE(orders.branch_id, customers.branch_id)`; lô qua `warehouses.branch_id`; dòng tiền qua `COALESCE(cash_funds.branch_id, bank_accounts.branch_id)`.
+  - Vá lỗ rò RLS chéo chi nhánh: tách `branch_manager` khỏi policy "toàn bộ" của `cashbook_transactions` (policy mới `cashbook_select_branch_mgr` lọc qua quỹ/tài khoản chi nhánh) và `activities` (`activities_select_branch_mgr` lọc qua KH chi nhánh); bổ sung `debts_select_branch_mgr` cho `customer_debts`. `admin/accountant` giữ nguyên toàn hệ thống theo thiết kế giám sát tài chính.
+  - ⚠️ Migration cần chạy thủ công qua Supabase SQL Editor.
+- [x] **Lớp 2 — Hook dữ liệu**: `qk.dashboard.stats(branchId)` thành hàm + thêm `disbursements`/`appointments`/`branches`. `useDashboardStats(enabled, branchId)` truyền `{ p_branch_id }` vào RPC (fallback cũng lọc theo chi nhánh). `usePendingDisbursements`/`useTodayAppointments` nhận branchId + thêm `.order()` đúng (trước đây phiếu chi lấy 3 dòng ngẫu nhiên) + lọc branch qua nested cash_funds/bank_accounts/customers. Hook mới `useBranches()`.
+- [x] **Lớp 3 — UX DashboardPage**: thanh ngữ cảnh chi nhánh (admin/CEO = dropdown "Tất cả chi nhánh"; vai trò khác = badge khóa cứng), `effectiveBranchId` truyền xuống cả 3 hook (đổi CN tự refetch), tiêu đề & chú thích động (`scopeLabel`), skeleton loading thay spinner, error state có nút "Thử lại", nút "Tất cả" phiếu chi → `/cashbook` (ẩn nếu thiếu quyền), role alerts mở rộng (branch_manager + warehouse_keeper), delta đổi màu theo dấu. `tsc --noEmit` PASS 0 lỗi.
+  - ⚠️ Cần chạy migration `20260530000002` qua Supabase SQL Editor để RPC mới nhận `p_branch_id`.
+
 ---
 
 ### 2. Phân Hệ Khách Hàng (Customer Module) - `[HOÀN THÀNH]`

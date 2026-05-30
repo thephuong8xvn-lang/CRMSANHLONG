@@ -41,7 +41,14 @@ export const qk = {
     detail: (id: string) => ['orders', 'detail', id] as const,
   },
   dashboard: {
-    stats: ['dashboard', 'stats'] as const,
+    stats: (branchId: string | null = null) => ['dashboard', 'stats', branchId] as const,
+    disbursements: (branchId: string | null, limit: number) =>
+      ['dashboard', 'pending-disbursements', branchId, limit] as const,
+    appointments: (branchId: string | null, limit: number) =>
+      ['dashboard', 'today-appointments', branchId, limit] as const,
+  },
+  branches: {
+    all: ['branches'] as const,
   },
   auth: {
     rolePermissions: (userId: string) => ['auth', 'role-permissions', userId] as const,
