@@ -848,14 +848,22 @@ export default function CustomerDetailPage() {
       if (user) {
         setCurrentUserId(user.id)
         // Load roles
-        const { data: rolesData } = await supabase
+        const { data: rolesData, error: rolesErr } = await supabase
           .from('user_roles')
           .select('roles(code)')
           .eq('user_id', user.id)
+        if (rolesErr) {
+          console.warn('[CustomerDetail] Error loading user roles:', rolesErr.message)
+        }
         if (rolesData) {
           const codes = rolesData.map((r: any) => r.roles?.code).filter(Boolean)
+          console.info('[CustomerDetail] User roles loaded:', codes)
           setUserRoles(codes)
+        } else {
+          console.warn('[CustomerDetail] No roles data returned for user:', user.id)
         }
+      } else {
+        console.warn('[CustomerDetail] No authenticated user found')
       }
     }
     loadCurrentUser()
@@ -1508,13 +1516,29 @@ export default function CustomerDetailPage() {
             }`}>
               <CreditCard size={22} strokeWidth={1.5} />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider">Công nợ hiện tại</p>
               <p className={`font-bold text-body-lg mt-0.5 tabular-nums ${
                 isOverdue ? 'text-danger-500' : 'text-gray-700'
               }`}>
                 {formatVND(totalDebt)}
               </p>
+              {canAdjustDebt() && (
+                <button
+                  onClick={() => {
+                    setAdjustType('increase')
+                    setAdjustAmount('')
+                    setAdjustNotes('')
+                    setAdjustErrorMsg('')
+                    setIsAdjustDebtModalOpen(true)
+                  }}
+                  className="mt-2 h-7 px-2.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-600 font-bold text-[11px] rounded-md border border-blue-100 transition-all flex items-center gap-1"
+                  title="Điều chỉnh công nợ khách hàng"
+                >
+                  <PlusCircle size={12} />
+                  ± Điều chỉnh
+                </button>
+              )}
             </div>
           </div>
 

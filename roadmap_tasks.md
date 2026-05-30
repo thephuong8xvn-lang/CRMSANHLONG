@@ -46,6 +46,12 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - SELECT đã được mở rộng (migration `20260524000001`) nhưng UPDATE chỉ cho phép: `owner_user_id = auth.uid()` (role sales), team_lead trong nhóm, branch_manager, admin/ceo. Nếu user thử sửa KH mà không phải owner → RLS từ chối thầm lặng, frontend chỉ báo lỗi chung.
 - Với `branch_manager`: lỗi xảy ra tại `customer_business_info` và `customer_personal_info` do thiếu policy phù hợp.
 
+#### 🔍 Kiểm tra 2026-05-30 — Nút "Điều chỉnh công nợ" không hiển thị
+
+**Đã phát hiện & fix (Frontend `CustomerDetailPage.tsx`):**
+- [x] **Bug 10 (UX)**: Nút "Điều chỉnh công nợ" bị ẩn quá sâu — nằm trong Tab "Đơn hàng & Công nợ" → Sub-tab "Sổ chi tiết giao dịch" → thanh tổng hợp (cần 2 click). User không phát hiện ra. Đã thêm nút **"± Điều chỉnh"** trực tiếp lên card **"CÔNG NỢ HIỆN TẠI"** trong header stats (vị trí nổi bật nhất, nhìn thấy ngay khi mở chi tiết KH). Giữ nguyên nút ở sub-tab ledger làm backup.
+- [x] **Bug 11 (Debug)**: `loadCurrentUser()` không log error khi query `user_roles` thất bại → lỗi RLS có thể khiến `canAdjustDebt()` trả `false` thầm lặng. Đã thêm `console.warn` + `console.info` cho debug role loading failures.
+
 
 ---
 
