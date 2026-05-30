@@ -57,6 +57,19 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - POSPage — auto-apply best promo khi cart thay đổi; voucher input + badge; `clearDiscount()`
 - Route `/promotions` (perm: `promotions.manage`); nav link "Khuyến mãi" (icon Tag)
 
+### ✅ P4-4b: KM theo chi nhánh + KM theo hàng hóa gợi ý POS (2026-05-30)
+- Migration: `supabase/migrations/20260530000003_product_promotions_and_branch_scope.sql`
+  - Thêm cột `promotions.branch_ids UUID[]` (rỗng = toàn hệ thống).
+  - Bảng mới `product_promotions` (product_id, promo_type buy_x_get_y/percent/fixed_amount, buy_qty, get_qty, get_product_id, discount_value, min_qty, branch_ids, priority, valid_from/to).
+  - RLS scope chi nhánh cho CẢ promotions & product_promotions: admin/ceo mọi CN; nhân viên có `promotions.manage` chỉ tạo/sửa bản ghi `branch_ids = [fn_my_branch_id()]` (WITH CHECK).
+- `src/hooks/useProductPromotions.ts` (MỚI): load + lọc branch/hiệu lực + `evaluateProductPromo()` + `promoShortLabel()` + `getTopPromo()`.
+- `src/hooks/usePromotionEngine.ts`: `usePromotionEngine(branchId?)` lọc promo theo chi nhánh.
+- `src/pages/orders/POSPage.tsx`: badge 🎁 trên thẻ SP cột giữa + banner gợi ý 1-chạm trong giỏ (buy_x_get_y → nút "Tặng N" dùng `applyProductGift`; percent/fixed → nút "Áp giảm %" dùng `setRowDiscount`). Truyền `profile.branch_id` vào cả 2 hook.
+- `src/pages/products/ProductPromotionModal.tsx` (MỚI): CRUD KM sản phẩm; admin multi-select chi nhánh, nhân viên khóa CN mình.
+- `src/pages/products/ProductDetailPage.tsx`: tab thứ 4 "Khuyến mãi" quản lý product_promotions của SP.
+- `src/pages/promotions/PromotionsPage.tsx`: PromotionModal thêm multi-select chi nhánh; danh sách hiển thị chip "Toàn hệ thống / N chi nhánh".
+- ⚠️ Chạy migration `20260530000003` qua Supabase SQL Editor. tsc PASS 0 lỗi.
+
 ### ⏭ P4-5: Chấm công — BỎ QUA (user yêu cầu)
 
 ### ✅ Cấu hình in ấn (2026-05-28)

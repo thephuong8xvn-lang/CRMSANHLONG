@@ -16,12 +16,19 @@ import {
   Play,
   Printer,
   FileText,
-  Bookmark
+  Bookmark,
+  Tag,
+  Pencil,
+  Trash2,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import EditProductModal from './EditProductModal'
+import ProductPromotionModal from './ProductPromotionModal'
+import { promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -113,7 +120,8 @@ export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { settings, formatCurrency } = useDisplaySettings()
-  const { profile, userRole } = useAuth()
+  const { profile, userRole, hasPermission } = useAuth()
+  const canManagePromos = userRole.code === 'admin' || userRole.code === 'ceo' || hasPermission('promotions.manage')
 
   // State
   const [product, setProduct] = useState<Product | null>(null)
@@ -121,8 +129,36 @@ export default function ProductDetailPage() {
   const [lots, setLots] = useState<StockLot[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'instructions' | 'inventory' | 'ledger'>('instructions')
+  const [activeTab, setActiveTab] = useState<'instructions' | 'inventory' | 'ledger' | 'promotions'>('instructions')
   const [movements, setMovements] = useState<StockMovement[]>([])
+
+  // Khuyến mãi theo sản phẩm
+  const [productPromos, setProductPromos] = useState<ProductPromotion[]>([])
+  const [showPromoModal, setShowPromoModal] = useState(false)
+  const [editingPromo, setEditingPromo] = useState<ProductPromotion | undefined>()
+
+  const loadProductPromos = async () => {
+    if (!id) return
+    const { data } = await supabase
+      .from('product_promotions')
+      .select('*')
+      .eq('product_id', id)
+      .order('priority', { ascending: false })
+    setProductPromos((data as ProductPromotion[]) ?? [])
+  }
+
+  useEffect(() => { loadProductPromos() }, [id])
+
+  const togglePromo = async (promo: ProductPromotion) => {
+    await supabase.from('product_promotions').update({ is_active: !promo.is_active }).eq('id', promo.id)
+    loadProductPromos()
+  }
+
+  const deletePromo = async (promoId: string) => {
+    if (!confirm('Xóa khuyến mãi này?')) return
+    await supabase.from('product_promotions').delete().eq('id', promoId)
+    loadProductPromos()
+  }
 
   interface LinkedActiveIngredient {
     percentage_or_dosage: string
@@ -677,6 +713,22 @@ export default function ProductDetailPage() {
                   <Warehouse size={16} />
                   Thẻ kho (Lịch sử biến động)
                 </button>
+                <button
+                  onClick={() => setActiveTab('promotions')}
+                  className={`flex-1 py-4 px-6 font-semibold text-body-md border-b-2 transition-all flex items-center justify-center gap-2 ${
+                    activeTab === 'promotions'
+                      ? 'border-blue-500 text-blue-600 bg-gray-0'
+                      : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-100/50'
+                  }`}
+                >
+                  <Tag size={16} />
+                  Khuyến mãi
+                  {productPromos.filter(p => p.is_active).length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-rose-100 text-rose-600 text-[10px] font-bold rounded-full">
+                      {productPromos.filter(p => p.is_active).length}
+                    </span>
+                  )}
+                </button>
               </div>
 
               {/* Tab Content Canvas */}
@@ -1033,6 +1085,67 @@ export default function ProductDetailPage() {
                    )
                  })()}
 
+                {/* ────────────────── Tab 4: Khuyến mãi sản phẩm ────────────────── */}
+                {activeTab === 'promotions' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-body-lg text-gray-700 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-rose-500 rounded-full" />
+                        Chương trình khuyến mãi của sản phẩm
+                      </h4>
+                      {canManagePromos && (
+                        <button
+                          onClick={() => { setEditingPromo(undefined); setShowPromoModal(true) }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <Plus size={15} /> Thêm KM
+                        </button>
+                      )}
+                    </div>
+
+                    {productPromos.length === 0 ? (
+                      <div className="text-center py-12 text-gray-400 border border-dashed border-gray-200 rounded-xl">
+                        <Tag size={36} className="mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">Chưa có khuyến mãi nào cho sản phẩm này</p>
+                        <p className="text-xs mt-1">KM theo hàng hóa sẽ tự gợi ý ngoài màn hình bán hàng POS</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {productPromos.map(p => (
+                          <div key={p.id} className={`border rounded-xl p-3 flex items-center gap-3 ${!p.is_active ? 'opacity-60 bg-gray-50' : 'bg-white'}`}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                                <span className="font-medium text-gray-900 truncate">{p.name}</span>
+                                <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-rose-50 text-rose-600">
+                                  {promoShortLabel(p)}
+                                </span>
+                                {!p.is_active && <span className="text-[11px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Tắt</span>}
+                              </div>
+                              <p className="text-xs text-gray-500">
+                                {p.branch_ids.length === 0 ? 'Toàn hệ thống' : `${p.branch_ids.length} chi nhánh`}
+                                {p.valid_to && ` · Đến ${new Date(p.valid_to).toLocaleDateString('vi-VN')}`}
+                              </p>
+                            </div>
+                            {canManagePromos && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button onClick={() => togglePromo(p)} className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50" title={p.is_active ? 'Tắt' : 'Bật'}>
+                                  {p.is_active ? <ToggleRight size={18} className="text-blue-600" /> : <ToggleLeft size={18} />}
+                                </button>
+                                <button onClick={() => { setEditingPromo(p); setShowPromoModal(true) }} className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50">
+                                  <Pencil size={15} />
+                                </button>
+                                <button onClick={() => deletePromo(p.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50">
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </div>
             </div>
 
@@ -1041,6 +1154,16 @@ export default function ProductDetailPage() {
         </div>
 
       </div>
+
+      {showPromoModal && product && (
+        <ProductPromotionModal
+          productId={product.id}
+          productName={product.name}
+          promo={editingPromo}
+          onClose={() => setShowPromoModal(false)}
+          onSaved={loadProductPromos}
+        />
+      )}
 
       {/* Quick Lot Adder Modal/Drawer */}
       {isAddingLot && (

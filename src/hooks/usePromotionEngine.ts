@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import type { CartRow } from '../lib/cartUtils'
 
@@ -19,6 +19,7 @@ export interface Promotion {
   get_y_qty?: number
   tiers?: { min_qty: number; discount_percent: number }[]
   customer_tiers?: string[]
+  branch_ids?: string[]
   valid_from?: string
   valid_to?: string
   max_uses?: number
@@ -99,8 +100,8 @@ function calcPromoDiscount(promo: Promotion, cart: CartRow[], subtotal: number, 
   }
 }
 
-export function usePromotionEngine() {
-  const [promotions, setPromotions] = useState<Promotion[]>([])
+export function usePromotionEngine(branchId?: string | null) {
+  const [allPromotions, setAllPromotions] = useState<Promotion[]>([])
 
   useEffect(() => {
     supabase
@@ -108,8 +109,17 @@ export function usePromotionEngine() {
       .select('*')
       .eq('is_active', true)
       .order('priority', { ascending: false })
-      .then(({ data }: { data: Promotion[] | null }) => { if (data) setPromotions(data as Promotion[]) })
+      .then(({ data }: { data: Promotion[] | null }) => { if (data) setAllPromotions(data as Promotion[]) })
   }, [])
+
+  // Lọc KM theo chi nhánh hiện tại: branch_ids rỗng = toàn hệ thống
+  const promotions = useMemo(
+    () => allPromotions.filter(p => {
+      const branches = p.branch_ids ?? []
+      return branches.length === 0 || (branchId != null && branches.includes(branchId))
+    }),
+    [allPromotions, branchId],
+  )
 
   const applyBestPromotion = useCallback(
     (cart: CartRow[], subtotal: number, customerTier?: string): AppliedDiscount | null => {

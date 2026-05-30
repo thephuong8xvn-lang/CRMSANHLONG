@@ -148,6 +148,20 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **Chi tiết Đơn hàng (OrderDetailPage)**: Stepper cho các đơn hàng bán tại cửa hàng chỉ hiển thị 2 trạng thái: "Xác nhận" và "Hoàn tất". Khi ở trạng thái "Xác nhận", nút thao tác sẽ hiển thị "Hoàn tất đơn hàng" thay vì "Bắt đầu giao hàng".
 - [x] **Đơn di động (MobileOrderPage)**: Sửa bug tương tự cho MobileOrderPage (insert status `'draft'` trước khi insert lines, sau đó mới cập nhật sang `'confirmed'` để chạy trigger FEFO chuẩn xác). Bán giao hàng (Mobile orders) chỉ áp dụng cho bán xa nên vẫn giữ nguyên các bước giao hàng đầy đủ.
 
+#### 🎁 Nâng cấp Khuyến mãi: Phân quyền chi nhánh + KM theo hàng hóa gợi ý POS — 2026-05-30 `[HOÀN THÀNH]`
+
+**Bối cảnh:** Tính năng KM (`/promotions`) còn sơ sài: (1) bảng `promotions` không có cột chi nhánh → mọi nhân viên có quyền đều tạo KM áp dụng toàn hệ thống, sai mô hình đa chi nhánh; (2) KM chỉ áp cấp toàn đơn, thiếu KM gắn theo sản phẩm (mua X tặng Y / giảm theo số lượng) và không gợi ý tại POS.
+
+- [x] **Database** (migration `20260530000003_product_promotions_and_branch_scope.sql` — ⚠️ chạy thủ công qua Supabase SQL Editor):
+  - Thêm `promotions.branch_ids UUID[]` (rỗng = toàn hệ thống).
+  - Bảng mới `product_promotions`: KM gắn theo từng SP (`promo_type` ∈ buy_x_get_y / percent / fixed_amount, `buy_qty`, `get_qty`, `get_product_id`, `discount_value`, `min_qty`, `branch_ids`, `priority`, hiệu lực).
+  - RLS phân quyền cho CẢ 2 bảng: admin/ceo toàn quyền mọi chi nhánh (tick nhiều CN hoặc rỗng = toàn hệ thống); nhân viên có quyền `promotions.manage` chỉ tạo/sửa bản ghi `branch_ids = [fn_my_branch_id()]` (ràng buộc bằng `WITH CHECK`) → không can thiệp KM chi nhánh khác.
+- [x] **Engine**: `src/hooks/useProductPromotions.ts` (mới — load + lọc branch/hiệu lực, `evaluateProductPromo()`, `promoShortLabel()`, `getTopPromo()`); `usePromotionEngine(branchId?)` lọc KM toàn đơn theo chi nhánh.
+- [x] **POS** (`POSPage.tsx`): badge 🎁 trên thẻ sản phẩm cột giữa; banner gợi ý 1-chạm dưới mỗi dòng giỏ — `buy_x_get_y` hiện nút "🎁 Tặng N" (thêm dòng quà 0đ qua `applyProductGift`), `percent/fixed` hiện nút "Áp giảm %" (qua `setRowDiscount`). Lọc theo `profile.branch_id`. Đúng yêu cầu "gợi ý để khách biết, không tự động áp".
+- [x] **Quản lý theo sản phẩm**: tab thứ 4 "Khuyến mãi" trong `ProductDetailPage.tsx` + `ProductPromotionModal.tsx` (admin multi-select chi nhánh; nhân viên khóa cứng CN mình).
+- [x] **Trang KM toàn đơn** (`PromotionsPage.tsx`): `PromotionModal` thêm multi-select chi nhánh; danh sách hiển thị chip "Toàn hệ thống / N chi nhánh".
+- [x] `tsc --noEmit` PASS 0 lỗi.
+
 ---
 
 ### 6. Phân Hệ Sổ Quỹ & Duyệt Chi (Cashbook & Disbursements) - `[HOÀN THÀNH]`

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useNavigate } from 'react-router-dom'
@@ -31,6 +31,7 @@ import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
+import { useProductPromotions, evaluateProductPromo, promoShortLabel } from '../../hooks/useProductPromotions'
 
 interface Customer {
   id: string
@@ -223,8 +224,10 @@ export default function POSPage() {
   const [showGrid, setShowGrid] = useState(true)
   const [showProductImages, setShowProductImages] = useState(true)
 
-  // Promotion / voucher
-  const { applyBestPromotion, applyVoucher } = usePromotionEngine()
+  // Promotion / voucher (lọc theo chi nhánh của nhân viên đăng nhập)
+  const branchId = profile?.branch_id ?? null
+  const { applyBestPromotion, applyVoucher } = usePromotionEngine(branchId)
+  const { getTopPromo } = useProductPromotions(branchId)
   const [voucherCode, setVoucherCode] = useState('')
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null)
   const [voucherError, setVoucherError] = useState('')
@@ -746,6 +749,21 @@ export default function POSPage() {
       ...prev,
       { id: crypto.randomUUID(), product, quantity: 1, unitPrice: 0, discountPercent: 0, isPriceOverridden: true }
     ])
+  }, [])
+
+  // Áp dụng quà tặng theo gợi ý KM sản phẩm (mua X tặng Y) — thêm/cập nhật dòng 0đ đúng số lượng
+  const applyProductGift = useCallback((giftProduct: Product, giftQty: number) => {
+    if (giftQty <= 0) return
+    setCart(prev => {
+      const existing = prev.find(c => c.product.id === giftProduct.id && c.unitPrice === 0)
+      if (existing) {
+        return prev.map(c => c.id === existing.id ? { ...c, quantity: giftQty } : c)
+      }
+      return [
+        ...prev,
+        { id: crypto.randomUUID(), product: giftProduct, quantity: giftQty, unitPrice: 0, discountPercent: 0, isPriceOverridden: true }
+      ]
+    })
   }, [])
 
   // Set manual discount for row
@@ -1318,8 +1336,15 @@ export default function POSPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cart.map((item, idx) => (
-                    <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                  {cart.map((item, idx) => {
+                    const rowPromo = item.unitPrice > 0 ? getTopPromo(item.product.id) : null
+                    const promoEval = rowPromo ? evaluateProductPromo(rowPromo, item.quantity, item.unitPrice) : null
+                    const giftProduct = promoEval
+                      ? (products.find(p => p.id === promoEval.giftProductId) ?? item.product)
+                      : null
+                    return (
+                    <Fragment key={item.id}>
+                    <tr className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
                       <td className="py-3 px-2 text-center text-gray-400 font-mono text-[11px]">{idx + 1}</td>
                       <td className="py-3 px-1 text-center">
                         <button
@@ -1404,7 +1429,43 @@ export default function POSPage() {
                         {((item.unitPrice * (1 - item.discountPercent / 100)) * item.quantity).toLocaleString('vi-VN')} ₫
                       </td>
                     </tr>
-                  ))}
+                    {promoEval && (
+                      <tr className="border-b border-amber-100 bg-amber-50/50">
+                        <td colSpan={10} className="px-3 py-1.5">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
+                              🎁 {rowPromo?.name}
+                              {promoEval.promo.promo_type === 'buy_x_get_y'
+                                ? (promoEval.eligible
+                                    ? ` — đủ điều kiện tặng ${promoEval.giftQty} ${giftProduct?.name ?? ''}`
+                                    : ` — mua thêm ${promoEval.remaining} để nhận quà`)
+                                : (promoEval.eligible
+                                    ? ` — giảm ${promoEval.discountPercent}% cho dòng này`
+                                    : ` — mua thêm ${promoEval.remaining} để được giảm`)}
+                            </span>
+                            {promoEval.eligible && promoEval.promo.promo_type === 'buy_x_get_y' && giftProduct && (
+                              <button
+                                onClick={() => applyProductGift(giftProduct, promoEval.giftQty)}
+                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded shadow-sm active:scale-95 transition-all"
+                              >
+                                🎁 Tặng {promoEval.giftQty}
+                              </button>
+                            )}
+                            {promoEval.eligible && promoEval.promo.promo_type !== 'buy_x_get_y' && (
+                              <button
+                                onClick={() => setRowDiscount(item.id, promoEval.discountPercent)}
+                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 rounded shadow-sm active:scale-95 transition-all"
+                              >
+                                Áp giảm {promoEval.discountPercent}%
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                    )
+                  })}
                   {cart.length === 0 && (
                     <tr>
                       <td colSpan={10} className="py-24 text-center text-gray-400 italic">
@@ -1512,12 +1573,21 @@ export default function POSPage() {
                               price = retailPrice ? retailPrice.selling_price : prod.price_list_items[0].selling_price
                             }
                           }
+                          const cardPromo = getTopPromo(prod.id)
                           return (
                             <div
                               key={prod.id}
                               onClick={() => addToCart(prod)}
-                              className="bg-white border border-gray-100 hover:border-[#007edb] hover:shadow-sm rounded p-2 flex flex-col justify-between cursor-pointer transition-all active:scale-[0.97]"
+                              className="bg-white border border-gray-100 hover:border-[#007edb] hover:shadow-sm rounded p-2 flex flex-col justify-between cursor-pointer transition-all active:scale-[0.97] relative"
                             >
+                              {cardPromo && (
+                                <span
+                                  className="absolute top-1 right-1 z-10 px-1.5 py-0.5 bg-gradient-to-r from-rose-500 to-orange-500 text-white text-[9px] font-bold rounded-full shadow-sm flex items-center gap-0.5"
+                                  title={cardPromo.name}
+                                >
+                                  🎁 {promoShortLabel(cardPromo)}
+                                </span>
+                              )}
                               <div>
                                 {showProductImages && (
                                   <div className="w-full h-16 bg-gray-50 rounded overflow-hidden flex items-center justify-center border border-gray-100 mb-1.5 shrink-0">
