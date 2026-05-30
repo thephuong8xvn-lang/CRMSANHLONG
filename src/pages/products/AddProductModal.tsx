@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { X, ShieldAlert, Check, Search, Info, DollarSign, Activity, FileText, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 interface AddProductModalProps {
@@ -52,6 +53,19 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+
+  const unitOptions = useMemo(() => {
+    const list = units.length === 0 ? ['lọ'] : units
+    return list.map(u => ({ value: u, label: u }))
+  }, [units])
+
+  const categoryOptions = useMemo(() => {
+    return categories.map(cat => ({ value: cat.id, label: cat.name, desc: cat.code ? `Mã: ${cat.code}` : undefined }))
+  }, [categories])
+
+  const brandOptions = useMemo(() => {
+    return brands.map(b => ({ value: b.id, label: b.name }))
+  }, [brands])
 
   // Load lookup lists
   useEffect(() => {
@@ -525,55 +539,38 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
                         Đơn vị tính <span className="text-danger-500">*</span>
                       </label>
-                      <select
-                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all capitalize"
+                      <SmartSearchSelect
+                        options={unitOptions}
                         value={unit}
-                        onChange={e => setUnit(e.target.value)}
-                      >
-                        {units.length === 0 ? (
-                          <option value="lọ">lọ (mặc định)</option>
-                        ) : (
-                          units.map(u => (
-                            <option key={u} value={u}>
-                              {u}
-                            </option>
-                          ))
-                        )}
-                      </select>
+                        onChange={val => setUnit(val)}
+                        placeholder="-- Chọn đơn vị tính --"
+                        searchPlaceholder="Tìm đơn vị tính..."
+                        required
+                      />
                     </div>
                     <div>
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
                         Phân loại danh mục
                       </label>
-                      <select
-                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
+                      <SmartSearchSelect
+                        options={categoryOptions}
                         value={categoryId}
-                        onChange={e => setCategoryId(e.target.value)}
-                      >
-                        <option value="">-- Chọn danh mục --</option>
-                        {categories.map(cat => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => setCategoryId(val)}
+                        placeholder="-- Chọn danh mục --"
+                        searchPlaceholder="Tìm kiếm danh mục..."
+                      />
                     </div>
                     <div>
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-2">
                         Thương hiệu
                       </label>
-                      <select
-                        className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-white focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all"
+                      <SmartSearchSelect
+                        options={brandOptions}
                         value={brandId}
-                        onChange={e => setBrandId(e.target.value)}
-                      >
-                        <option value="">-- Chọn thương hiệu --</option>
-                        {brands.map(brand => (
-                          <option key={brand.id} value={brand.id}>
-                            {brand.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => setBrandId(val)}
+                        placeholder="-- Chọn thương hiệu --"
+                        searchPlaceholder="Tìm kiếm thương hiệu..."
+                      />
                     </div>
                   </div>
 

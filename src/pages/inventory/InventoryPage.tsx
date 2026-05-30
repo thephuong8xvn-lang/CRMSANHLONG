@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { Skeleton } from '../../components/Skeleton'
+import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -193,6 +194,41 @@ export default function InventoryPage() {
     refundMethod: 'credit_note',
     lines: []
   })
+
+  // Memoized options for SmartSearchSelect in Stock Transfer & Supplier Return
+  const transferLotOptions = useMemo(() => {
+    return lotsForTransfer.map((l: any) => {
+      const avail = l.quantity_on_hand - l.quantity_reserved;
+      const isAlreadyAdded = newTransfer.lines.some(line => line.lotId === l.id);
+      return {
+        value: l.id,
+        label: l.product_id ? l.name : `Lô: ${l.lot_number}`,
+        desc: `Lô: ${l.lot_number} | Tồn: ${avail}`,
+        disabled: avail <= 0 || isAlreadyAdded
+      };
+    });
+  }, [lotsForTransfer, newTransfer.lines]);
+
+  const returnSupplierOptions = useMemo(() => {
+    return suppliers.map(s => ({
+      value: s.id,
+      label: s.name,
+      desc: s.supplier_code ? `Mã: ${s.supplier_code}` : undefined
+    }));
+  }, [suppliers]);
+
+  const returnLotOptions = useMemo(() => {
+    return lotsForReturn.map((l: any) => {
+      const avail = l.quantity_on_hand - l.quantity_reserved;
+      const isAlreadyAdded = newReturn.lines.some(line => line.lotId === l.id);
+      return {
+        value: l.id,
+        label: l.product_id ? l.name : `Lô: ${l.lot_number}`,
+        desc: `Lô: ${l.lot_number} | Tồn: ${avail} | Giá: ${l.cost_price?.toLocaleString()}₫`,
+        disabled: avail <= 0 || isAlreadyAdded
+      };
+    });
+  }, [lotsForReturn, newReturn.lines]);
 
   // Tab: Goods Receipts details states
   const [showReceiptDetailModal, setShowReceiptDetailModal] = useState(false)
@@ -2424,22 +2460,13 @@ export default function InventoryPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="block text-tiny font-semibold text-gray-600">Chọn lô hàng</label>
-                      <select
+                      <SmartSearchSelect
+                        options={transferLotOptions}
                         value={modalLotId}
-                        onChange={(e) => setModalLotId(e.target.value)}
-                        className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
-                      >
-                        <option value="">-- Chọn lô hàng còn tồn --</option>
-                        {lotsForTransfer.map((l: any) => {
-                          const avail = l.quantity_on_hand - l.quantity_reserved;
-                          const isAlreadyAdded = newTransfer.lines.some(line => line.lotId === l.id);
-                          return (
-                            <option key={l.id} value={l.id} disabled={avail <= 0 || isAlreadyAdded}>
-                              {l.product_id ? `${l.name} - Lô: ${l.lot_number} (Tồn: ${avail})` : `Lô: ${l.lot_number} (Tồn: ${avail})`}
-                            </option>
-                          );
-                        })}
-                      </select>
+                        onChange={(val) => setModalLotId(val)}
+                        placeholder="-- Chọn lô hàng còn tồn --"
+                        searchPlaceholder="Tìm kiếm lô hàng..."
+                      />
                     </div>
 
                     <div className="space-y-1.5">
@@ -2753,17 +2780,14 @@ export default function InventoryPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="block text-body-md font-semibold text-gray-700">Nhà cung cấp <span className="text-red-500">*</span></label>
-                  <select
+                  <SmartSearchSelect
+                    options={returnSupplierOptions}
                     value={newReturn.supplierId}
-                    onChange={(e) => setNewReturn({ ...newReturn, supplierId: e.target.value })}
-                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    onChange={(val) => setNewReturn({ ...newReturn, supplierId: val })}
+                    placeholder="-- Chọn nhà cung cấp --"
+                    searchPlaceholder="Tìm kiếm nhà cung cấp..."
                     required
-                  >
-                    <option value="">-- Chọn nhà cung cấp --</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -2841,27 +2865,17 @@ export default function InventoryPage() {
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="block text-tiny font-semibold text-gray-600">Chọn lô hàng trong kho</label>
-                      <select
+                      <SmartSearchSelect
+                        options={returnLotOptions}
                         value={modalLotId}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        onChange={(val) => {
                           setModalLotId(val);
                           const lot = lotsForReturn.find((l: any) => l.id === val);
                           if (lot) setModalUnitPrice(lot.cost_price);
                         }}
-                        className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
-                      >
-                        <option value="">-- Chọn lô hàng còn tồn --</option>
-                        {lotsForReturn.map((l: any) => {
-                          const avail = l.quantity_on_hand - l.quantity_reserved;
-                          const isAlreadyAdded = newReturn.lines.some(line => line.lotId === l.id);
-                          return (
-                            <option key={l.id} value={l.id} disabled={avail <= 0 || isAlreadyAdded}>
-                              {l.product_id ? `${l.name} - Lô: ${l.lot_number} (Tồn: ${avail}, Giá: ${l.cost_price.toLocaleString()}₫)` : `Lô: ${l.lot_number} (Tồn: ${avail})`}
-                            </option>
-                          );
-                        })}
-                      </select>
+                        placeholder="-- Chọn lô hàng còn tồn --"
+                        searchPlaceholder="Tìm kiếm lô hàng..."
+                      />
                     </div>
 
                     <div className="space-y-1.5">

@@ -331,6 +331,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **Chuyển hàng giữa các kho & chi nhánh (Stock Transfers)**: Thiết lập giao diện điều chuyển và quản lý các trạng thái `draft`, `in_transit`, `received`, `cancelled` trong tab Chuyển kho của màn hình quản lý kho.
 - [x] **Trả hàng nhập (Purchase Returns)**: Xây dựng bảng và trigger tự động xuất kho đối với phiếu trả hàng nhà cung cấp trong tab Trả hàng NCC của màn hình quản lý kho.
 - [x] **Hàng trả theo hóa đơn đã bán (Sales Returns)**: Tích hợp nút Trả hàng tại trang Chi tiết đơn hàng, tự động nhập lại kho và cập nhật trạng thái đơn hàng thông qua trigger database.
+- [x] **Tìm kiếm thông minh (Smart Search Dropdowns)**: Xây dựng và tích hợp component `SmartSearchSelect` tìm kiếm không dấu (accent-insensitive) cho phần chọn lô hàng chuyển kho, chọn nhà cung cấp và chọn lô hàng trả NCC nhằm tối ưu hóa thao tác khi số lượng bản ghi lớn.
 
 ---
 
@@ -353,6 +354,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - [x] Thiết kế cấu trúc giao diện Modal thông minh: Tiêu đề (Header) và nút Tác vụ (Hủy/Lưu ở Footer) được giữ cố định (sticky layout), chỉ cuộn phần nội dung biểu mẫu ở giữa giúp loại bỏ hoàn toàn lỗi tràn layout và không bấm được nút thoát/lưu trên màn hình độ phân giải thấp.
   - [x] Hỗ trợ tìm kiếm & tick chọn nhiều hoạt chất kèm nhập nồng độ/hàm lượng trực tiếp, cùng với checklist chỉ định điều trị bệnh lý gán thẳng vào sản phẩm.
   - [x] Đồng bộ lưu trữ và hiển thị các bệnh lý chỉ định điều trị dạng tag tag-badges trực quan trên thanh thông tin bổ sung của trang Chi tiết sản phẩm (`ProductDetailPage`).
+  - [x] **Tìm kiếm thông minh (Smart Search Dropdowns)**: Tích hợp component `SmartSearchSelect` tìm kiếm không dấu cho Đơn vị tính, Phân loại danh mục và Thương hiệu trong `AddProductModal` và `EditProductModal` giúp dễ dàng cấu hình catalog.
 - [x] **Tích hợp Giỏ hàng thông minh (Smart Cart) & Tương kỵ thuốc tại POS**:
   - [x] Phát triển công cụ chẩn đoán nhanh tại POS: Chọn Loài -> Tích chọn Triệu chứng -> Đề xuất bệnh lý -> Áp dụng phác đồ tự động điền các sản phẩm phù hợp trong kho (theo FEFO) vào giỏ hàng.
   - [x] Tự động đối chiếu tương kỵ thuốc: Hiển thị cảnh báo đỏ nổi bật ngay tại giỏ hàng nếu phát hiện sản phẩm đối kháng dùng chung cho vật nuôi.

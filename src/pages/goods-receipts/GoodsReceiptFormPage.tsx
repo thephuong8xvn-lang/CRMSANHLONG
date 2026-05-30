@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -20,6 +20,7 @@ import {
   Store
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -107,6 +108,13 @@ export default function GoodsReceiptFormPage() {
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
   const [vatOption, setVatOption] = useState<'none' | '5' | '10'>('5')
+
+  const supplierOptions = useMemo(() => {
+    return suppliers.map(s => ({
+      value: s.id,
+      label: s.name
+    }))
+  }, [suppliers])
 
   // Verification states for line items
   const [poLines, setPOLines] = useState<POLineItem[]>([])
@@ -743,19 +751,15 @@ export default function GoodsReceiptFormPage() {
                   {/* Supplier select */}
                   <div className="space-y-1.5">
                     <label className="block text-body-md font-semibold text-gray-700">Nhà cung cấp <span className="text-red-500">*</span></label>
-                    <div className="relative">
-                      <Store className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                      <select
-                        value={selectedSupplierId}
-                        onChange={(e) => setSelectedSupplierId(e.target.value)}
-                        className="w-full h-10 pl-10 pr-4 bg-white border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 appearance-none"
-                      >
-                        <option value="">-- Chọn nhà cung cấp --</option>
-                        {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <SmartSearchSelect
+                      options={supplierOptions}
+                      value={selectedSupplierId}
+                      onChange={(val) => setSelectedSupplierId(val)}
+                      placeholder="-- Chọn nhà cung cấp --"
+                      searchPlaceholder="Tìm kiếm nhà cung cấp..."
+                      icon={<Store size={18} />}
+                      required
+                    />
                   </div>
 
                   {/* Warehouse select */}
