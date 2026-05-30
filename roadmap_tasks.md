@@ -78,6 +78,7 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Hỗ trợ 2 chế độ xem: Dạng Chi tiết (Split Screen) và Dạng Bảng (Bulk Table View) nhập nhanh hàng loạt.
   - Tính năng "Xác nhận nhanh tất cả" tự động điền số lượng thực tế, số lô mẫu và kho mặc định chỉ với 1 click.
   - Cảnh báo chuỗi lạnh (Cold chain alerts) trực quan đối với các sản phẩm vắc-xin.
+  - Tối ưu hóa chiều rộng và khoảng cách cột của bảng nhập hàng loạt (Bulk Table View) để không bị tràn màn hình; tích hợp bộ chọn thuế VAT (Không VAT, 5% VAT, 10% VAT) và lưu trữ tổng tiền chính xác sau thuế.
 - [x] Cảnh báo tồn kho thấp (low stock) và lô hàng cận hạn sử dụng (< 30 ngày) kèm định mức tồn kho an toàn trong [InventoryPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/inventory/InventoryPage.tsx).
 
 ---

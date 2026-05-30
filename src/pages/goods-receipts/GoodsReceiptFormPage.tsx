@@ -106,6 +106,7 @@ export default function GoodsReceiptFormPage() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState('')
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
+  const [vatOption, setVatOption] = useState<'none' | '5' | '10'>('5')
 
   // Verification states for line items
   const [poLines, setPOLines] = useState<POLineItem[]>([])
@@ -533,6 +534,9 @@ export default function GoodsReceiptFormPage() {
         return sum + (item.quantityReceived * item.unitPrice)
       }, 0)
 
+      const activeVatRate = vatOption === 'none' ? 0 : vatOption === '5' ? 0.05 : 0.10
+      const totalWithVat = totalAmount * (1 + activeVatRate)
+
       const randomId = Math.floor(100000 + Math.random() * 900000)
       const receiptCode = `GR-${randomId}`
       const supplierId = receiptMode === 'po' ? selectedPO!.supplier.id : selectedSupplierId
@@ -544,6 +548,8 @@ export default function GoodsReceiptFormPage() {
         ? selectedPOId
         : null
 
+      const vatLabel = vatOption === 'none' ? 'Không VAT' : `VAT ${vatOption}%`
+
       const { data: gr, error: grErr } = await supabase
         .from('goods_receipts')
         .insert([{
@@ -552,11 +558,11 @@ export default function GoodsReceiptFormPage() {
           supplier_id: supplierId,
           warehouse_id: targetWarehouse,
           receipt_date: receiptDate,
-          total_amount: totalAmount,
+          total_amount: totalWithVat,
           received_by: receivedById,
           notes: receiptMode === 'po' 
-            ? `Nhập kho từ PO: ${selectedPO!.po_code}. ${notes}` 
-            : `Nhập kho trực tiếp không cần PO. ${notes}`
+            ? `Nhập kho từ PO: ${selectedPO!.po_code}. [Lựa chọn thuế: ${vatLabel}]. ${notes}` 
+            : `Nhập kho trực tiếp không cần PO. [Lựa chọn thuế: ${vatLabel}]. ${notes}`
         }])
         .select()
         .single()
@@ -646,6 +652,14 @@ export default function GoodsReceiptFormPage() {
   const verifiedCount = verificationItems.filter(item => item.isVerified).length
   const totalItemsCount = verificationItems.length
   const progressPercent = totalItemsCount > 0 ? (verifiedCount / totalItemsCount) * 100 : 0
+
+  const subtotalAmount = verificationItems
+    .filter(item => item.isVerified)
+    .reduce((sum, item) => sum + (item.quantityReceived * item.unitPrice), 0)
+
+  const vatRate = vatOption === 'none' ? 0 : vatOption === '5' ? 0.05 : 0.10
+  const vatAmount = subtotalAmount * vatRate
+  const grandTotalAmount = subtotalAmount + vatAmount
 
   return (
     <Layout activeMenu="Kho hàng">
@@ -955,15 +969,15 @@ export default function GoodsReceiptFormPage() {
                     <table className="w-full border-collapse text-left">
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                          <th className="px-4 py-4 w-12 text-center">#</th>
-                          <th className="px-4 py-4 min-w-[220px]">Tên sản phẩm / SKU</th>
-                          <th className="px-4 py-4 min-w-[130px] text-center">Thực nhận</th>
-                          {receiptMode === 'direct' && <th className="px-4 py-4 min-w-[150px] text-right">Giá nhập (₫)</th>}
-                          <th className="px-4 py-4 min-w-[140px]">Mã Số lô</th>
-                          <th className="px-4 py-4 min-w-[150px]">NSX</th>
-                          <th className="px-4 py-4 min-w-[150px]">HSD</th>
-                          <th className="px-4 py-4 min-w-[200px]">Kho & Vị trí</th>
-                          <th className="px-4 py-4 min-w-[100px] text-center">Xác nhận</th>
+                          <th className="px-2 py-3 w-8 text-center">#</th>
+                          <th className="px-2 py-3 min-w-[180px]">Tên sản phẩm / SKU</th>
+                          <th className="px-2 py-3 min-w-[115px] text-center">Thực nhận</th>
+                          {receiptMode === 'direct' && <th className="px-2 py-3 min-w-[120px] text-right">Giá nhập (₫)</th>}
+                          <th className="px-2 py-3 min-w-[110px]">Mã Số lô</th>
+                          <th className="px-2 py-3 min-w-[120px]">NSX</th>
+                          <th className="px-2 py-3 min-w-[120px]">HSD</th>
+                          <th className="px-2 py-3 min-w-[160px]">Kho & Vị trí</th>
+                          <th className="px-2 py-3 min-w-[70px] text-center">Xác nhận</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 text-body-md text-gray-750">
@@ -984,7 +998,7 @@ export default function GoodsReceiptFormPage() {
                                   item.isVerified ? 'bg-emerald-25/5' : ''
                                 }`}
                               >
-                                <td className="px-4 py-4 text-center">
+                                <td className="px-2 py-3 text-center">
                                   {receiptMode === 'direct' ? (
                                     <button
                                       type="button"
@@ -999,11 +1013,11 @@ export default function GoodsReceiptFormPage() {
                                   )}
                                 </td>
 
-                                <td className="px-4 py-4 min-w-[220px]">
+                                <td className="px-2 py-3 min-w-[180px]">
                                   <div className="space-y-1">
                                     <span className="font-bold text-gray-800 block leading-tight">{item.productName}</span>
                                     <div className="flex flex-wrap gap-1.5 items-center">
-                                      <span className="text-gray-450 font-mono text-[11px]">SKU: {item.productSku}</span>
+                                      <span className="text-gray-455 font-mono text-[11px]">SKU: {item.productSku}</span>
                                       {isCold && (
                                         <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase flex items-center gap-0.5">
                                           <AlertTriangle size={9} />
@@ -1019,14 +1033,14 @@ export default function GoodsReceiptFormPage() {
                                     
                                     {/* PO Quantities detail */}
                                     {receiptMode === 'po' && (
-                                      <span className="text-[11px] text-gray-400 block font-medium">
+                                      <span className="text-[11px] text-gray-450 block font-medium">
                                         PO đặt: {item.quantityOrdered} | Đã nhận: {item.quantityPreviouslyReceived}
                                       </span>
                                     )}
                                   </div>
                                 </td>
 
-                                <td className="px-4 py-4 min-w-[130px]">
+                                <td className="px-2 py-3 min-w-[115px]">
                                   <div className="flex items-center border border-gray-100 rounded-lg overflow-hidden h-8 w-28 bg-white shadow-sm mx-auto">
                                     <button
                                       type="button"
@@ -1062,7 +1076,7 @@ export default function GoodsReceiptFormPage() {
                                 </td>
 
                                 {receiptMode === 'direct' && (
-                                  <td className="px-4 py-4 min-w-[150px]">
+                                  <td className="px-2 py-3 min-w-[120px]">
                                     <input
                                       type="number"
                                       min="0"
@@ -1077,7 +1091,7 @@ export default function GoodsReceiptFormPage() {
                                   </td>
                                 )}
 
-                                <td className="px-4 py-4 min-w-[140px]">
+                                <td className="px-2 py-3 min-w-[110px]">
                                   <input
                                     type="text"
                                     placeholder={item.isLotManaged ? "Bắt buộc *" : "Số lô (tùy chọn)"}
@@ -1092,7 +1106,7 @@ export default function GoodsReceiptFormPage() {
                                   />
                                 </td>
 
-                                <td className="px-4 py-4 min-w-[150px]">
+                                <td className="px-2 py-3 min-w-[120px]">
                                   <input
                                     type="date"
                                     value={item.manufactureDate}
@@ -1101,7 +1115,7 @@ export default function GoodsReceiptFormPage() {
                                   />
                                 </td>
 
-                                <td className="px-4 py-4 min-w-[150px]">
+                                <td className="px-2 py-3 min-w-[120px]">
                                   <input
                                     type="date"
                                     value={item.expiryDate}
@@ -1110,7 +1124,7 @@ export default function GoodsReceiptFormPage() {
                                   />
                                 </td>
 
-                                <td className="px-4 py-4 min-w-[200px]">
+                                <td className="px-2 py-3 min-w-[160px]">
                                   <div className="space-y-1">
                                     <select
                                       value={item.warehouseId}
@@ -1138,14 +1152,14 @@ export default function GoodsReceiptFormPage() {
                                   </div>
                                 </td>
 
-                                <td className="px-4 py-4 text-center">
+                                <td className="px-2 py-3 text-center">
                                   <button
                                     type="button"
                                     onClick={() => handleVerifyItem(index)}
                                     className={`w-7 h-7 rounded-full border flex items-center justify-center mx-auto transition-all ${
                                       item.isVerified 
                                         ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm' 
-                                        : 'bg-white border-gray-250 text-gray-300 hover:text-gray-500 hover:border-gray-300'
+                                        : 'bg-white border-gray-250 text-gray-350 hover:text-gray-500 hover:border-gray-300'
                                     }`}
                                   >
                                     <Check size={14} strokeWidth={3} />
@@ -1168,10 +1182,19 @@ export default function GoodsReceiptFormPage() {
                       <div className="text-right space-y-1">
                         <div>
                           Tổng tiền hàng thực nhập (chưa VAT): <span className="font-bold text-gray-800">
-                            {verificationItems
-                              .filter(item => item.isVerified)
-                              .reduce((sum, item) => sum + (item.quantityReceived * item.unitPrice), 0)
-                              .toLocaleString('vi-VN')} ₫
+                            {subtotalAmount.toLocaleString('vi-VN')} ₫
+                          </span>
+                        </div>
+                        {vatRate > 0 && (
+                          <div className="text-gray-550">
+                            Thuế VAT ({vatOption}%): <span className="font-semibold text-gray-750">
+                              {vatAmount.toLocaleString('vi-VN')} ₫
+                            </span>
+                          </div>
+                        )}
+                        <div className="text-body-lg font-bold text-gray-800">
+                          Tổng giá trị thực nhập: <span className="text-blue-600">
+                            {grandTotalAmount.toLocaleString('vi-VN')} ₫
                           </span>
                         </div>
                         <div className="text-tiny text-gray-400">
@@ -1511,22 +1534,28 @@ export default function GoodsReceiptFormPage() {
                       <span>Số mặt hàng đã kiểm</span>
                       <span className="font-bold text-gray-700">{verifiedCount} / {totalItemsCount}</span>
                     </div>
+                    <div className="flex justify-between items-center text-gray-400 text-body-md">
+                      <span>Lựa chọn VAT</span>
+                      <select
+                        value={vatOption}
+                        onChange={(e) => setVatOption(e.target.value as any)}
+                        className="h-8 px-2 border border-gray-200 rounded-lg text-body-md font-semibold text-gray-750 bg-white focus:outline-none focus:border-blue-500 shadow-sm"
+                      >
+                        <option value="none">Không VAT (0%)</option>
+                        <option value="5">Có VAT (5%)</option>
+                        <option value="10">Có VAT (10%)</option>
+                      </select>
+                    </div>
                     <div className="flex justify-between items-center text-gray-400 text-body-md border-b border-dashed border-gray-100 pb-3">
-                      <span>Thuế VAT tính thêm (5%)</span>
+                      <span>Thuế VAT tính thêm ({vatOption === 'none' ? '0%' : vatOption + '%'})</span>
                       <span className="font-semibold text-gray-700">
-                        {(verificationItems
-                          .filter(item => item.isVerified)
-                          .reduce((sum, item) => sum + (item.quantityReceived * item.unitPrice), 0) * 0.05
-                        ).toLocaleString('vi-VN')} ₫
+                        {vatAmount.toLocaleString('vi-VN')} ₫
                       </span>
                     </div>
                     <div className="flex justify-between items-center pt-2">
                       <span className="text-body-lg font-bold text-gray-800">Tổng giá trị thực nhập</span>
                       <span className="text-headline-md font-bold text-blue-600">
-                        {(verificationItems
-                          .filter(item => item.isVerified)
-                          .reduce((sum, item) => sum + (item.quantityReceived * item.unitPrice), 0) * 1.05
-                        ).toLocaleString('vi-VN')} ₫
+                        {grandTotalAmount.toLocaleString('vi-VN')} ₫
                       </span>
                     </div>
                   </div>
