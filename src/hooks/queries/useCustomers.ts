@@ -87,6 +87,71 @@ export function useCustomersList(params: CustomerListParams) {
   })
 }
 
+// ───────────────────────── Quick View (inline) ─────────────────────────
+// Lịch sử giao dịch + công nợ của 1 khách hàng. Chỉ chạy khi panel xem
+// nhanh được mở (enabled). RLS (orders/customer_debts theo branch/owner)
+// tự lọc theo quyền user hiện tại.
+
+export interface CustomerOrderRow {
+  id: string
+  order_code: string
+  created_at: string
+  grand_total: number
+  status: string
+  payment_status: string
+}
+
+export interface CustomerDebtRow {
+  id: string
+  amount: number
+  due_date: string | null
+  is_settled: boolean
+  created_at: string
+  debt_type: string | null
+  order_id: string | null
+}
+
+/** 20 đơn hàng gần nhất của khách hàng. */
+export function useCustomerOrders(customerId: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.customers.orders(customerId),
+    enabled: enabled && !!customerId,
+    queryFn: async (): Promise<CustomerOrderRow[]> => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_code, created_at, grand_total, status, payment_status')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (error) {
+        logger.error('[useCustomerOrders] error:', error.message)
+        throw error
+      }
+      return (data ?? []) as CustomerOrderRow[]
+    },
+  })
+}
+
+/** Các khoản công nợ của khách hàng (mới nhất trước). */
+export function useCustomerDebts(customerId: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.customers.debts(customerId),
+    enabled: enabled && !!customerId,
+    queryFn: async (): Promise<CustomerDebtRow[]> => {
+      const { data, error } = await supabase
+        .from('customer_debts')
+        .select('id, amount, due_date, is_settled, created_at, debt_type, order_id')
+        .eq('customer_id', customerId)
+        .order('created_at', { ascending: false })
+      if (error) {
+        logger.error('[useCustomerDebts] error:', error.message)
+        throw error
+      }
+      return (data ?? []) as CustomerDebtRow[]
+    },
+  })
+}
+
 // ─────────────────────────────────────────────────────────────
 // Sales reps + classifications + tiers – static-ish lookup data,
 // cache lâu vì admin ít khi đổi.

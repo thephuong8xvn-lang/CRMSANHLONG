@@ -26,6 +26,7 @@ import {
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
+import { logger } from '../../lib/logger'
 import EditProductModal from './EditProductModal'
 import ProductPromotionModal from './ProductPromotionModal'
 import { promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
@@ -122,6 +123,9 @@ export default function ProductDetailPage() {
   const { settings, formatCurrency } = useDisplaySettings()
   const { profile, userRole, hasPermission } = useAuth()
   const canManagePromos = userRole.code === 'admin' || userRole.code === 'ceo' || hasPermission('promotions.manage')
+  // Gate khớp RLS: products_manage cần admin|products.manage; ghi kho thủ công cần admin|warehouse_keeper(inventory.receive)
+  const canManageProduct = userRole.code === 'admin' || hasPermission('products.manage')
+  const canReceiveStock = userRole.code === 'admin' || hasPermission('inventory.receive')
 
   // State
   const [product, setProduct] = useState<Product | null>(null)
@@ -244,7 +248,7 @@ export default function ProductDetailPage() {
           setProductIndications(indData as unknown as LinkedDiseaseIndication[])
         }
       } catch (e: any) {
-        console.warn('Could not load product indications (table may not exist):', e.message)
+        logger.warn('Could not load product indications (table may not exist):', e.message)
       }
 
       // 2. Fetch variants
@@ -335,7 +339,7 @@ export default function ProductDetailPage() {
         setMovements(moveData as unknown as StockMovement[])
       }
     } catch (err) {
-      console.error('Error loading product details:', err)
+      logger.error('Error loading product details:', err)
     } finally {
       setLoading(false)
     }
@@ -403,26 +407,65 @@ export default function ProductDetailPage() {
     }
 
     setLotError('')
+    const lotNumber = newLotNumber.trim().toUpperCase()
     try {
-      const { error } = await supabase
-        .from('stock_lots')
-        .insert({
-          product_id: id,
-          warehouse_id: newWarehouseId,
-          lot_number: newLotNumber.trim().toUpperCase(),
-          manufacture_date: newMfgDate || null,
-          expiry_date: newExpDate || null,
-          quantity_on_hand: newQty,
-          quantity_reserved: 0,
-          cost_price: newCostPrice,
-          status: 'active'
-        })
+      // Ưu tiên RPC nguyên tử: ghi ĐỒNG THỜI stock_lots + stock_movements (Thẻ kho)
+      const { error: rpcError } = await supabase.rpc('fn_add_manual_lot', {
+        p_product_id: id,
+        p_warehouse_id: newWarehouseId,
+        p_lot_number: lotNumber,
+        p_manufacture_date: newMfgDate || null,
+        p_expiry_date: newExpDate || null,
+        p_quantity: newQty,
+        p_cost_price: newCostPrice,
+      })
 
-      if (error) {
-        if (error.code === '23505') {
+      if (rpcError) {
+        const missingFn = rpcError.code === 'PGRST202' || /Could not find the function/i.test(rpcError.message || '')
+        if (rpcError.code === '23505') {
           throw new Error('Lô hàng này đã tồn tại trong kho này (Trùng số lô + kho).')
+        } else if (missingFn) {
+          // Fallback khi RPC chưa apply ở remote: insert lô rồi ghi Thẻ kho;
+          // nếu ghi movement lỗi thì xóa lô vừa tạo để không tăng tồn mà thiếu sổ.
+          const { data: lotData, error: lotErr } = await supabase
+            .from('stock_lots')
+            .insert({
+              product_id: id,
+              warehouse_id: newWarehouseId,
+              lot_number: lotNumber,
+              manufacture_date: newMfgDate || null,
+              expiry_date: newExpDate || null,
+              quantity_on_hand: newQty,
+              quantity_reserved: 0,
+              cost_price: newCostPrice,
+              status: 'active',
+            })
+            .select('id')
+            .single()
+          if (lotErr) {
+            if (lotErr.code === '23505') throw new Error('Lô hàng này đã tồn tại trong kho này (Trùng số lô + kho).')
+            throw lotErr
+          }
+          const { error: movErr } = await supabase
+            .from('stock_movements')
+            .insert({
+              lot_id: lotData.id,
+              product_id: id,
+              warehouse_id: newWarehouseId,
+              movement_type: 'adjustment_increase',
+              quantity: newQty,
+              reference_type: 'manual_lot',
+              unit_cost: newCostPrice,
+              performed_by: profile?.id ?? null,
+              notes: 'Nhập kho thủ công (thêm lô hàng từ trang sản phẩm)',
+            })
+          if (movErr) {
+            await supabase.from('stock_lots').delete().eq('id', lotData.id)
+            throw movErr
+          }
+        } else {
+          throw rpcError
         }
-        throw error
       }
 
       // Reset lot fields
@@ -436,66 +479,8 @@ export default function ProductDetailPage() {
       // Reload
       loadProductData()
     } catch (err: any) {
-      console.error('Error adding lot:', err)
+      logger.error('[ProductDetailPage] add lot error:', err?.message ?? err)
       setLotError(err.message || 'Lỗi xảy ra khi thêm lô hàng.')
-    }
-  }
-
-  // Generate Sample Mock Lots if DB is empty
-  const handleSeedMockLots = async () => {
-    if (!id || warehouses.length === 0) return
-    try {
-      const today = new Date()
-      
-      const expDate1 = new Date()
-      expDate1.setMonth(today.getMonth() + 2) // Expires in 2 months (Earliest)
-      
-      const expDate2 = new Date()
-      expDate2.setMonth(today.getMonth() + 8) // Expires in 8 months
-      
-      const expDate3 = new Date()
-      expDate3.setMonth(today.getMonth() + 18) // Expires in 18 months
-
-      const mockLotsToInsert = [
-        {
-          product_id: id,
-          warehouse_id: warehouses[0].id,
-          lot_number: 'LOT-EXP-CLOSE',
-          manufacture_date: new Date(today.getFullYear(), today.getMonth() - 10, 1).toISOString().split('T')[0],
-          expiry_date: expDate1.toISOString().split('T')[0],
-          quantity_on_hand: 80,
-          quantity_reserved: 10,
-          cost_price: 150000,
-          status: 'active'
-        },
-        {
-          product_id: id,
-          warehouse_id: warehouses[0].id,
-          lot_number: 'LOT-EXP-MID',
-          manufacture_date: new Date(today.getFullYear(), today.getMonth() - 4, 1).toISOString().split('T')[0],
-          expiry_date: expDate2.toISOString().split('T')[0],
-          quantity_on_hand: 200,
-          quantity_reserved: 0,
-          cost_price: 140000,
-          status: 'active'
-        },
-        {
-          product_id: id,
-          warehouse_id: warehouses[0].id,
-          lot_number: 'LOT-EXP-FAR',
-          manufacture_date: today.toISOString().split('T')[0],
-          expiry_date: expDate3.toISOString().split('T')[0],
-          quantity_on_hand: 500,
-          quantity_reserved: 20,
-          cost_price: 135000,
-          status: 'active'
-        }
-      ]
-
-      await supabase.from('stock_lots').insert(mockLotsToInsert)
-      loadProductData()
-    } catch (err) {
-      console.error('Error seeding lots:', err)
     }
   }
 
@@ -556,13 +541,15 @@ export default function ProductDetailPage() {
           </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={() => setIsEditModalOpen(true)}
-              className="h-10 px-4 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg font-semibold text-body-md transition-all flex items-center gap-2"
-            >
-              <Edit size={16} className="text-gray-500" />
-              Sửa chi tiết
-            </button>
+            {canManageProduct && (
+              <button
+                onClick={() => setIsEditModalOpen(true)}
+                className="h-10 px-4 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg font-semibold text-body-md transition-all flex items-center gap-2"
+              >
+                <Edit size={16} className="text-gray-500" />
+                Sửa chi tiết
+              </button>
+            )}
             <button
               onClick={() => navigate('/products/prices')}
               className="h-10 px-4 border border-gray-200 rounded-lg text-body-md font-semibold text-gray-700 hover:bg-gray-50 transition-all flex items-center gap-2"
@@ -570,13 +557,15 @@ export default function ProductDetailPage() {
               <Printer size={16} className="text-gray-400" />
               In nhãn sản phẩm
             </button>
-            <button
-              onClick={() => setIsAddingLot(true)}
-              className="h-10 px-4 bg-blue-50 text-blue-500 border border-blue-100 rounded-lg font-semibold text-body-md hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-2 shadow-sm"
-            >
-              <Plus size={16} />
-              Nhập kho / Thêm lô hàng
-            </button>
+            {canReceiveStock && (
+              <button
+                onClick={() => setIsAddingLot(true)}
+                className="h-10 px-4 bg-blue-50 text-blue-500 border border-blue-100 rounded-lg font-semibold text-body-md hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <Plus size={16} />
+                Nhập kho / Thêm lô hàng
+              </button>
+            )}
           </div>
         </div>
 
@@ -823,7 +812,18 @@ export default function ProductDetailPage() {
                                   <td className="p-3 font-semibold text-gray-700">{v.sku_variant}</td>
                                   <td className="p-3">{v.name}</td>
                                   <td className="p-3 text-gray-500 text-tiny">
-                                    {JSON.stringify(v.attributes)}
+                                    {v.attributes && Object.keys(v.attributes).length > 0 ? (
+                                      <span className="flex flex-wrap gap-1">
+                                        {Object.entries(v.attributes).map(([k, val]) => (
+                                          <span key={k} className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-50 border border-gray-100 rounded text-[11px]">
+                                            <span className="text-gray-400">{k}:</span>
+                                            <span className="font-semibold text-gray-600">{String(val)}</span>
+                                          </span>
+                                        ))}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-300">—</span>
+                                    )}
                                   </td>
                                   <td className="p-3 text-gray-500">{product.unit}</td>
                                 </tr>
@@ -838,29 +838,22 @@ export default function ProductDetailPage() {
                     <div>
                       <div className="flex justify-between items-center mb-3">
                         <h4 className="font-bold text-body-lg text-gray-700">Lô hàng đang lưu kho</h4>
-                        {lots.length === 0 && (
-                          <button
-                            onClick={handleSeedMockLots}
-                            className="text-blue-500 hover:text-blue-600 text-tiny font-bold flex items-center gap-1.5"
-                          >
-                            <Plus size={14} />
-                            Tạo nhanh lô hàng mẫu để test FEFO
-                          </button>
-                        )}
                       </div>
 
                       {lots.length === 0 ? (
                         <div className="p-8 border border-dashed border-gray-200 rounded-xl text-center flex flex-col items-center justify-center">
                           <Warehouse className="text-gray-300 mb-2" size={32} />
                           <p className="text-body-md font-semibold text-gray-500 mb-1">Kho trống / Chưa có lô hàng</p>
-                          <p className="text-tiny text-gray-400 max-w-sm mb-4">Vui lòng nhập kho hoặc tạo lô hàng mẫu để theo dõi hạn sử dụng sản phẩm.</p>
-                          <button
-                            onClick={() => setIsAddingLot(true)}
-                            className="h-9 px-4 bg-blue-50 text-blue-600 border border-blue-150 rounded-lg text-tiny font-bold hover:bg-blue-100 transition-all flex items-center gap-1.5"
-                          >
-                            <Plus size={14} />
-                            Thêm lô hàng đầu tiên
-                          </button>
+                          <p className="text-tiny text-gray-400 max-w-sm mb-4">Vui lòng nhập kho để theo dõi hạn sử dụng sản phẩm.</p>
+                          {canReceiveStock && (
+                            <button
+                              onClick={() => setIsAddingLot(true)}
+                              className="h-9 px-4 bg-blue-50 text-blue-600 border border-blue-150 rounded-lg text-tiny font-bold hover:bg-blue-100 transition-all flex items-center gap-1.5"
+                            >
+                              <Plus size={14} />
+                              Thêm lô hàng đầu tiên
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

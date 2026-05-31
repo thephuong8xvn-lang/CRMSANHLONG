@@ -27,6 +27,8 @@ export const qk = {
     detail: (id: string) => ['customers', 'detail', id] as const,
     classifications: ['customers', 'classifications'] as const,
     tiers: ['customers', 'tiers'] as const,
+    orders: (id: string) => ['customers', 'orders', id] as const,
+    debts: (id: string) => ['customers', 'debts', id] as const,
   },
   products: {
     all: ['products'] as const,
@@ -34,6 +36,9 @@ export const qk = {
     detail: (id: string) => ['products', 'detail', id] as const,
     categories: ['products', 'categories'] as const,
     brands: ['products', 'brands'] as const,
+    lots: (id: string, branchId?: string | null) => ['products', 'lots', id, branchId ?? 'all'] as const,
+    movements: (id: string, branchId?: string | null) => ['products', 'movements', id, branchId ?? 'all'] as const,
+    promotions: (id: string) => ['products', 'promotions', id] as const,
   },
   orders: {
     all: ['orders'] as const,
@@ -49,6 +54,17 @@ export const qk = {
   },
   branches: {
     all: ['branches'] as const,
+  },
+  herdProjects: {
+    all: ['herd-projects'] as const,
+    list: (params: object) => ['herd-projects', 'list', params] as const,
+    detail: (id: string) => ['herd-projects', 'detail', id] as const,
+    types: ['herd-projects', 'types'] as const,
+    species: ['herd-projects', 'species'] as const,
+    regions: ['herd-projects', 'regions'] as const,
+    herds: (params: object) => ['herd-projects', 'herds', params] as const,
+    members: (id: string) => ['herd-projects', 'members', id] as const,
+    costs: (id: string) => ['herd-projects', 'costs', id] as const,
   },
   auth: {
     rolePermissions: (userId: string) => ['auth', 'role-permissions', userId] as const,

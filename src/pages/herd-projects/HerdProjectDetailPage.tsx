@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../contexts/AuthContext'
+import HerdMembersSection from './HerdMembersSection'
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Bản nháp',
@@ -147,8 +149,9 @@ export default function HerdProjectDetailPage() {
   const [outcome, setOutcome] = useState<ProjectOutcome | null>(null)
   const [linkedOrder, setLinkedOrder] = useState<LinkedOrder | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'kq-du-an' | 'chi-phi' | 'nhat-ky'>('kq-du-an')
+  const [activeTab, setActiveTab] = useState<'kq-du-an' | 'chi-phi' | 'nhat-ky' | 'thanh-vien'>('kq-du-an')
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const { userRole, hasPermission } = useAuth()
 
   // Step Update Modal States
   const [activeStep, setActiveStep] = useState<ProjectStep | null>(null)
@@ -1008,6 +1011,16 @@ export default function HerdProjectDetailPage() {
                 >
                   Nhật ký trang trại
                 </button>
+                <button
+                  onClick={() => setActiveTab('thanh-vien')}
+                  className={`px-5 py-4 font-bold text-body-md relative transition-all ${
+                    activeTab === 'thanh-vien'
+                      ? 'text-blue-500 border-b-2 border-blue-500'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  Thành viên
+                </button>
               </div>
 
               {/* Tab Contents */}
@@ -1261,6 +1274,21 @@ export default function HerdProjectDetailPage() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* TAB 4: THÀNH VIÊN */}
+                {activeTab === 'thanh-vien' && (
+                  <div className="flex-1">
+                    <HerdMembersSection
+                      projectId={project.id}
+                      ownerName={project.owner?.full_name}
+                      canManage={
+                        project.owner?.id === currentUser?.id ||
+                        userRole?.code === 'admin' ||
+                        hasPermission('herd_projects.manage_members')
+                      }
+                    />
                   </div>
                 )}
 

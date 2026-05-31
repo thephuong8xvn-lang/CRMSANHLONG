@@ -9,10 +9,16 @@ import {
   User,
   Calendar,
   FileText,
-  CheckSquare
+  CheckSquare,
+  Plus,
+  X,
+  UserPlus,
+  Bird,
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
+import { logger } from '../../lib/logger'
 
 interface Customer {
   id: string
@@ -29,6 +35,7 @@ interface Herd {
   id: string
   name: string
   current_quantity: number
+  breed_price: number | null
 }
 
 interface ProjectType {
@@ -77,6 +84,31 @@ export default function HerdProjectFormPage() {
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
 
+  // Tạo cơ sở / đàn inline (standalone — không cần sang module khách hàng)
+  const today = new Date().toISOString().split('T')[0]
+  const [speciesList, setSpeciesList] = useState<{ id: string; name: string }[]>([])
+  const [regions, setRegions] = useState<{ id: string; name: string }[]>([])
+  const [selectedRegionId, setSelectedRegionId] = useState('')
+  const [creatingFarm, setCreatingFarm] = useState(false)
+  const [newFarmName, setNewFarmName] = useState('')
+  const [creatingHerd, setCreatingHerd] = useState(false)
+  const [newHerd, setNewHerd] = useState({
+    name: '', species_id: '', breed: '', breed_price: '', entry_date: today, expected_exit_date: '', current_quantity: 0,
+  })
+
+  // Thành viên theo dõi dự án (đa người, đa chi nhánh)
+  const [members, setMembers] = useState<{ user_id: string; role: 'viewer' | 'collaborator' | 'manager' }[]>([])
+  const [memberPick, setMemberPick] = useState('')
+  const [memberRole, setMemberRole] = useState<'viewer' | 'collaborator' | 'manager'>('collaborator')
+
+  const addMember = () => {
+    if (!memberPick || members.some(m => m.user_id === memberPick) || memberPick === selectedVetId) return
+    setMembers(prev => [...prev, { user_id: memberPick, role: memberRole }])
+    setMemberPick('')
+  }
+  const removeMember = (uid: string) => setMembers(prev => prev.filter(m => m.user_id !== uid))
+  const roleLabel = (r: string) => r === 'manager' ? 'Quản lý' : r === 'collaborator' ? 'Cộng tác' : 'Chỉ xem'
+
   // Load Initial Lookups
   useEffect(() => {
     const loadInitialLookups = async () => {
@@ -95,6 +127,12 @@ export default function HerdProjectFormPage() {
           .select('id, name, code')
           .eq('is_active', true)
         if (types) setProjectTypes(types)
+
+        const { data: sp } = await supabase.from('species').select('id, name').eq('is_active', true).order('name')
+        if (sp) setSpeciesList(sp)
+
+        const { data: rg } = await supabase.from('herd_regions').select('id, name').eq('is_active', true).order('name')
+        if (rg) setRegions(rg)
 
         // Fetch vets/profiles
         const { data: profiles } = await supabase
@@ -152,7 +190,7 @@ export default function HerdProjectFormPage() {
       try {
         const { data } = await supabase
           .from('herds')
-          .select('id, name, current_quantity')
+          .select('id, name, current_quantity, breed_price')
           .eq('farm_id', selectedFarmId)
           .eq('is_active', true)
         if (data) setHerds(data)
@@ -220,19 +258,56 @@ export default function HerdProjectFormPage() {
 
     setLoading(true)
     try {
+      // 0a. Tạo cơ sở (trại) mới nếu chọn inline
+      let farmId = selectedFarmId || null
+      if (creatingFarm && newFarmName.trim()) {
+        const { data: nf, error: fErr } = await supabase
+          .from('farms')
+          .insert({ customer_id: selectedCustomerId, name: newFarmName.trim() })
+          .select('id').single()
+        if (fErr) throw fErr
+        farmId = nf.id
+      }
+
+      // 0b. Tạo đàn mới nếu chọn inline (cần có trại)
+      let herdId = selectedHerdId || null
+      let resolvedHeadCount = headCount
+      if (creatingHerd) {
+        if (!farmId) { alert('Vui lòng chọn/tạo cơ sở trại trước khi tạo đàn.'); setLoading(false); return }
+        if (!newHerd.name.trim() || !newHerd.species_id) { alert('Đàn mới cần tên và loài vật nuôi.'); setLoading(false); return }
+        const { data: nh, error: hErr } = await supabase
+          .from('herds')
+          .insert({
+            farm_id: farmId,
+            species_id: newHerd.species_id,
+            name: newHerd.name.trim(),
+            breed: newHerd.breed.trim() || null,
+            breed_price: newHerd.breed_price ? Number(newHerd.breed_price) : null,
+            entry_date: newHerd.entry_date || null,
+            expected_exit_date: newHerd.expected_exit_date || null,
+            current_quantity: newHerd.current_quantity || 0,
+            is_active: true,
+          })
+          .select('id, current_quantity').single()
+        if (hErr) throw hErr
+        herdId = nh.id
+        if (!resolvedHeadCount) resolvedHeadCount = nh.current_quantity || 0
+      }
+
       // 1. Insert into herd_projects
       const { data: newProj, error: insertErr } = await supabase
         .from('herd_projects')
         .insert({
           name: name.trim(),
           customer_id: selectedCustomerId,
-          farm_id: selectedFarmId || null,
-          herd_id: selectedHerdId || null,
+          farm_id: farmId,
+          herd_id: herdId,
           project_type_id: selectedTypeId || null,
+          region_id: selectedRegionId || null,
           status: status,
           start_date: startDate,
           end_date: endDate,
-          head_count: headCount,
+          head_count: resolvedHeadCount,
           owner_user_id: selectedVetId,
           notes: notes.trim() || null
         })
@@ -241,6 +316,33 @@ export default function HerdProjectFormPage() {
 
       if (insertErr) throw insertErr
       if (newProj) {
+        // 1b. Thêm thành viên theo dõi (đa chi nhánh)
+        if (members.length > 0) {
+          const { data: { user } } = await supabase.auth.getUser()
+          const { error: mErr } = await supabase.from('herd_project_members').insert(
+            members.map(m => ({ project_id: newProj.id, user_id: m.user_id, role: m.role, added_by: user?.id ?? null }))
+          )
+          if (mErr) logger.error('[HerdProjectForm] members insert error:', mErr.message)
+        }
+
+        // 1c. Chi phí con giống = giá giống × số con (cộng vào chi phí dự án)
+        const breedPrice = creatingHerd
+          ? (newHerd.breed_price ? Number(newHerd.breed_price) : 0)
+          : Number(herds.find(h => h.id === herdId)?.breed_price || 0)
+        if (breedPrice > 0 && resolvedHeadCount > 0) {
+          const { data: { user } } = await supabase.auth.getUser()
+          const { error: cErr } = await supabase.from('herd_project_costs').insert({
+            project_id: newProj.id,
+            cost_type: 'breeding_stock',
+            quantity: resolvedHeadCount,
+            unit_cost: breedPrice,
+            amount: breedPrice * resolvedHeadCount,
+            incurred_date: startDate,
+            notes: 'Con giống (giá giống × số con)',
+            created_by: user?.id ?? null,
+          })
+          if (cErr) logger.error('[HerdProjectForm] breeding cost error:', cErr.message)
+        }
         // 2. Generate actual steps in herd_project_steps if template is preloaded
         if (defaultSteps.length > 0) {
           const stepsToInsert = defaultSteps.map(step => {
@@ -328,60 +430,104 @@ export default function HerdProjectFormPage() {
               <Users size={14} className="text-gray-400" />
               Khách hàng / Trang trại chủ <span className="text-rose-500">*</span>
             </label>
-            <select
+            <SmartSearchSelect
+              options={customers.map(c => ({ value: c.id, label: c.farm_name, desc: c.code }))}
               value={selectedCustomerId}
-              onChange={e => setSelectedCustomerId(e.target.value)}
-              className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:ring-4 focus:ring-blue-50 focus:outline-none transition-all appearance-none cursor-pointer text-gray-700"
+              onChange={v => { setSelectedCustomerId(v); setCreatingFarm(false); setCreatingHerd(false); setSelectedFarmId(''); setSelectedHerdId('') }}
+              placeholder="-- Chọn khách hàng --"
+              searchPlaceholder="Tìm mã / tên khách hàng..."
               required
-            >
-              <option value="">-- Chọn khách hàng --</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.farm_name} ({c.code})
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           {/* Farm Selection */}
           <div className="space-y-1.5">
-            <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block flex items-center gap-1">
-              <Home size={14} className="text-gray-400" />
-              Cơ sở Chuồng trại
+            <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1"><Home size={14} className="text-gray-400" />Cơ sở Chuồng trại</span>
+              {selectedCustomerId && (
+                <button type="button" onClick={() => { setCreatingFarm(v => !v); setSelectedFarmId(''); }}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 normal-case">
+                  {creatingFarm ? <><X size={11} />Chọn có sẵn</> : <><Plus size={11} />Tạo cơ sở mới</>}
+                </button>
+              )}
             </label>
-            <select
-              value={selectedFarmId}
-              onChange={e => setSelectedFarmId(e.target.value)}
-              className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:ring-4 focus:ring-blue-50 focus:outline-none transition-all appearance-none cursor-pointer text-gray-700 disabled:opacity-50"
-              disabled={!selectedCustomerId}
-            >
-              <option value="">-- Chọn cơ sở (nếu có) --</option>
-              {farms.map(f => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
-            </select>
+            {creatingFarm ? (
+              <input type="text" placeholder="Tên cơ sở/trại mới" value={newFarmName} onChange={e => setNewFarmName(e.target.value)}
+                className="w-full h-10 px-3 bg-white border border-blue-200 rounded-lg text-body-md focus:border-blue-500 focus:outline-none" />
+            ) : (
+              <select value={selectedFarmId} onChange={e => setSelectedFarmId(e.target.value)}
+                className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none appearance-none cursor-pointer text-gray-700 disabled:opacity-50"
+                disabled={!selectedCustomerId}>
+                <option value="">-- Chọn cơ sở (nếu có) --</option>
+                {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            )}
           </div>
 
           {/* Herd Selection */}
           <div className="space-y-1.5">
-            <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block flex items-center gap-1">
-              <Layers size={14} className="text-gray-400" />
-              Đàn vật nuôi
+            <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between gap-1">
+              <span className="flex items-center gap-1"><Layers size={14} className="text-gray-400" />Đàn vật nuôi</span>
+              {(selectedFarmId || creatingFarm) && (
+                <button type="button" onClick={() => { setCreatingHerd(v => !v); setSelectedHerdId(''); }}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 normal-case">
+                  {creatingHerd ? <><X size={11} />Chọn có sẵn</> : <><Plus size={11} />Tạo đàn mới</>}
+                </button>
+              )}
             </label>
-            <select
-              value={selectedHerdId}
-              onChange={e => setSelectedHerdId(e.target.value)}
-              className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:ring-4 focus:ring-blue-50 focus:outline-none transition-all appearance-none cursor-pointer text-gray-700 disabled:opacity-50"
-              disabled={!selectedFarmId}
-            >
-              <option value="">-- Chọn đàn vật nuôi --</option>
-              {herds.map(h => (
-                <option key={h.id} value={h.id}>
-                  {h.name} ({h.current_quantity.toLocaleString()} con)
-                </option>
-              ))}
-            </select>
+            {!creatingHerd && (
+              <select value={selectedHerdId} onChange={e => setSelectedHerdId(e.target.value)}
+                className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none appearance-none cursor-pointer text-gray-700 disabled:opacity-50"
+                disabled={!selectedFarmId}>
+                <option value="">-- Chọn đàn vật nuôi --</option>
+                {herds.map(h => <option key={h.id} value={h.id}>{h.name} ({h.current_quantity.toLocaleString()} con)</option>)}
+              </select>
+            )}
           </div>
+
+          {/* Inline herd creation fields */}
+          {creatingHerd && (
+            <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-3 gap-3 bg-blue-50/30 border border-blue-100 rounded-xl p-4">
+              <div className="col-span-2 md:col-span-1 space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase">Tên đàn <span className="text-rose-500">*</span></label>
+                <input type="text" placeholder="VD: Đàn gà thịt lứa 1" value={newHerd.name} onChange={e => setNewHerd({ ...newHerd, name: e.target.value })}
+                  className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase flex items-center gap-1"><Bird size={11} />Loài <span className="text-rose-500">*</span></label>
+                <select value={newHerd.species_id} onChange={e => setNewHerd({ ...newHerd, species_id: e.target.value })}
+                  className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none">
+                  <option value="">-- Loài --</option>
+                  {speciesList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase">Con giống</label>
+                <input type="text" placeholder="VD: Ri lai" value={newHerd.breed} onChange={e => setNewHerd({ ...newHerd, breed: e.target.value })}
+                  className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase">Giá giống (₫/con)</label>
+                <input type="number" min={0} value={newHerd.breed_price} onChange={e => setNewHerd({ ...newHerd, breed_price: e.target.value })}
+                  className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase">Số lượng vào</label>
+                <input type="number" min={0} value={newHerd.current_quantity || ''} onChange={e => setNewHerd({ ...newHerd, current_quantity: Number(e.target.value) })}
+                  className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase">Ngày vào giống</label>
+                <input type="date" value={newHerd.entry_date} onChange={e => setNewHerd({ ...newHerd, entry_date: e.target.value })}
+                  className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase">Dự kiến xuất</label>
+                <input type="date" value={newHerd.expected_exit_date} onChange={e => setNewHerd({ ...newHerd, expected_exit_date: e.target.value })}
+                  className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
+              </div>
+            </div>
+          )}
 
           {/* Project Type */}
           <div className="space-y-1.5">
@@ -400,6 +546,20 @@ export default function HerdProjectFormPage() {
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
+          </div>
+
+          {/* Khu vực */}
+          <div className="space-y-1.5">
+            <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block flex items-center gap-1">
+              <Home size={14} className="text-gray-400" /> Khu vực
+            </label>
+            <SmartSearchSelect
+              options={regions.map(r => ({ value: r.id, label: r.name }))}
+              value={selectedRegionId}
+              onChange={setSelectedRegionId}
+              placeholder="-- Chọn khu vực --"
+              searchPlaceholder="Tìm khu vực..."
+            />
           </div>
 
           {/* Lead Vet */}
@@ -507,6 +667,47 @@ export default function HerdProjectFormPage() {
               rows={3}
               className="w-full p-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:ring-4 focus:ring-blue-50 focus:outline-none transition-all placeholder-gray-400"
             />
+          </div>
+
+          {/* Thành viên theo dõi */}
+          <div className="md:col-span-2 space-y-2 bg-gray-25 border border-gray-100 rounded-xl p-4">
+            <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+              <UserPlus size={14} className="text-gray-400" /> Người theo dõi dự án (có thể khác chi nhánh)
+            </label>
+            <p className="text-[11px] text-gray-400">Thành viên được tick sẽ xem & thao tác dự án theo vai trò, kể cả khác chi nhánh.</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select value={memberPick} onChange={e => setMemberPick(e.target.value)}
+                className="flex-1 h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none">
+                <option value="">-- Chọn nhân sự --</option>
+                {vets.filter(v => v.id !== selectedVetId && !members.some(m => m.user_id === v.id)).map(v => (
+                  <option key={v.id} value={v.id}>{v.full_name}</option>
+                ))}
+              </select>
+              <select value={memberRole} onChange={e => setMemberRole(e.target.value as any)}
+                className="h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none sm:w-36">
+                <option value="viewer">Chỉ xem</option>
+                <option value="collaborator">Cộng tác</option>
+                <option value="manager">Quản lý</option>
+              </select>
+              <button type="button" onClick={addMember} disabled={!memberPick}
+                className="h-9 px-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-tiny font-bold hover:bg-blue-100 disabled:opacity-40 flex items-center gap-1">
+                <Plus size={13} /> Thêm
+              </button>
+            </div>
+            {members.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {members.map(m => {
+                  const v = vets.find(x => x.id === m.user_id)
+                  return (
+                    <span key={m.user_id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-gray-200 rounded-full text-tiny">
+                      <span className="font-semibold text-gray-700">{v?.full_name || 'N/A'}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-full font-bold">{roleLabel(m.role)}</span>
+                      <button type="button" onClick={() => removeMember(m.user_id)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* Preloaded steps preview */}

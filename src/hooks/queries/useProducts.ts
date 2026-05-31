@@ -199,6 +199,106 @@ export function useProductsList(params: ProductListParams) {
   })
 }
 
+// ───────────────────────── Quick View (inline) ─────────────────────────
+// Các hook bên dưới chỉ chạy khi panel xem nhanh được mở (enabled), tránh
+// fetch thừa cho cả trang danh sách.
+
+export interface ProductLotRow {
+  id: string
+  lot_number: string
+  manufacture_date: string | null
+  expiry_date: string | null
+  quantity_on_hand: number
+  quantity_reserved: number
+  cost_price: number
+  status: string
+  received_at: string
+  warehouses: { id: string; code: string; name: string } | null
+}
+
+export interface ProductMovementRow {
+  id: string
+  created_at: string
+  movement_type: string
+  quantity: number
+  unit_cost: number | null
+  notes: string | null
+  stock_lots: { lot_number: string } | null
+  warehouses: { code: string; name: string } | null
+  profiles: { full_name: string } | null
+}
+
+/** Lô hàng của 1 sản phẩm, lọc theo chi nhánh khi có branchId. */
+export function useProductLots(productId: string, branchId?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: qk.products.lots(productId, branchId),
+    enabled: enabled && !!productId,
+    queryFn: async (): Promise<ProductLotRow[]> => {
+      let q = supabase
+        .from('stock_lots')
+        .select(`
+          id, lot_number, manufacture_date, expiry_date,
+          quantity_on_hand, quantity_reserved, cost_price, status, received_at,
+          warehouses:warehouses!inner(id, code, name, branch_id)
+        `)
+        .eq('product_id', productId)
+      if (branchId) q = q.eq('warehouses.branch_id', branchId)
+      const { data, error } = await q.order('expiry_date', { ascending: true })
+      if (error) {
+        logger.error('[useProductLots] error:', error.message)
+        throw error
+      }
+      return (data ?? []) as unknown as ProductLotRow[]
+    },
+  })
+}
+
+/** Thẻ kho (50 biến động gần nhất) của 1 sản phẩm, lọc theo chi nhánh. */
+export function useProductMovements(productId: string, branchId?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: qk.products.movements(productId, branchId),
+    enabled: enabled && !!productId,
+    queryFn: async (): Promise<ProductMovementRow[]> => {
+      let q = supabase
+        .from('stock_movements')
+        .select(`
+          id, created_at, movement_type, quantity, unit_cost, notes,
+          stock_lots:lot_id(lot_number),
+          warehouses:warehouse_id!inner(code, name, branch_id),
+          profiles:performed_by(full_name)
+        `)
+        .eq('product_id', productId)
+      if (branchId) q = q.eq('warehouses.branch_id', branchId)
+      const { data, error } = await q.order('created_at', { ascending: false }).limit(50)
+      if (error) {
+        logger.error('[useProductMovements] error:', error.message)
+        throw error
+      }
+      return (data ?? []) as unknown as ProductMovementRow[]
+    },
+  })
+}
+
+/** Khuyến mãi theo hàng hóa của 1 sản phẩm (chỉ đọc trong quick view). */
+export function useProductPromotionsList(productId: string, enabled = true) {
+  return useQuery({
+    queryKey: qk.products.promotions(productId),
+    enabled: enabled && !!productId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('product_promotions')
+        .select('*')
+        .eq('product_id', productId)
+        .order('priority', { ascending: false })
+      if (error) {
+        logger.error('[useProductPromotionsList] error:', error.message)
+        throw error
+      }
+      return data ?? []
+    },
+  })
+}
+
 export function useProductCategories() {
   return useQuery({
     queryKey: qk.products.categories,

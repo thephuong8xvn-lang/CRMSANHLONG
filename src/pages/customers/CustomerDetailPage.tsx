@@ -21,6 +21,7 @@ import {
   CheckCircle,
   Home,
   PlusCircle,
+  FileSpreadsheet,
   Activity,
   Layers,
   Settings,
@@ -41,6 +42,8 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { logger } from '../../lib/logger'
+import ExportDebtStatementModal from './ExportDebtStatementModal'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
@@ -412,6 +415,7 @@ export default function CustomerDetailPage() {
 
   // Debt Adjustment State
   const [isAdjustDebtModalOpen, setIsAdjustDebtModalOpen] = useState(false)
+  const [isExportDebtOpen, setIsExportDebtOpen] = useState(false)
   const [adjustType, setAdjustType] = useState<'increase' | 'decrease'>('increase')
   const [adjustAmount, setAdjustAmount] = useState('')
   const [adjustNotes, setAdjustNotes] = useState('')
@@ -857,7 +861,7 @@ export default function CustomerDetailPage() {
         }
         if (rolesData) {
           const codes = rolesData.map((r: any) => r.roles?.code).filter(Boolean)
-          console.info('[CustomerDetail] User roles loaded:', codes)
+          logger.debug('[CustomerDetail] User roles loaded:', codes)
           setUserRoles(codes)
         } else {
           console.warn('[CustomerDetail] No roles data returned for user:', user.id)
@@ -2077,21 +2081,30 @@ export default function CustomerDetailPage() {
                             Tổng thu/trả: <span className="text-emerald-700 font-bold">{formatVND(Math.abs(ledgerItems.reduce((s, i) => s + (i.debtImpact < 0 ? i.debtImpact : 0), 0)))}</span>
                           </div>
                         </div>
-                        {canAdjustDebt() && (
+                        <div className="flex items-center gap-2">
                           <button
-                            onClick={() => {
-                              setAdjustType('increase')
-                              setAdjustAmount('')
-                              setAdjustNotes('')
-                              setAdjustErrorMsg('')
-                              setIsAdjustDebtModalOpen(true)
-                            }}
-                            className="h-8 px-3.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white font-bold text-tiny rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                            onClick={() => setIsExportDebtOpen(true)}
+                            className="h-8 px-3.5 bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 active:scale-95 font-bold text-tiny rounded-lg transition-all flex items-center gap-1.5"
                           >
-                            <PlusCircle size={14} />
-                            Điều chỉnh công nợ
+                            <FileSpreadsheet size={14} />
+                            Xuất file công nợ
                           </button>
-                        )}
+                          {canAdjustDebt() && (
+                            <button
+                              onClick={() => {
+                                setAdjustType('increase')
+                                setAdjustAmount('')
+                                setAdjustNotes('')
+                                setAdjustErrorMsg('')
+                                setIsAdjustDebtModalOpen(true)
+                              }}
+                              className="h-8 px-3.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white font-bold text-tiny rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                            >
+                              <PlusCircle size={14} />
+                              Điều chỉnh công nợ
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -3796,6 +3809,13 @@ export default function CustomerDetailPage() {
         </div>
       )}
       {/* 3.6 ADJUST DEBT MODAL */}
+      {isExportDebtOpen && customer && (
+        <ExportDebtStatementModal
+          customer={{ id: customer.id, name: customer.farm_name, code: customer.code }}
+          onClose={() => setIsExportDebtOpen(false)}
+        />
+      )}
+
       {isAdjustDebtModalOpen && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-gray-0 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-250">

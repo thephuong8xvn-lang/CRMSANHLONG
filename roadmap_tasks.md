@@ -857,3 +857,108 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 5. **Mọi search input phải debounce 300ms**, mọi list > 50 items phải virtualize.
 6. **Không `select('*')` trên bảng > 10 cột** – luôn liệt kê cột cần dùng.
 7. **Không `console.log` runtime** – dùng `logger.debug()` chỉ chạy ở DEV.
+
+---
+
+### 🔎 Phiên 2026-05-31 — View nhanh sản phẩm (inline) + audit Products
+
+**Đã làm:**
+- **View nhanh inline (KiotViet-style)** ở danh sách sản phẩm: click 1 dòng → expand panel ngay dưới với 4 tab (Thông tin / Phiên bản & Lô hàng / Thẻ kho / Khuyến mãi). Click lại để đóng; mở dòng khác tự đóng dòng cũ. Có nút "Mở trang chi tiết". Hỗ trợ cả desktop (table row) lẫn mobile (card). Lọc lô/thẻ kho theo chi nhánh cho user không phải admin/ceo.
+  - File mới: `src/pages/products/ProductQuickView.tsx`
+  - Hook mới (useQuery, `enabled` chỉ chạy khi expand): `useProductLots`, `useProductMovements`, `useProductPromotionsList` trong `src/hooks/queries/useProducts.ts`; thêm key `qk.products.lots/movements/promotions` ở `src/lib/queryClient.ts`.
+  - Sửa `src/pages/products/ProductListPage.tsx`: state `expandedId`, đổi click-row từ navigate → toggle expand, render quick view; cột checkbox đầu đổi thành chevron mở/đóng.
+  - Tab Thông tin tái dùng dữ liệu `ProductStockRow` sẵn có từ list → KHÔNG query thêm.
+- **Gỡ nút "Tạo nhanh lô hàng mẫu để test FEFO"** (`handleSeedMockLots`) ở `ProductDetailPage.tsx` — nút này chèn dữ liệu giả vào DB production.
+- Verify: `tsc --noEmit` EXIT=0; `npm run build` ✓ 11.74s. ProductListPage chunk 95 KB.
+
+**Audit Products — phát hiện CHƯA sửa (chờ duyệt phiên sau):**
+1. **Gate quyền nút**: "Sửa chi tiết" + "Nhập kho/Thêm lô hàng" ở ProductDetailPage hiển thị với MỌI user (kể cả role chỉ có `products.view`) → bấm sẽ lỗi RLS. Cần ẩn theo `products.manage` / `inventory.receive`.
+2. **Lệch sổ Thẻ kho**: nút "Thêm lô hàng" insert thẳng `stock_lots`, KHÔNG ghi `stock_movements` (không có trigger sinh movement khi insert lot) → tồn tăng nhưng Thẻ kho trống. Cần ghi movement kèm hoặc điều hướng sang luồng Nhập kho chuẩn.
+3. Bảng variant hiển thị `JSON.stringify(attributes)` thô — nên render đẹp.
+
+---
+
+### 🔎 Phiên 2026-05-31 (tiếp) — View nhanh khách hàng (inline) + audit Customers
+
+**Đã làm:**
+- **View nhanh inline (KiotViet-style)** ở danh sách khách hàng: click 1 dòng → expand panel ngay dưới với 2 tab **Lịch sử giao dịch** (20 đơn gần nhất: mã đơn, ngày, giá trị, trạng thái, thanh toán) + **Công nợ** (tổng dư nợ / hạn mức / số khoản quá hạn + bảng khoản nợ chưa tất toán). Click lại để đóng; có nút "Mở trang chi tiết". Hỗ trợ desktop + mobile. RLS orders/customer_debts (branch/owner) tự lọc theo quyền user.
+  - File mới: `src/pages/customers/CustomerQuickView.tsx`
+  - Hook mới (useQuery, `enabled` khi expand): `useCustomerOrders`, `useCustomerDebts` trong `src/hooks/queries/useCustomers.ts`; thêm key `qk.customers.orders/debts`.
+  - Sửa `src/pages/customers/CustomerListPage.tsx`: state `expandedId`, click-row đổi navigate → toggle expand, thêm chevron ở cột Mã KH, render quick view (desktop colSpan=7 + mobile). Giữ dropdown "Xem chi tiết/Chỉnh sửa".
+  - Tab Công nợ tái dùng `total_debt/credit_limit/is_overdue` từ `CustomerSummaryRow` (header) + query chi tiết khoản nợ.
+- Verify: `tsc --noEmit` EXIT=0; `npm run build` ✓.
+
+**Audit Customers — phát hiện CHƯA sửa (chờ duyệt phiên sau):**
+1. **Nút "Thiết lập"** ở CustomerListPage điều hướng `/customers/settings` (route yêu cầu `users.manage`) nhưng nút hiển thị với mọi user → non-admin bấm sẽ bị chặn route (UX khó hiểu). Nên ẩn nút theo `users.manage`.
+2. **CustomerDetailPage còn ~17 `console.*`** runtime (chủ yếu console.error trong catch) — vi phạm quy ước "dùng logger". Nên thay bằng `logger`.
+3. Trang chi tiết khách hàng 3895 dòng — nên tách tabs lazy (đã ghi ở P2-5).
+
+---
+
+### 🛠️ Phiên 2026-05-31 (tiếp) — Sửa audit Products + Customers
+
+**Đã sửa (verify: tsc EXIT=0, build ✓):**
+- **Products #2 (lệch Thẻ kho) — QUAN TRỌNG**: tạo RPC `public.fn_add_manual_lot(uuid,uuid,text,date,date,numeric,numeric)` (`SECURITY INVOKER`, atomic: ghi `stock_lots` + `stock_movements` type `adjustment_increase`, ref_type `manual_lot`, performed_by=auth.uid()). Migration `supabase/migrations/20260607000000_fn_add_manual_lot.sql`. **ĐÃ APPLY remote** qua Management API (project gdotgcrtivjdpkcchrro) + reload schema cache. `ProductDetailPage.handleAddLotSubmit` giờ gọi RPC, có **fallback 2 bước** (insert lot → movement, rollback lô nếu movement lỗi) khi RPC chưa có. → Nhập kho thủ công nay luôn có dòng trong Thẻ kho.
+- **Products #1 (gate quyền)**: nút "Sửa chi tiết" ẩn nếu không `admin|products.manage`; nút "Nhập kho/Thêm lô hàng" + "Thêm lô hàng đầu tiên" ẩn nếu không `admin|inventory.receive` (khớp RLS warehouse_keeper).
+- **Products #3**: thay `JSON.stringify(attributes)` ở bảng variant bằng chip key:value.
+- **Customers #1 (gate quyền)**: nút "Thiết lập" (→ /customers/settings cần users.manage) ẩn nếu không `admin|users.manage`.
+- **Customers #2**: thay `console.info` rò rỉ role (CustomerDetailPage:860) → `logger.debug`. (Ghi chú: các `console.error/warn` khác là HỢP LỆ theo convention logger.ts — không cần đổi.)
+- Đồng bộ `console.error/warn` còn lại ở ProductDetailPage → `logger`.
+
+**CHƯA làm — defer có chủ đích:**
+- **Customers #3 (tách CustomerDetailPage 3895 dòng)**: là refactor lớn, rủi ro regression cao, đã được lên lịch riêng ở P2-5. KHÔNG gộp vào phiên sửa audit để tránh phá vỡ. Cần 1 session riêng.
+
+**Lưu ý vận hành:** RLS insert thủ công stock_lots/stock_movements là theo ROLE (`warehouse_keeper`), trong khi UI gate theo PERMISSION (`inventory.receive`). warehouse_keeper có sẵn inventory.receive nên khớp; nếu tạo role tùy biến có inventory.receive mà KHÔNG có role warehouse_keeper thì RLS vẫn chặn (mismatch tồn tại sẵn, không phát sinh từ phiên này).
+
+---
+
+### 📄 Phiên 2026-05-31 (tiếp) — Xuất file công nợ (sao kê .xlsx giống KiotViet)
+
+**Đã làm (verify: tsc EXIT=0, build ✓):**
+- Tính năng **Xuất file công nợ** dạng Excel .xlsx có Nợ đầu kỳ / Phát sinh trong kỳ (Ghi nợ–Ghi có) / Nợ cuối kỳ + hành trình mua–trả–thanh toán nhóm theo chứng từ (HD→line item→TT).
+- Cài `exceljs ^4.4.0`. Thêm rule `manualChunks` tách `exceljs` thành **chunk async riêng** (939KB, chỉ tải khi bấm xuất) — react-vendor giữ 314KB.
+- File mới:
+  - `src/lib/customerStatement.ts` — `fetchCustomerStatement(customerId, fromISO, toISO)` + `buildStatement()` thuần. Tái dùng mô hình ledger của CustomerDetailPage (invoice=+Ghi nợ, payment/credit-note=−Ghi có). Tính opening = running balance mọi GD trước kỳ; closing = opening + ΣGhi nợ − ΣGhi có. Fetch KH/branch/contact + order_lines (đơn trong kỳ) cho chi tiết dòng.
+  - `src/lib/exporters/customerStatementXlsx.ts` — `generateCustomerStatementXlsx()` (exceljs lazy import). Header công ty (từ `settings.print_company_*`) + chi nhánh, tiêu đề + khoảng ngày, khối tổng hợp có viền, bảng cột động theo toggle, freeze header, numFmt #,##0, tải Blob.
+  - `src/pages/customers/ExportDebtStatementModal.tsx` — preset thời gian (Hôm nay…Toàn thời gian + Lựa chọn khác, dùng date-fns) + toggle "Chi tiết từng hàng" (ĐVT/SL/Đơn giá/Giảm giá/VAT/Giá bán/trả/Thành tiền) + Ghi chú.
+- Gắn nút "Xuất file công nợ":
+  - CustomerDetailPage: tab "Nợ cần thu" → cạnh nút "Điều chỉnh công nợ".
+  - CustomerQuickView: tab Công nợ (xuất ngay từ danh sách).
+- Lưu ý dữ liệu: schema `order_lines` KHÔNG có VAT theo dòng → cột VAT = 0 (vẫn cho bật/tắt khớp KiotViet). Không cần thay đổi DB (read-only, không chạy SQL DDL phiên này).
+
+---
+
+### 🐔 Phiên 2026-05-31 (tiếp) — Herd-Projects GĐ1 (nền tảng)
+
+**Đã làm (verify: tsc EXIT=0, build ✓ 17.98s; migration đã apply remote + reload schema):**
+- **DB** (`supabase/migrations/20260608000000_herd_projects_phase1.sql`, ĐÃ APPLY):
+  - `herds` +breed_price, +expected_exit_date. `herd_project_steps` +assigned_to, +manager_rating(+note), +customer_rating(+note).
+  - Bảng mới `herd_project_members` (role viewer/collaborator/manager) + `herd_project_costs` (cost_type product/feed/labor/medicine/other, product_id, qty, unit_cost, amount).
+  - Helper RLS `fn_can_view_herd_project` / `fn_can_edit_herd_project` / `fn_can_manage_herd_members` (SECURITY DEFINER) → **member khác chi nhánh xem/sửa được**. Viết lại policy herd_projects/steps/outcomes + policy mới costs/members (an toàn vì 0 dự án).
+  - Trigger toàn vẹn `trg_herd_proj_consistency` (herd↔farm↔customer). View `herd_project_list_view` (security_invoker, có age_days/member_count/cost_to_date/mortality_rate). Perms mới: herd_projects.update/delete/manage_members + grant role.
+- **UI**:
+  - Hook `src/hooks/queries/useHerdProjects.ts` + `qk.herdProjects.*`.
+  - `HerdProjectListPage` → useQuery + view, **filter server-side**: search(không dấu)/vật nuôi/trạng thái/loại/địa điểm(tỉnh)/người phụ trách/số lượng(min-max)/khoảng thời gian + preset; thẻ hiện tuổi đàn/chi phí/hao hụt/số người theo dõi.
+  - `HerdProjectFormPage` → **tạo cơ sở + đàn inline** (loài/con giống/giá giống/ngày vào/dự kiến xuất/số lượng) standalone + **chọn thành viên** (đa chi nhánh + vai trò) → ghi herd_project_members.
+  - `HerdProjectDetailPage` → tab **"Thành viên"** (component `HerdMembersSection.tsx`): thêm/đổi vai trò/gỡ, gate canManage (owner|admin|manage_members).
+
+**CÒN LẠI trong GĐ1 (chưa làm phiên này — wiring UI, DB đã sẵn cột):**
+- Tab Chi phí nối vào `herd_project_costs` (hiện đang dùng outcomes.cost); tổng "chi phí đến hiện tại".
+- Step modal: nhập `assigned_to` + đánh giá QL/khách (cột đã có); khi gắn vaccine→tạo dòng cost.
+- Overview detail dùng số liệu view mới (tuổi đàn/chi phí/hao hụt).
+
+---
+
+### 🐔 Phiên 2026-05-31 (tiếp) — Herd-Projects: Danh mục + Khu vực + Smart search KH + Quản lý đàn
+
+**Đã làm (tsc EXIT=0, build ✓; migration `20260609000000_herd_catalog_and_regions.sql` ĐÃ APPLY remote + reload):**
+- **DB**: `species`+is_active; bảng mới `herd_regions`(name/code/is_active/sort_order); `farms`+region_id, `herd_projects`+region_id; `herd_project_costs.cost_type` thêm 'breeding_stock'; RLS herd_regions + nới manage species/herd_project_types về `admin|herd_projects.update`; view `herd_project_list_view` +region_id/region_name (COALESCE project/farm).
+- **UI**:
+  - Hook `useHerdRegions`, `useSpeciesList(activeOnly)`; list param regionId; row +region.
+  - `ManageHerdCatalogModal.tsx` (mới): modal 3 tab CRUD+status (Vật nuôi/Loại kế hoạch/Khu vực). Nút "Quản lý danh mục" trên List.
+  - List: filter "Địa điểm"→**Khu vực** dùng `SmartSearchSelect`; thẻ hiện region_name; nút "Quản lý đàn".
+  - Form: KH dùng **SmartSearchSelect** (>1000 KH, lọc không dấu); thêm chọn Khu vực; khi tạo có giá giống → tự ghi `herd_project_costs` breeding_stock = giá×số con vào chi phí dự án.
+  - **Trang Quản lý đàn** `HerdsManagePage.tsx` + route `/herd-projects/herds` (đặt trước `:id`): list+search+CRUD+toggle status+giá vật nuôi; tạo đàn (chọn KH→trại).
+- Tái dùng `src/components/SmartSearchSelect.tsx` (combobox lọc không dấu, cap 100).
+
+**Vẫn còn (GĐ sau)**: wiring tab Chi phí đầy đủ (CRUD chi phí khác) + đánh giá QL/khách theo task + overview detail dùng view mới.

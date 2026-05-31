@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
@@ -12,6 +12,7 @@ import {
   MapPin,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Filter,
   UserCheck,
   Upload,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { Skeleton } from '../../components/Skeleton'
+import CustomerQuickView from './CustomerQuickView'
 import AddCustomerModal from './AddCustomerModal'
 import ImportCustomersModal from './ImportCustomersModal'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
@@ -36,6 +38,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../lib/queryClient'
 import { supabase } from '../../lib/supabase'
 import { logger } from '../../lib/logger'
+import { useAuth } from '../../contexts/AuthContext'
 
 const CUSTOMER_TYPE_COLORS: Record<string, string> = {
   farm_household:  'bg-purple-50 text-purple-700 border-purple-100',
@@ -52,6 +55,9 @@ export default function CustomerListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { formatPhone, maskData } = useDisplaySettings()
+  const { userRole, hasPermission } = useAuth()
+  // Route /customers/settings yêu cầu users.manage → ẩn nút nếu không đủ quyền
+  const canManageSettings = userRole?.code === 'admin' || hasPermission('users.manage')
 
   // ── Filter state (UI input)
   const [searchTerm, setSearchTerm]   = useState('')
@@ -64,6 +70,7 @@ export default function CustomerListPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // Debounced search → tránh fire query mỗi keystroke
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
@@ -210,14 +217,16 @@ export default function CustomerListPage() {
             <p className="text-body-md text-gray-400 mt-1">Quản lý và theo dõi thông tin đối tác kinh doanh</p>
           </div>
           <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
-            <button
-              onClick={() => navigate('/customers/settings')}
-              className="bg-white border border-gray-200 text-gray-600 px-4 h-11 rounded-lg font-semibold text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 active:scale-95 transition-all shadow-sm"
-              title="Cấu hình nhóm & phân loại khách hàng"
-            >
-              <Settings size={16} />
-              <span>Thiết lập</span>
-            </button>
+            {canManageSettings && (
+              <button
+                onClick={() => navigate('/customers/settings')}
+                className="bg-white border border-gray-200 text-gray-600 px-4 h-11 rounded-lg font-semibold text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 active:scale-95 transition-all shadow-sm"
+                title="Cấu hình nhóm & phân loại khách hàng"
+              >
+                <Settings size={16} />
+                <span>Thiết lập</span>
+              </button>
+            )}
             <button
               onClick={() => setIsImportModalOpen(true)}
               className="bg-white border border-gray-200 text-gray-600 px-4 h-11 rounded-lg font-semibold text-body-md flex items-center justify-center gap-2 hover:bg-gray-50 active:scale-95 transition-all shadow-sm"
@@ -379,15 +388,19 @@ export default function CustomerListPage() {
                     const totalDebt = Number(customer.total_debt || 0)
                     const isOverdue  = customer.is_overdue
                     const showDropdown = activeDropdown === customer.id
+                    const isExpanded = expandedId === customer.id
 
                     return (
+                      <Fragment key={customer.id}>
                       <tr
-                        key={customer.id}
-                        className="hover:bg-gray-25/50 transition-colors cursor-pointer group"
-                        onClick={() => navigate(`/customers/${customer.id}`)}
+                        className={`transition-colors cursor-pointer group ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-25/50'}`}
+                        onClick={() => setExpandedId(prev => prev === customer.id ? null : customer.id)}
                       >
                         <td className="px-6 py-5 text-body-md text-blue-500 font-bold font-sans">
-                          {customer.code || 'Đang cấp...'}
+                          <span className="inline-flex items-center gap-1.5">
+                            <ChevronDown size={15} className={`text-gray-300 transition-transform ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
+                            {customer.code || 'Đang cấp...'}
+                          </span>
                         </td>
 
                         <td className="px-6 py-5">
@@ -498,6 +511,18 @@ export default function CustomerListPage() {
                           </div>
                         </td>
                       </tr>
+                      {isExpanded && (
+                        <tr className="bg-blue-50/20">
+                          <td colSpan={7} className="px-4 pb-3 pt-0">
+                            <CustomerQuickView
+                              customer={customer}
+                              onClose={() => setExpandedId(null)}
+                              onOpenDetail={() => navigate(`/customers/${customer.id}`)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
@@ -512,12 +537,13 @@ export default function CustomerListPage() {
                 const totalDebt = Number(customer.total_debt || 0)
                 const isOverdue  = customer.is_overdue
                 const showDropdown = activeDropdown === customer.id
+                const isExpanded = expandedId === customer.id
 
                 return (
+                  <Fragment key={customer.id}>
                   <div
-                    key={customer.id}
-                    className="p-4 hover:bg-gray-25/50 transition-colors cursor-pointer space-y-3"
-                    onClick={() => navigate(`/customers/${customer.id}`)}
+                    className={`p-4 transition-colors cursor-pointer space-y-3 ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-25/50'}`}
+                    onClick={() => setExpandedId(prev => prev === customer.id ? null : customer.id)}
                   >
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex-1 min-w-0">
@@ -616,6 +642,16 @@ export default function CustomerListPage() {
                       </div>
                     </div>
                   </div>
+                  {isExpanded && (
+                    <div className="px-3 pb-3 bg-blue-50/20">
+                      <CustomerQuickView
+                        customer={customer}
+                        onClose={() => setExpandedId(null)}
+                        onOpenDetail={() => navigate(`/customers/${customer.id}`)}
+                      />
+                    </div>
+                  )}
+                  </Fragment>
                 )
               })}
             </div>

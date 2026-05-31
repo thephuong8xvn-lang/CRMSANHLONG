@@ -79,6 +79,9 @@ export default defineConfig({
         // chunk cùng import.
         manualChunks(id) {
           if (!id.includes('node_modules')) return
+          // exceljs chỉ nạp qua dynamic import (xuất file công nợ) → chunk async riêng,
+          // tránh phình react-vendor eager.
+          if (id.includes('exceljs')) return 'exceljs'
           if (id.includes('@react-pdf')) return 'pdf'
           if (id.includes('recharts') || id.includes('/d3-')) return 'charts'
           if (id.includes('@dnd-kit')) return 'dnd'

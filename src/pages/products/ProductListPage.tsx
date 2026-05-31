@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Package,
   FileSpreadsheet,
   Settings,
@@ -19,6 +20,7 @@ import {
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
 import { Skeleton } from '../../components/Skeleton'
+import ProductQuickView from './ProductQuickView'
 import AddProductModal from './AddProductModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
 import ManageBrandsModal from './ManageBrandsModal'
@@ -60,6 +62,7 @@ export default function ProductListPage() {
   const [selectedStatus, setSelectedStatus]   = useState<'active' | 'inactive' | 'all'>('active')
   const [currentPage, setCurrentPage]         = useState(1)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [expandedId, setExpandedId]           = useState<string | null>(null)
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
 
   // Starred Products (Favorite) Local State
@@ -411,14 +414,15 @@ export default function ProductListPage() {
                         ? new Date(prod.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                         : '-'
                       const daysLabel = formatDaysToOOS(prod.days_to_oos)
+                      const isExpanded = expandedId === prod.id
                       return (
+                        <Fragment key={prod.id}>
                         <tr
-                          key={prod.id}
-                          onClick={() => navigate(`/products/${prod.id}`)}
-                          className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors cursor-pointer group"
+                          onClick={() => setExpandedId(prev => prev === prod.id ? null : prod.id)}
+                          className={`border-b border-gray-100 transition-colors cursor-pointer group ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/50'}`}
                         >
-                          <td className="py-3 px-3 text-center" onClick={e => e.stopPropagation()}>
-                            <input type="checkbox" className="rounded border-gray-300 text-blue-500 focus:ring-blue-500 w-3.5 h-3.5" />
+                          <td className="py-3 px-3 text-center">
+                            <ChevronDown size={15} className={`mx-auto text-gray-400 transition-transform ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
                           </td>
                           <td className="py-3 px-1 text-center">
                             <button
@@ -475,6 +479,19 @@ export default function ProductListPage() {
                             </span>
                           </td>
                         </tr>
+                        {isExpanded && (
+                          <tr className="bg-blue-50/20">
+                            <td colSpan={11} className="p-0 px-3 pb-3">
+                              <ProductQuickView
+                                row={prod}
+                                branchId={listParams.branchId}
+                                onClose={() => setExpandedId(null)}
+                                onOpenDetail={() => navigate(`/products/${prod.id}`)}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       )
                     })
                   )}
@@ -494,11 +511,12 @@ export default function ProductListPage() {
                 rows.map(prod => {
                   const image = prod.image_urls && prod.image_urls.length > 0 ? prod.image_urls[0] : null
                   const daysLabel = formatDaysToOOS(prod.days_to_oos)
+                  const isExpanded = expandedId === prod.id
                   return (
+                    <Fragment key={prod.id}>
                     <div
-                      key={prod.id}
-                      onClick={() => navigate(`/products/${prod.id}`)}
-                      className="p-4 hover:bg-gray-50/50 transition-colors cursor-pointer space-y-3 relative"
+                      onClick={() => setExpandedId(prev => prev === prod.id ? null : prod.id)}
+                      className={`p-4 transition-colors cursor-pointer space-y-3 relative ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/50'}`}
                     >
                       <div className="flex gap-3">
                         <div className="w-16 h-16 rounded border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
@@ -551,6 +569,17 @@ export default function ProductListPage() {
                         </div>
                       </div>
                     </div>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 bg-blue-50/20">
+                        <ProductQuickView
+                          row={prod}
+                          branchId={listParams.branchId}
+                          onClose={() => setExpandedId(null)}
+                          onOpenDetail={() => navigate(`/products/${prod.id}`)}
+                        />
+                      </div>
+                    )}
+                    </Fragment>
                   )
                 })
               )}
