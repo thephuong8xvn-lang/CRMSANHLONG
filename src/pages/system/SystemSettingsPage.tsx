@@ -11,7 +11,10 @@ import {
   UserPlus,
   RefreshCw,
   SlidersHorizontal,
-  Printer
+  Printer,
+  Wallet,
+  Landmark,
+  Star
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -105,6 +108,37 @@ interface Profile {
   }[]
 }
 
+interface CashFund {
+  id: string
+  branch_id: string
+  code: string
+  name: string
+  balance: number
+  currency: string
+  is_active: boolean
+  is_default_cash: boolean
+  branch?: {
+    id: string
+    name: string
+  } | null
+}
+
+interface BankAccount {
+  id: string
+  branch_id: string
+  bank_name: string
+  account_name: string
+  account_no: string
+  branch_name: string | null
+  balance: number
+  currency: string
+  is_active: boolean
+  is_default_bank: boolean
+  branch?: {
+    id: string
+    name: string
+  } | null
+}
 
 const WAREHOUSE_TYPES = {
   main: 'Kho tổng',
@@ -114,10 +148,13 @@ const WAREHOUSE_TYPES = {
   returns: 'Kho hàng trả về'
 }
 
+const formatMoney = (value: number | null | undefined) =>
+  new Intl.NumberFormat('vi-VN').format(Number(value) || 0) + ' đ'
+
 export default function SystemSettingsPage() {
   const { profile } = useAuth()
-  const [activeTab, setActiveTab] = useState<'employees' | 'branches' | 'warehouses' | 'display' | 'print'>('employees')
-  
+  const [activeTab, setActiveTab] = useState<'employees' | 'branches' | 'warehouses' | 'funds' | 'display' | 'print'>('employees')
+
   // Lists
   const [employees, setEmployees] = useState<Profile[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
@@ -125,6 +162,8 @@ export default function SystemSettingsPage() {
   const [teams, setTeams] = useState<Team[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [priceLists, setPriceLists] = useState<{ id: string; name: string; code: string }[]>([])
+  const [cashFunds, setCashFunds] = useState<CashFund[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
 
   // Loading states
   const [loading, setLoading] = useState(true)
@@ -141,11 +180,15 @@ export default function SystemSettingsPage() {
   const [showBranchModal, setShowBranchModal] = useState(false)
   const [showWarehouseModal, setShowWarehouseModal] = useState(false)
   const [showReassignModal, setShowReassignModal] = useState(false)
+  const [showCashFundModal, setShowCashFundModal] = useState(false)
+  const [showBankModal, setShowBankModal] = useState(false)
 
   // Selected item for Edit
   const [selectedEmployee, setSelectedEmployee] = useState<Profile | null>(null)
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null)
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null)
+  const [selectedCashFund, setSelectedCashFund] = useState<CashFund | null>(null)
+  const [selectedBank, setSelectedBank] = useState<BankAccount | null>(null)
   
   // Reassignment Wizard State
   const [deactivatingUser, setDeactivatingUser] = useState<Profile | null>(null)
@@ -180,6 +223,22 @@ export default function SystemSettingsPage() {
   const [whAddress, setWhAddress] = useState('')
   const [whTempMin, setWhTempMin] = useState<string>('')
   const [whTempMax, setWhTempMax] = useState<string>('')
+
+  // Cash Fund Form
+  const [cfCode, setCfCode] = useState('')
+  const [cfName, setCfName] = useState('')
+  const [cfBranchId, setCfBranchId] = useState('')
+  const [cfBalance, setCfBalance] = useState<string>('')
+  const [cfIsDefault, setCfIsDefault] = useState(false)
+
+  // Bank Account Form
+  const [baBankName, setBaBankName] = useState('')
+  const [baAccountName, setBaAccountName] = useState('')
+  const [baAccountNo, setBaAccountNo] = useState('')
+  const [baBranchName, setBaBranchName] = useState('')
+  const [baBranchId, setBaBranchId] = useState('')
+  const [baBalance, setBaBalance] = useState<string>('')
+  const [baIsDefault, setBaIsDefault] = useState(false)
 
   // Load initial data
   const loadData = async () => {
@@ -246,7 +305,27 @@ export default function SystemSettingsPage() {
         .order('employee_code', { nullsFirst: false })
       if (empData) setEmployees(empData as unknown as Profile[])
 
-      
+      // 6. Fetch cash funds
+      const { data: cfData } = await supabase
+        .from('cash_funds')
+        .select(`
+          id, branch_id, code, name, balance, currency, is_active, is_default_cash,
+          branch:branches(id, name)
+        `)
+        .order('code')
+      if (cfData) setCashFunds(cfData as unknown as CashFund[])
+
+      // 7. Fetch bank accounts
+      const { data: baData } = await supabase
+        .from('bank_accounts')
+        .select(`
+          id, branch_id, bank_name, account_name, account_no, branch_name, balance, currency, is_active, is_default_bank,
+          branch:branches(id, name)
+        `)
+        .order('bank_name')
+      if (baData) setBankAccounts(baData as unknown as BankAccount[])
+
+
 
 
     } catch (err: any) {
@@ -662,8 +741,189 @@ export default function SystemSettingsPage() {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // Cash Fund Logic
+  // ─────────────────────────────────────────────────────────────
+  const openNewCashFund = () => {
+    setSelectedCashFund(null)
+    setCfCode('')
+    setCfName('')
+    setCfBranchId(branches[0]?.id || '')
+    setCfBalance('0')
+    setCfIsDefault(false)
+    setShowCashFundModal(true)
+  }
 
-  
+  const openEditCashFund = (cf: CashFund) => {
+    setSelectedCashFund(cf)
+    setCfCode(cf.code)
+    setCfName(cf.name)
+    setCfBranchId(cf.branch_id)
+    setCfBalance(String(cf.balance ?? 0))
+    setCfIsDefault(cf.is_default_cash)
+    setShowCashFundModal(true)
+  }
+
+  const handleSaveCashFund = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!cfCode || !cfName || !cfBranchId) {
+      showToast('error', 'Điền đầy đủ Mã quỹ, Tên quỹ và Chi nhánh.')
+      return
+    }
+
+    setSaving(true)
+    try {
+      // Gỡ cờ mặc định của chi nhánh đích TRƯỚC khi ghi bản ghi để tránh
+      // vi phạm unique index uq_cash_funds_default_per_branch (mỗi CN 1 quỹ mặc định).
+      if (cfIsDefault) {
+        let clearQuery = supabase
+          .from('cash_funds')
+          .update({ is_default_cash: false })
+          .eq('branch_id', cfBranchId)
+          .eq('is_default_cash', true)
+        if (selectedCashFund?.id) clearQuery = clearQuery.neq('id', selectedCashFund.id)
+        const { error: clearErr } = await clearQuery
+        if (clearErr) throw clearErr
+      }
+
+      const payload = {
+        code: cfCode.toUpperCase().trim(),
+        name: cfName.trim(),
+        branch_id: cfBranchId,
+        balance: Number(cfBalance) || 0,
+        is_default_cash: cfIsDefault
+      }
+
+      if (!selectedCashFund) {
+        const { error } = await supabase.from('cash_funds').insert([payload])
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('cash_funds')
+          .update(payload)
+          .eq('id', selectedCashFund.id)
+        if (error) throw error
+      }
+
+      showToast('success', selectedCashFund ? 'Cập nhật quỹ tiền mặt thành công!' : 'Thêm quỹ tiền mặt thành công!')
+      setShowCashFundModal(false)
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi lưu quỹ: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleCashFundActive = async (cf: CashFund) => {
+    const nextState = !cf.is_active
+    try {
+      const { error } = await supabase
+        .from('cash_funds')
+        .update({ is_active: nextState })
+        .eq('id', cf.id)
+      if (error) throw error
+      showToast('success', `${nextState ? 'Kích hoạt' : 'Khóa'} quỹ thành công.`)
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi đổi trạng thái quỹ: ' + err.message)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Bank Account Logic
+  // ─────────────────────────────────────────────────────────────
+  const openNewBank = () => {
+    setSelectedBank(null)
+    setBaBankName('')
+    setBaAccountName('')
+    setBaAccountNo('')
+    setBaBranchName('')
+    setBaBranchId(branches[0]?.id || '')
+    setBaBalance('0')
+    setBaIsDefault(false)
+    setShowBankModal(true)
+  }
+
+  const openEditBank = (ba: BankAccount) => {
+    setSelectedBank(ba)
+    setBaBankName(ba.bank_name)
+    setBaAccountName(ba.account_name)
+    setBaAccountNo(ba.account_no)
+    setBaBranchName(ba.branch_name || '')
+    setBaBranchId(ba.branch_id)
+    setBaBalance(String(ba.balance ?? 0))
+    setBaIsDefault(ba.is_default_bank)
+    setShowBankModal(true)
+  }
+
+  const handleSaveBank = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!baBankName || !baAccountName || !baAccountNo || !baBranchId) {
+      showToast('error', 'Điền đầy đủ Ngân hàng, Tên tài khoản, Số tài khoản và Chi nhánh.')
+      return
+    }
+
+    setSaving(true)
+    try {
+      // Gỡ cờ mặc định của chi nhánh đích TRƯỚC khi ghi bản ghi để tránh
+      // vi phạm unique index uq_bank_accounts_default_per_branch (mỗi CN 1 TK mặc định).
+      if (baIsDefault) {
+        let clearQuery = supabase
+          .from('bank_accounts')
+          .update({ is_default_bank: false })
+          .eq('branch_id', baBranchId)
+          .eq('is_default_bank', true)
+        if (selectedBank?.id) clearQuery = clearQuery.neq('id', selectedBank.id)
+        const { error: clearErr } = await clearQuery
+        if (clearErr) throw clearErr
+      }
+
+      const payload = {
+        bank_name: baBankName.trim(),
+        account_name: baAccountName.trim(),
+        account_no: baAccountNo.trim(),
+        branch_name: baBranchName.trim() || null,
+        branch_id: baBranchId,
+        balance: Number(baBalance) || 0,
+        is_default_bank: baIsDefault
+      }
+
+      if (!selectedBank) {
+        const { error } = await supabase.from('bank_accounts').insert([payload])
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('bank_accounts')
+          .update(payload)
+          .eq('id', selectedBank.id)
+        if (error) throw error
+      }
+
+      showToast('success', selectedBank ? 'Cập nhật tài khoản ngân hàng thành công!' : 'Thêm tài khoản ngân hàng thành công!')
+      setShowBankModal(false)
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi lưu tài khoản: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleBankActive = async (ba: BankAccount) => {
+    const nextState = !ba.is_active
+    try {
+      const { error } = await supabase
+        .from('bank_accounts')
+        .update({ is_active: nextState })
+        .eq('id', ba.id)
+      if (error) throw error
+      showToast('success', `${nextState ? 'Kích hoạt' : 'Khóa'} tài khoản thành công.`)
+      loadData()
+    } catch (err: any) {
+      showToast('error', 'Lỗi đổi trạng thái tài khoản: ' + err.message)
+    }
+  }
 
   // Filtered employees list
   const filteredEmployees = employees.filter(emp => {
@@ -778,7 +1038,17 @@ export default function SystemSettingsPage() {
               <span>Kho hàng ({warehouses.length})</span>
             </button>
 
-
+            <button
+              onClick={() => setActiveTab('funds')}
+              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'funds'
+                  ? 'border-blue-500 text-blue-600 font-bold'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <Landmark size={16} />
+              <span>Quỹ &amp; Ngân hàng ({cashFunds.length + bankAccounts.length})</span>
+            </button>
 
 
 
@@ -1125,6 +1395,171 @@ export default function SystemSettingsPage() {
               )}
 
 
+
+              {/* TAB 4: CASH FUNDS & BANK ACCOUNTS */}
+              {activeTab === 'funds' && (
+                <div className="p-6 space-y-10">
+                  {/* SECTION A: BANK ACCOUNTS */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Landmark size={18} className="text-blue-500" />
+                        <h3 className="font-bold text-body-lg text-gray-800">Tài khoản ngân hàng ({bankAccounts.length})</h3>
+                      </div>
+                      <button
+                        onClick={openNewBank}
+                        className="bg-blue-500 text-white px-4 py-2 rounded-lg font-semibold text-tiny hover:bg-blue-600 flex items-center gap-2 shadow-sm active:scale-95 transition-all"
+                      >
+                        <Plus size={15} />
+                        <span>Thêm tài khoản</span>
+                      </button>
+                    </div>
+
+                    {bankAccounts.length === 0 ? (
+                      <div className="p-10 text-center text-gray-400 space-y-2 border border-dashed border-gray-200 rounded-xl">
+                        <Landmark className="w-10 h-10 text-gray-300 mx-auto" />
+                        <p className="font-semibold text-body-md">Chưa cấu hình tài khoản ngân hàng nào</p>
+                        <p className="text-tiny">Bấm "Thêm tài khoản" để khai báo số tài khoản nhận chuyển khoản.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
+                              <th className="px-5 py-3">Ngân hàng / Số tài khoản</th>
+                              <th className="px-5 py-3">Chủ tài khoản</th>
+                              <th className="px-5 py-3">Chi nhánh</th>
+                              <th className="px-5 py-3 text-right">Số dư</th>
+                              <th className="px-5 py-3 text-center">Mặc định</th>
+                              <th className="px-5 py-3 text-center">Trạng thái</th>
+                              <th className="px-5 py-3 w-16 text-center">Sửa</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 text-body-md text-gray-650">
+                            {bankAccounts.map((ba) => (
+                              <tr key={ba.id} className={`hover:bg-gray-25/50 transition-colors ${!ba.is_active ? 'opacity-60 bg-gray-50/40' : ''}`}>
+                                <td className="px-5 py-3">
+                                  <p className="font-bold text-gray-800">{ba.bank_name}</p>
+                                  <span className="font-mono text-tiny font-bold text-blue-500">{ba.account_no}</span>
+                                </td>
+                                <td className="px-5 py-3 font-medium text-gray-700">{ba.account_name}</td>
+                                <td className="px-5 py-3 text-gray-600">
+                                  <span className="font-semibold">{ba.branch?.name || '—'}</span>
+                                  {ba.branch_name && <span className="block text-[11px] text-gray-400">CN NH: {ba.branch_name}</span>}
+                                </td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-gray-800">{formatMoney(ba.balance)}</td>
+                                <td className="px-5 py-3 text-center">
+                                  {ba.is_default_bank && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                      <Star size={11} className="fill-amber-400 text-amber-400" /> Mặc định
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-5 py-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleBankActive(ba)}
+                                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                      ba.is_active ? 'bg-blue-500' : 'bg-gray-250'
+                                    }`}
+                                  >
+                                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${ba.is_active ? 'translate-x-5' : 'translate-x-0'}`} />
+                                  </button>
+                                </td>
+                                <td className="px-5 py-3 text-center">
+                                  <button onClick={() => openEditBank(ba)} className="text-gray-400 hover:text-blue-600 transition-colors p-1">
+                                    <Edit size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* SECTION B: CASH FUNDS */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wallet size={18} className="text-emerald-500" />
+                        <h3 className="font-bold text-body-lg text-gray-800">Quỹ tiền mặt ({cashFunds.length})</h3>
+                      </div>
+                      <button
+                        onClick={openNewCashFund}
+                        className="bg-emerald-500 text-white px-4 py-2 rounded-lg font-semibold text-tiny hover:bg-emerald-600 flex items-center gap-2 shadow-sm active:scale-95 transition-all"
+                      >
+                        <Plus size={15} />
+                        <span>Thêm quỹ tiền mặt</span>
+                      </button>
+                    </div>
+
+                    {cashFunds.length === 0 ? (
+                      <div className="p-10 text-center text-gray-400 space-y-2 border border-dashed border-gray-200 rounded-xl">
+                        <Wallet className="w-10 h-10 text-gray-300 mx-auto" />
+                        <p className="font-semibold text-body-md">Chưa cấu hình quỹ tiền mặt nào</p>
+                        <p className="text-tiny">Bấm "Thêm quỹ tiền mặt" để khai báo quỹ thu tiền mặt tại chi nhánh.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
+                              <th className="px-5 py-3">Mã quỹ / Tên quỹ</th>
+                              <th className="px-5 py-3">Chi nhánh</th>
+                              <th className="px-5 py-3 text-right">Số dư</th>
+                              <th className="px-5 py-3 text-center">Mặc định</th>
+                              <th className="px-5 py-3 text-center">Trạng thái</th>
+                              <th className="px-5 py-3 w-16 text-center">Sửa</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 text-body-md text-gray-650">
+                            {cashFunds.map((cf) => (
+                              <tr key={cf.id} className={`hover:bg-gray-25/50 transition-colors ${!cf.is_active ? 'opacity-60 bg-gray-50/40' : ''}`}>
+                                <td className="px-5 py-3">
+                                  <p className="font-bold text-gray-800">{cf.name}</p>
+                                  <span className="font-mono text-tiny font-bold text-emerald-600">{cf.code}</span>
+                                </td>
+                                <td className="px-5 py-3 font-semibold text-gray-700">{cf.branch?.name || '—'}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-gray-800">{formatMoney(cf.balance)}</td>
+                                <td className="px-5 py-3 text-center">
+                                  {cf.is_default_cash && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                      <Star size={11} className="fill-amber-400 text-amber-400" /> Mặc định
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-5 py-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleCashFundActive(cf)}
+                                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                      cf.is_active ? 'bg-emerald-500' : 'bg-gray-250'
+                                    }`}
+                                  >
+                                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${cf.is_active ? 'translate-x-5' : 'translate-x-0'}`} />
+                                  </button>
+                                </td>
+                                <td className="px-5 py-3 text-center">
+                                  <button onClick={() => openEditCashFund(cf)} className="text-gray-400 hover:text-blue-600 transition-colors p-1">
+                                    <Edit size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <p className="text-tiny text-gray-400 flex items-start gap-1.5 pt-1">
+                      <AlertTriangle size={13} className="text-amber-400 mt-0.5 shrink-0" />
+                      Số dư có thể chỉnh sửa trực tiếp khi cần đối chiếu, nhưng thông thường nên để hệ thống tự cập nhật qua các giao dịch sổ quỹ để tránh sai lệch.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {activeTab === 'display' && (
                 <div className="p-6">
@@ -1624,6 +2059,218 @@ export default function SystemSettingsPage() {
                     className="px-5 h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md disabled:opacity-50"
                   >
                     {saving ? 'Đang lưu...' : 'Lưu thông tin'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 5: BANK ACCOUNT CREATE / EDIT FORM */}
+        {showBankModal && (
+          <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-100 flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="text-body-lg font-bold text-gray-800 flex items-center gap-2">
+                  <Landmark size={18} className="text-blue-500" />
+                  {selectedBank ? 'Cập nhật tài khoản ngân hàng' : 'Thêm tài khoản ngân hàng'}
+                </h3>
+                <button onClick={() => setShowBankModal(false)} className="text-gray-400 hover:text-gray-650 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveBank} className="p-6 space-y-4 overflow-y-auto max-h-[520px] custom-scrollbar">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Ngân hàng <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Vietcombank, BIDV, ACB..."
+                      value={baBankName}
+                      onChange={(e) => setBaBankName(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Số tài khoản <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="1420546944..."
+                      value={baAccountNo}
+                      onChange={(e) => setBaAccountNo(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md font-mono focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Tên chủ tài khoản <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="CÔNG TY TNHH SANH LONG VETCO..."
+                    value={baAccountName}
+                    onChange={(e) => setBaAccountName(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Chi nhánh sở hữu <span className="text-red-500">*</span></label>
+                    <select
+                      value={baBranchId}
+                      onChange={(e) => setBaBranchId(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    >
+                      <option value="">-- Chọn chi nhánh --</option>
+                      {activeBranchList.map(br => (
+                        <option key={br.id} value={br.id}>{br.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Chi nhánh ngân hàng</label>
+                    <input
+                      type="text"
+                      placeholder="CN Bồng Sơn..."
+                      value={baBranchName}
+                      onChange={(e) => setBaBranchName(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Số dư hiện tại (VND)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="0"
+                    value={baBalance}
+                    onChange={(e) => setBaBalance(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md font-mono focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-[11px] text-gray-400">Số dư đối chiếu của tài khoản. Thông thường nên để hệ thống tự cập nhật qua giao dịch sổ quỹ.</p>
+                </div>
+
+                <label className="flex items-center gap-2.5 p-3 bg-amber-50/60 border border-amber-100 rounded-lg cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={baIsDefault}
+                    onChange={(e) => setBaIsDefault(e.target.checked)}
+                    className="rounded border-gray-300 text-amber-600 focus:ring-amber-500 w-4 h-4"
+                  />
+                  <span className="text-body-md font-semibold text-amber-800 flex items-center gap-1">
+                    <Star size={14} className="fill-amber-400 text-amber-400" />
+                    Đặt làm tài khoản mặc định của chi nhánh
+                  </span>
+                </label>
+                <p className="text-[11px] text-gray-400 -mt-2">Tiền chuyển khoản/quẹt thẻ từ bán hàng sẽ tự ghi vào tài khoản mặc định này. Mỗi chi nhánh chỉ có 1 tài khoản mặc định.</p>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-150">
+                  <button type="button" onClick={() => setShowBankModal(false)} className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors">
+                    Hủy bỏ
+                  </button>
+                  <button type="submit" disabled={saving} className="px-5 h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md disabled:opacity-50">
+                    {saving ? 'Đang lưu...' : 'Lưu tài khoản'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL 6: CASH FUND CREATE / EDIT FORM */}
+        {showCashFundModal && (
+          <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden border border-gray-100 flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="text-body-lg font-bold text-gray-800 flex items-center gap-2">
+                  <Wallet size={18} className="text-emerald-500" />
+                  {selectedCashFund ? 'Cập nhật quỹ tiền mặt' : 'Thêm quỹ tiền mặt'}
+                </h3>
+                <button onClick={() => setShowCashFundModal(false)} className="text-gray-400 hover:text-gray-650 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveCashFund} className="p-6 space-y-4 overflow-y-auto max-h-[520px] custom-scrollbar">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Mã quỹ <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="QUY-HCM..."
+                      value={cfCode}
+                      onChange={(e) => setCfCode(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="block text-body-md font-semibold text-gray-700">Chi nhánh <span className="text-red-500">*</span></label>
+                    <select
+                      value={cfBranchId}
+                      onChange={(e) => setCfBranchId(e.target.value)}
+                      className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-emerald-500 bg-white"
+                    >
+                      <option value="">-- Chọn chi nhánh --</option>
+                      {activeBranchList.map(br => (
+                        <option key={br.id} value={br.id}>{br.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Tên quỹ <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Quỹ tiền mặt văn phòng HCM..."
+                    value={cfName}
+                    onChange={(e) => setCfName(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Số dư hiện tại (VND)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="0"
+                    value={cfBalance}
+                    onChange={(e) => setCfBalance(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                  <p className="text-[11px] text-gray-400">Số dư tiền mặt thực tế trong quỹ. Thông thường nên để hệ thống tự cập nhật qua giao dịch sổ quỹ.</p>
+                </div>
+
+                <label className="flex items-center gap-2.5 p-3 bg-amber-50/60 border border-amber-100 rounded-lg cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cfIsDefault}
+                    onChange={(e) => setCfIsDefault(e.target.checked)}
+                    className="rounded border-gray-300 text-amber-600 focus:ring-amber-500 w-4 h-4"
+                  />
+                  <span className="text-body-md font-semibold text-amber-800 flex items-center gap-1">
+                    <Star size={14} className="fill-amber-400 text-amber-400" />
+                    Đặt làm quỹ tiền mặt mặc định của chi nhánh
+                  </span>
+                </label>
+                <p className="text-[11px] text-gray-400 -mt-2">Tiền mặt từ bán hàng/thu nợ sẽ tự ghi vào quỹ mặc định này. Mỗi chi nhánh chỉ có 1 quỹ mặc định.</p>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-150">
+                  <button type="button" onClick={() => setShowCashFundModal(false)} className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors">
+                    Hủy bỏ
+                  </button>
+                  <button type="submit" disabled={saving} className="px-5 h-10 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md disabled:opacity-50">
+                    {saving ? 'Đang lưu...' : 'Lưu quỹ'}
                   </button>
                 </div>
               </form>

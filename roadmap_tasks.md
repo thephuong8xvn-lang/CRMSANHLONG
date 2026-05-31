@@ -263,6 +263,35 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 
 > ✅ **ĐÃ APPLY REMOTE (2026-05-30)**: Migration `20260605000000_cashbook_rls_align_spec.sql` đã apply thành công trên Supabase remote, tất cả chạy không lỗi.
 
+#### 🖨️ Sửa trang in chứng từ "dữ liệu thật 100%" + Cấu hình Quỹ/Ngân hàng — 2026-05-31 `[HOÀN THÀNH]`
+
+**Bối cảnh:** Yêu cầu dữ liệu sổ quỹ phải là dữ liệu thật 100%. Phát hiện trang in chứng từ vẫn rò rỉ dữ liệu giả + thiếu màn hình cấu hình quỹ/số tài khoản ngân hàng.
+
+- [x] **Fix trang in** (`src/pages/system/PrintPreviewPage.tsx`):
+  - **Bỏ hẳn `loadMockData()`** — trước đây khi fetch DB lỗi sẽ fallback đổ dữ liệu giả (Minh Phát, BIDV 1420546944...) lên đúng bản in → rủi ro in nhầm chứng từ giả. Nay khi lỗi/thiếu `id` → hiển thị màn trạng thái lỗi rõ ràng (lý do + nút "Thử lại"/"Quay lại"), **disable nút In**, không bao giờ render dữ liệu mẫu.
+  - **Fix phiếu thu/chi hiển thị quỹ sai cứng**: query `cashbook_transactions` trước đây KHÔNG select `cash_fund_id`/`bank_account_id` nhưng code đọc `tx.cash_fund_id` → `fundAccount` luôn in hardcode `'Tài khoản ngân hàng ACB'`. Nay JOIN `cash_funds(name, code)` + `bank_accounts(bank_name, account_name, account_no)` → in **đúng tên quỹ / số TK thật**.
+  - Gỡ bộ chọn loại chứng từ (chỉ dùng cho demo) + dọn import thừa (`useAuth`, `useNavigate`).
+- [x] **Tab mới "Quỹ & Ngân hàng"** trong Cấu hình hệ thống (`src/pages/system/SystemSettingsPage.tsx`): CRUD `bank_accounts` (ngân hàng, số TK, chủ TK, chi nhánh NH, chi nhánh sở hữu, số dư, toggle mặc định `is_default_bank`, bật/tắt) + CRUD `cash_funds` (mã, tên, chi nhánh, số dư, toggle `is_default_cash`, bật/tắt). Đồng bộ cờ mặc định (gỡ cờ chi nhánh đích TRƯỚC khi ghi để tránh vi phạm unique index `uq_*_default_per_branch`). RLS sẵn có (`*_manage_admin` cho admin/accountant) → **không cần migration mới**.
+- [x] `npx tsc --noEmit` PASS 0 lỗi.
+
+#### 🧾 Sprint S4 — Mở/Đóng ca thu ngân + Đối soát tiền mặt — 2026-05-31 `[HOÀN THÀNH — cần apply migration]`
+
+**Bối cảnh:** Tiền mặt thu/chi nhiều luồng (bán hàng POS, thu nợ, trả NCC, tạm ứng, hoàn tiền). Nhân viên cần biết tồn quỹ dự kiến để kết phiên, rạch ròi tiền mặt vs chuyển khoản. Mô hình: **1 chi nhánh = 1 két, mỗi két chỉ 1 ca mở tại 1 thời điểm, dùng chung nhiều nhân viên**.
+
+**Kiểm tra hiện trạng:** Mọi giao dịch tiền mặt ĐÃ gắn `session_id` vào ca đang mở (POS order_payment, debt_payment, supplier_payment, employee_advance, phiếu tay) — TRỪ hoàn tiền trả hàng tiền mặt (thiếu). Chuyển khoản/thẻ KHÔNG gắn session → đã rạch ròi ở tầng dữ liệu.
+
+- [x] **Migration `20260606000000_cashbook_session_reconcile.sql`** (⚠️ chạy thủ công qua Supabase SQL Editor):
+  - Fix `fn_cashbook_from_sales_return`: hoàn tiền **mặt** gắn `session_id` ca đang mở → đối soát đúng.
+  - Thêm danh mục `THU-LECH-QUY` / `CHI-LECH-QUY` (thừa/thiếu quỹ) — bút toán điều chỉnh cuối ca không còn mượn sai `CHI-NCC`.
+  - Index duy nhất `uq_cashier_sessions_one_open_per_fund` (1 ca `open` / mỗi két) + dọn dữ liệu trùng.
+  - RLS `sessions_select_branch` + `sessions_manage_branch` (theo `fn_my_branch_id()`) → mọi NV vận hành trong chi nhánh thấy & mở/đóng được ca chung của két.
+- [x] **Frontend `CashbookPage.tsx`**:
+  - `checkActiveSession` theo **két (quỹ chi nhánh)** thay vì theo người mở → NV dùng chung 1 ca; embed `profiles!cashier_sessions_cashier_id_fkey` (disambiguate sau khi có opened_by/closed_by FK).
+  - Mở ca: chặn nếu két đã có ca mở (kèm bắt lỗi race unique index), gợi ý tiền đầu ca = tồn quỹ hệ thống, cảnh báo nếu chọn quỹ ≠ mặc định, ghi `opened_by`.
+  - **Đóng ca có bảng đối soát**: Tồn đầu ca + Thu tiền mặt (tách danh mục) − Chi tiền mặt (tách danh mục) = Tồn dự kiến; ô nhập tiền đếm → chênh lệch (thừa/thiếu) tính trực tiếp đổi màu; khối tham khảo "Chuyển khoản phát sinh trong ca (không nằm trong két)". Ghi `closed_by`, `variance_reason`, dùng danh mục lệch quỹ.
+  - Thẻ phiên ca hiển thị "Tồn quỹ hiện tại" (= số dư quỹ live) để theo dõi giữa ca.
+- [x] `npx tsc --noEmit` PASS 0 lỗi.
+
 ---
 
 ### 7. Phân Hệ Pipeline Cơ hội (Opportunity Pipeline) - `[HOÀN THÀNH]`

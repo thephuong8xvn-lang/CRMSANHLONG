@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
 import PrintLayout from '../../components/PrintLayout';
 import { 
   Printer, 
@@ -16,8 +15,6 @@ import {
 
 export default function PrintPreviewPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const { profile } = useAuth();
 
   const docTypeParam = searchParams.get('type') as any || 'invoice';
   const idParam = searchParams.get('id');
@@ -40,12 +37,15 @@ export default function PrintPreviewPage() {
     if (layoutParam) setOrientation(layoutParam);
   }, [docTypeParam, paperParam, layoutParam]);
 
-  // Load data based on params
+  // Load data based on params — CHỈ dùng dữ liệu thật từ database, không có dữ liệu mẫu.
   useEffect(() => {
     if (idParam && idParam !== 'mock') {
       fetchRealData(idParam);
     } else {
-      loadMockData();
+      // Không có mã chứng từ → không thể in. Hiển thị trạng thái lỗi rõ ràng.
+      setData(null);
+      setLoading(false);
+      setError('Thiếu mã chứng từ. Trang in chỉ hoạt động khi mở từ một chứng từ thực tế (hóa đơn, phiếu thu/chi, phiếu nhập...).');
     }
   }, [docType, idParam]);
 
@@ -355,10 +355,14 @@ export default function PrintPreviewPage() {
             transaction_date,
             description,
             reference_no,
+            cash_fund_id,
+            bank_account_id,
             customers:customers(farm_name, address, customer_contacts(phone, is_primary)),
             suppliers:suppliers(name, phone, address),
             employee:profiles!cashbook_transactions_employee_id_fkey(full_name, phone, address),
-            created_by_profile:profiles!cashbook_transactions_created_by_fkey(full_name)
+            created_by_profile:profiles!cashbook_transactions_created_by_fkey(full_name),
+            cash_fund:cash_funds(name, code),
+            bank_account:bank_accounts(bank_name, account_name, account_no)
           `)
           .eq('id', id)
           .single();
@@ -395,7 +399,11 @@ export default function PrintPreviewPage() {
           partnerPhone,
           partnerAddress,
           reason: tx.description,
-          fundAccount: tx.cash_fund_id ? 'Quỹ tiền mặt chi nhánh' : 'Tài khoản ngân hàng ACB',
+          fundAccount: tx.cash_fund
+            ? `${tx.cash_fund.name}${tx.cash_fund.code ? ` (${tx.cash_fund.code})` : ''}`
+            : tx.bank_account
+              ? `${tx.bank_account.bank_name} - ${tx.bank_account.account_no}`
+              : 'Không xác định',
           amount: Number(tx.amount),
           amountInWords: '',
           originalDocRef: tx.reference_no
@@ -404,226 +412,14 @@ export default function PrintPreviewPage() {
       }
     } catch (err: any) {
       console.error('Error fetching print data:', err);
-      setError(`Lỗi truy vấn dữ liệu Supabase: ${err.message}. Hệ thống sẽ chuyển sang chế độ Xem trước với dữ liệu mẫu.`);
-      loadMockData(); // Fallback to mock data on error so it does not crash
+      // KHÔNG fallback dữ liệu mẫu — tránh in nhầm chứng từ giả. Hiển thị lỗi để người dùng xử lý.
+      setData(null);
+      setError(`Không tải được dữ liệu chứng từ từ hệ thống: ${err.message}. Vui lòng thử lại hoặc kiểm tra quyền truy cập.`);
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. Load Mock Data for Previews
-  const loadMockData = () => {
-    const today = new Date();
-    const docPrefix = docType === 'invoice' ? 'HD' : 
-                      docType === 'receipt' ? 'PN' : 
-                      docType === 'return' ? 'PT' : 
-                      docType === 'transfer' ? 'PX' : 
-                      docType === 'cash_in' ? 'PTT' : 'PCT';
-    const docNum = `${docPrefix}-2026-${Math.floor(10000 + Math.random() * 90000)}`;
-
-    const currentUserName = profile?.full_name || 'Đặng Thế Phương';
-
-    switch (docType) {
-      case 'invoice':
-        setData({
-          docNumber: docNum,
-          createdAt: today,
-          createdBy: currentUserName,
-          notes: 'Khách mua thuốc thú y phòng dịch tả heo châu Phi. Giao hàng trước 17h.',
-          customerName: 'Trang Trại Heo Giống Minh Phát',
-          customerPhone: '0912.456.789',
-          customerAddress: 'Ấp 4, Xã Hoài An, Huyện Hoài Nhơn, Tỉnh Bình Định',
-          deliveryAddress: 'Giao trực tiếp tại chuồng nuôi số 3 - Minh Phát',
-          paymentMethod: 'bank_transfer',
-          warehouseName: 'Kho Lạnh Hoài An (Chuỗi vắc-xin)',
-          subtotal: 13580000,
-          discountTotal: 580000,
-          taxRate: 5,
-          taxAmount: 650000,
-          grandTotal: 13650000,
-          amountInWords: '',
-          lines: [
-            {
-              productId: 'p1',
-              productCode: 'VAC-0012',
-              productName: 'Vaccine Dịch Tả Heo Lơ-cô-gen (Cologen 20ml)',
-              unit: 'lọ',
-              quantity: 20,
-              unitPrice: 350000,
-              discount: 10000,
-              totalAmount: 6800000,
-              lotNumber: 'LOT-CGL2026A',
-              expiryDate: '2026-11-20'
-            },
-            {
-              productId: 'p2',
-              productCode: 'MED-0442',
-              productName: 'Amoxycillin 15% LA (Đặc trị viêm phổi heo - 100ml)',
-              unit: 'chai',
-              quantity: 15,
-              unitPrice: 280000,
-              discount: 0,
-              totalAmount: 4200000,
-              lotNumber: 'LOT-AMX884',
-              expiryDate: '2027-03-15'
-            },
-            {
-              productId: 'p3',
-              productCode: 'NUT-0199',
-              productName: 'Điện giải Gluco-KC thảo dược nâng cao đề kháng',
-              unit: 'gói',
-              quantity: 50,
-              unitPrice: 520000,
-              discount: 100000,
-              totalAmount: 2580000,
-              lotNumber: 'LOT-GKC-995',
-              expiryDate: '2028-01-10'
-            }
-          ]
-        });
-        break;
-      case 'receipt':
-        setData({
-          docNumber: docNum,
-          createdAt: today,
-          createdBy: currentUserName,
-          notes: 'Nhập kho lô hàng vắc-xin bảo quản lạnh khẩn cấp từ nhà phân phối Mavin.',
-          supplierName: 'Công ty Cổ phần Tập đoàn Thủy sản Mavin',
-          supplierPhone: '024.3218.1516',
-          supplierAddress: 'Tầng 8, Tòa nhà HL, Số 82 Ngõ 84, Phố Chùa Láng, Hà Nội',
-          receiptReason: 'Nhập mua hàng hóa thương mại',
-          warehouseName: 'Kho Lạnh Tổng Sài Gòn (Nhiệt độ 2-8°C)',
-          poNumber: 'PO-2026-8841',
-          totalAmount: 45000000,
-          lines: [
-            {
-              productId: 'p1',
-              productCode: 'VAC-0044',
-              productName: 'Vắc-xin Tai Xanh PRRS JXA1-R (Nhập khẩu)',
-              unit: 'lọ',
-              quantityOrdered: 100,
-              quantityReceived: 100,
-              unitPrice: 320000,
-              totalAmount: 32000000,
-              lotNumber: 'LOT-PRRS26-01',
-              expiryDate: '2026-12-10',
-              isColdChain: true
-            },
-            {
-              productId: 'p2',
-              productCode: 'VAC-0089',
-              productName: 'Vắc-xin Lở Mồm Long Móng Aftogen Oleo',
-              unit: 'lọ',
-              quantityOrdered: 50,
-              quantityReceived: 50,
-              unitPrice: 260000,
-              totalAmount: 13000000,
-              lotNumber: 'LOT-LMLM-ABC',
-              expiryDate: '2027-02-28',
-              isColdChain: true
-            }
-          ]
-        });
-        break;
-      case 'return':
-        setData({
-          docNumber: docNum,
-          createdAt: today,
-          createdBy: currentUserName,
-          notes: 'Khách trả lại do đổi phác đồ điều trị của trạm thú y xã.',
-          partnerType: 'customer',
-          partnerName: 'Hộ chăn nuôi gà Lê Văn Tám',
-          partnerPhone: '0977.889.911',
-          partnerAddress: 'Thôn Trung Thuận, Xã Hoài Đức, Huyện Hoài Nhơn, Bình Định',
-          returnReason: 'Đổi phác đồ điều trị, sản phẩm chưa khui tem bảo quản',
-          refundMethod: 'credit_note',
-          warehouseName: 'Kho Tổng Sanh Long',
-          totalAmount: 1560000,
-          lines: [
-            {
-              productId: 'p1',
-              productCode: 'PAR-0056',
-              productName: 'Tylosin Tartrate 20% (Thuốc trị hô hấp gà - 50ml)',
-              unit: 'lọ',
-              quantityReturned: 6,
-              unitPrice: 260000,
-              totalAmount: 1560000,
-              lotNumber: 'LOT-TYLO-25',
-              expiryDate: '2027-08-01'
-            }
-          ]
-        });
-        break;
-      case 'transfer':
-        setData({
-          docNumber: docNum,
-          createdAt: today,
-          createdBy: currentUserName,
-          notes: 'Xuất kho điều chuyển thiết bị và kim tiêm y tế cho trạm dịch tễ chi nhánh Phù Mỹ.',
-          fromWarehouse: 'Kho Tổng Miền Trung (Bình Định)',
-          toWarehouse: 'Kho Dụng Cụ Chi Nhánh Phù Mỹ',
-          transferReason: 'Cấp phát dụng cụ dịch tễ mùa tiêm phòng vaccine',
-          receiverName: 'BSTY. Nguyễn Văn Nam (Chi nhánh Phù Mỹ)',
-          lines: [
-            {
-              productId: 'p1',
-              productCode: 'EQU-0112',
-              productName: 'Xy-lanh tự động cao cấp Socorex Thụy Sĩ (2ml)',
-              unit: 'cái',
-              quantityRequested: 10,
-              quantityActual: 10,
-              lotNumber: 'LOT-SOC-2025',
-              expiryDate: '2030-12-31'
-            },
-            {
-              productId: 'p2',
-              productCode: 'EQU-0881',
-              productName: 'Kim tiêm thú y siêu cứng inox 18G (Hộp 100 kim)',
-              unit: 'hộp',
-              quantityRequested: 20,
-              quantityActual: 20,
-              lotNumber: 'LOT-KIM-18G',
-              expiryDate: '2029-05-20'
-            }
-          ]
-        });
-        break;
-      case 'cash_in':
-        setData({
-          docNumber: docNum,
-          createdAt: today,
-          createdBy: currentUserName,
-          notes: 'Khách hàng Minh Phát nộp tiền cọc hợp đồng cung ứng vaccine đợt 2.',
-          transactionType: 'cash_in',
-          partnerName: 'Trang Trại Heo Giống Minh Phát (Đại diện: A. Minh)',
-          partnerPhone: '0912.456.789',
-          partnerAddress: 'Ấp 4, Xã Hoài An, Huyện Hoài Nhơn, Tỉnh Bình Định',
-          reason: 'Thu tiền đặt cọc hợp đồng cung cấp vắc-xin Cogen đợt 2 năm 2026',
-          fundAccount: 'Quỹ tiền mặt văn phòng Sanh Long',
-          amount: 50000000,
-          amountInWords: '',
-          originalDocRef: 'HD-2026-99521'
-        });
-        break;
-      case 'cash_out':
-        setData({
-          docNumber: docNum,
-          createdAt: today,
-          createdBy: currentUserName,
-          notes: 'Chi tiền điện, nước và internet văn phòng chi nhánh Hoài An tháng 5/2026.',
-          transactionType: 'cash_out',
-          partnerName: 'Công ty Điện lực Hoài Nhơn (VNPT + EVN)',
-          partnerPhone: '1900 1006',
-          partnerAddress: 'Thị trấn Bồng Sơn, Hoài Nhơn, Bình Định',
-          reason: 'Thanh toán tiền điện, nước văn phòng chi nhánh Hoài An tháng 5/2026',
-          fundAccount: 'Tài khoản công ty BIDV (Số: 1420546944)',
-          amount: 4325000,
-          amountInWords: '',
-          originalDocRef: 'Hóa đơn điện số EVN-8941445'
-        });
-        break;
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] flex flex-col font-sans">
@@ -647,25 +443,6 @@ export default function PrintPreviewPage() {
 
         {/* Configurations Controls */}
         <div className="flex items-center gap-2 md:gap-4 text-xs">
-          {/* Doc Type Selector (Demo purpose only when id = mock) */}
-          {(!idParam || idParam === 'mock') && (
-            <div className="flex items-center gap-1.5 bg-slate-800 px-2 py-1.5 rounded-lg border border-slate-700">
-              <span className="text-slate-400">Loại:</span>
-              <select
-                value={docType}
-                onChange={(e) => setDocType(e.target.value as any)}
-                className="bg-transparent text-white font-semibold outline-none cursor-pointer text-xs"
-              >
-                <option value="invoice" className="bg-slate-900">Hóa đơn</option>
-                <option value="receipt" className="bg-slate-900">Phiếu nhập</option>
-                <option value="return" className="bg-slate-900">Phiếu trả</option>
-                <option value="transfer" className="bg-slate-900">Phiếu xuất</option>
-                <option value="cash_in" className="bg-slate-900">Phiếu thu</option>
-                <option value="cash_out" className="bg-slate-900">Phiếu chi</option>
-              </select>
-            </div>
-          )}
-
           {/* Paper Size selector */}
           <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
             <button
@@ -708,10 +485,12 @@ export default function PrintPreviewPage() {
             </button>
           </div>
 
-          {/* Print button */}
+          {/* Print button — chỉ bật khi đã có dữ liệu thật */}
           <button
             onClick={() => window.print()}
-            className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-lg transition-all shadow-md flex items-center gap-2"
+            disabled={!data || loading}
+            className="h-9 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-lg transition-all shadow-md flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            title={!data ? 'Chưa có dữ liệu chứng từ để in' : 'In chứng từ'}
           >
             <Printer size={16} />
             <span className="hidden sm:inline">In chứng từ</span>
@@ -739,6 +518,34 @@ export default function PrintPreviewPage() {
           <div className="flex flex-col items-center justify-center p-20 gap-3">
             <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
             <p className="text-slate-500 text-sm font-semibold">Đang chuẩn bị dữ liệu trang in...</p>
+          </div>
+        ) : !data ? (
+          <div className="flex flex-col items-center justify-center p-20 gap-4 bg-white rounded-xl border border-slate-200 shadow-sm max-w-lg w-full mt-8">
+            <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center">
+              <AlertCircle size={28} className="text-amber-500" />
+            </div>
+            <p className="text-slate-700 text-base font-bold">Không có dữ liệu chứng từ để in</p>
+            <p className="text-slate-500 text-sm text-center max-w-md">
+              {error || 'Hệ thống chưa lấy được dữ liệu từ cơ sở dữ liệu. Trang in chỉ hiển thị chứng từ thực tế, không sử dụng dữ liệu mẫu.'}
+            </p>
+            <div className="flex items-center gap-3 mt-2">
+              {idParam && idParam !== 'mock' && (
+                <button
+                  onClick={() => fetchRealData(idParam)}
+                  className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  <RefreshCw size={15} />
+                  Thử lại
+                </button>
+              )}
+              <button
+                onClick={() => window.history.back()}
+                className="h-9 px-4 border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold rounded-lg flex items-center gap-2 transition-colors"
+              >
+                <ArrowLeft size={15} />
+                Quay lại
+              </button>
+            </div>
           </div>
         ) : (
           <div className="transform scale-[0.85] origin-top md:scale-100 transition-all duration-300">

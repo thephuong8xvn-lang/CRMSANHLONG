@@ -97,6 +97,22 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 
 ---
 
+## 2026-05-31 — Trang in "dữ liệu thật 100%" + Cấu hình Quỹ/Ngân hàng
+
+- **Sổ quỹ S1–S3 đã xong** (9 migration apply remote). Module Cashbook dùng dữ liệu thật, không còn mock.
+- **`PrintPreviewPage.tsx`**: bỏ hẳn `loadMockData()` (không fallback dữ liệu giả khi DB lỗi/thiếu `id` → màn lỗi + disable nút In). Phiếu thu/chi: select thêm `cash_fund_id/bank_account_id` + JOIN `cash_funds`/`bank_accounts` → in đúng tên quỹ/số TK (trước hardcode "Tài khoản ngân hàng ACB").
+- **`SystemSettingsPage.tsx`** tab mới `'funds'` ("Quỹ & Ngân hàng"): CRUD `cash_funds` + `bank_accounts`, toggle mặc định (gỡ cờ chi nhánh TRƯỚC khi ghi → tránh unique index), sửa số dư. RLS `*_manage_admin` (admin/accountant) có sẵn — không cần migration. Default flags từ migration `20260531000000`.
+- `tsc --noEmit` PASS.
+
+## 2026-05-31 (S4) — Mở/Đóng ca + Đối soát tiền mặt
+
+- **1 chi nhánh = 1 két, mỗi két 1 ca `open`, dùng chung nhiều NV.** Tiền mặt gắn `session_id`; chuyển khoản không → rạch ròi.
+- **Migration `20260606000000_cashbook_session_reconcile.sql`** (⚠️ apply remote): hoàn tiền mặt gắn session; danh mục `THU-LECH-QUY`/`CHI-LECH-QUY`; index 1-ca-mở/két + dọn trùng; RLS ca theo chi nhánh.
+- **`CashbookPage.tsx`**: `checkActiveSession` theo két; mở ca chặn két đã mở + gợi ý đầu ca + cảnh báo quỹ≠mặc định + `opened_by`; đóng ca có **bảng đối soát** (tồn dự kiến + chênh lệch live + CK tham khảo) + `closed_by`/`variance_reason` + danh mục lệch quỹ; thẻ ca hiện "Tồn quỹ hiện tại".
+- `tsc --noEmit` PASS.
+
+---
+
 ## Files quan trọng cần biết
 
 | File | Vai trò |

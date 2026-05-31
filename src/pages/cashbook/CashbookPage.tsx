@@ -33,6 +33,7 @@ interface CashFund {
   balance: number
   currency: string
   is_active: boolean
+  is_default_cash?: boolean
 }
 
 interface BankAccount {
@@ -48,6 +49,7 @@ interface BankAccount {
 
 interface CashierSession {
   id: string
+  code?: string | null
   cash_fund_id: string
   cashier_id: string
   status: 'open' | 'closed' | 'reopened'
@@ -61,6 +63,18 @@ interface CashierSession {
   cashier?: {
     full_name: string
   }
+}
+
+// Đối soát tiền mặt trong ca (chỉ tính giao dịch TIỀN MẶT gắn session)
+interface SessionReconciliation {
+  opening: number
+  inflowGroups: { label: string; amount: number }[]
+  outflowGroups: { label: string; amount: number }[]
+  totalIn: number
+  totalOut: number
+  expected: number
+  bankIn: number
+  bankOut: number
 }
 
 interface ExpenseCategory {
@@ -192,6 +206,8 @@ export default function CashbookPage() {
   const [sessionNotes, setSessionNotes] = useState('')
   const [sessionVarianceReason, setSessionVarianceReason] = useState('')
   const [sessionFundId, setSessionFundId] = useState('') // Chọn quỹ mở ca
+  const [reconcile, setReconcile] = useState<SessionReconciliation | null>(null)
+  const [reconcileLoading, setReconcileLoading] = useState(false)
 
   // Internal Transfer Form State
   const [transferFromType, setTransferFromType] = useState<'cash_fund' | 'bank_account'>('cash_fund')
@@ -338,17 +354,18 @@ export default function CashbookPage() {
   }, [userBranchId, isAdmin, branches.length, selectedBranchId])
 
   // Load active cashier session
+  // Mô hình "1 chi nhánh = 1 két": tìm ca đang MỞ của két (quỹ) chi nhánh,
+  // KHÔNG lọc theo người mở — mọi nhân viên dùng chung & thấy cùng 1 ca.
   const checkActiveSession = useCallback(async () => {
     if (cashFunds.length === 0) return
     try {
-      // Find open session where cashier_id = current user
       const fundIds = cashFunds.map(f => f.id)
       const { data } = await supabase
         .from('cashier_sessions')
-        .select('*, cashier:profiles(full_name)')
+        .select('*, cashier:profiles!cashier_sessions_cashier_id_fkey(full_name)')
         .eq('status', 'open')
         .in('cash_fund_id', fundIds)
-        .eq('cashier_id', profile?.id)
+        .order('opened_at', { ascending: false })
         .limit(1)
 
       if (data && data.length > 0) {
@@ -359,7 +376,7 @@ export default function CashbookPage() {
     } catch (err) {
       console.error('Error checking active cashier session:', err)
     }
-  }, [cashFunds, profile?.id])
+  }, [cashFunds])
 
   // Load Sessions History
   const loadSessions = useCallback(async () => {
@@ -368,7 +385,7 @@ export default function CashbookPage() {
       const fundIds = cashFunds.map(f => f.id)
       const { data } = await supabase
         .from('cashier_sessions')
-        .select('*, cashier:profiles(full_name)')
+        .select('*, cashier:profiles!cashier_sessions_cashier_id_fkey(full_name)')
         .in('cash_fund_id', fundIds)
         .order('opened_at', { ascending: false })
       if (data) setSessions(data as unknown as CashierSession[])
@@ -800,6 +817,83 @@ export default function CashbookPage() {
     }
   }
 
+  // Tính đối soát tiền mặt của 1 ca (chỉ giao dịch TIỀN MẶT gắn session)
+  const loadSessionReconciliation = useCallback(async (session: CashierSession) => {
+    setReconcileLoading(true)
+    try {
+      // 1. Giao dịch tiền mặt thuộc ca này
+      const { data: txs } = await supabase
+        .from('cashbook_transactions')
+        .select('amount, flow_type, expense_category_id')
+        .eq('session_id', session.id)
+        .eq('status', 'approved')
+
+      const inflowMap = new Map<string, number>()
+      const outflowMap = new Map<string, number>()
+      let totalIn = 0
+      let totalOut = 0
+      ;(txs || []).forEach((t: any) => {
+        const amt = Number(t.amount) || 0
+        const cat = categories.find(c => c.id === t.expense_category_id)
+        const label = cat?.name || 'Khác'
+        if (t.flow_type === 'inflow') {
+          totalIn += amt
+          inflowMap.set(label, (inflowMap.get(label) || 0) + amt)
+        } else if (t.flow_type === 'outflow') {
+          totalOut += amt
+          outflowMap.set(label, (outflowMap.get(label) || 0) + amt)
+        }
+      })
+
+      // 2. Chuyển khoản phát sinh trong ca (tham khảo — KHÔNG nằm trong két)
+      let bankIn = 0
+      let bankOut = 0
+      const bankIds = bankAccounts.map(b => b.id)
+      if (bankIds.length > 0) {
+        const { data: bankTxs } = await supabase
+          .from('cashbook_transactions')
+          .select('amount, flow_type')
+          .in('bank_account_id', bankIds)
+          .eq('status', 'approved')
+          .gte('posted_at', session.opened_at)
+        ;(bankTxs || []).forEach((t: any) => {
+          const amt = Number(t.amount) || 0
+          if (t.flow_type === 'inflow') bankIn += amt
+          else if (t.flow_type === 'outflow') bankOut += amt
+        })
+      }
+
+      const opening = Number(session.opening_balance) || 0
+      setReconcile({
+        opening,
+        inflowGroups: Array.from(inflowMap, ([label, amount]) => ({ label, amount })),
+        outflowGroups: Array.from(outflowMap, ([label, amount]) => ({ label, amount })),
+        totalIn,
+        totalOut,
+        expected: opening + totalIn - totalOut,
+        bankIn,
+        bankOut
+      })
+    } catch (err) {
+      console.error('Error loading session reconciliation:', err)
+      setReconcile(null)
+    } finally {
+      setReconcileLoading(false)
+    }
+  }, [categories, bankAccounts])
+
+  // Mở modal đóng ca kèm đối soát
+  const openCloseSessionModal = () => {
+    if (!activeSession) return
+    setSessionAction('close')
+    setSessionActualClose(0)
+    setSessionNotes('')
+    setSessionVarianceReason('')
+    setReconcile(null)
+    setIsSessionModalOpen(true)
+    loadSessionReconciliation(activeSession)
+  }
+
   // Open Cashier Session
   const handleOpenSession = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -814,9 +908,25 @@ export default function CashbookPage() {
     
     setSubmitting(true)
     try {
+      // Mô hình "1 két = 1 ca mở": chặn nếu két đã có ca đang mở (bất kỳ ai mở).
+      const { data: existingOpen } = await supabase
+        .from('cashier_sessions')
+        .select('id, cashier:profiles!cashier_sessions_cashier_id_fkey(full_name)')
+        .eq('cash_fund_id', fund.id)
+        .eq('status', 'open')
+        .limit(1)
+      if (existingOpen && existingOpen.length > 0) {
+        const opener = (existingOpen[0] as any).cashier?.full_name || 'nhân viên khác'
+        setAlertMsg({ type: 'error', text: `Két "${fund.name}" đang có ca mở bởi ${opener}. Vui lòng đóng ca hiện tại trước khi mở ca mới.` })
+        setSubmitting(false)
+        checkActiveSession()
+        return
+      }
+
       const insertData = {
         cash_fund_id: fund.id,
         cashier_id: profile.id,
+        opened_by: profile.id,
         opening_balance: sessionOpeningBal,
         status: 'open',
         opened_at: new Date().toISOString(),
@@ -827,13 +937,22 @@ export default function CashbookPage() {
         .from('cashier_sessions')
         .insert([insertData])
 
-      if (error) throw error
+      if (error) {
+        // Vi phạm index 1-ca-mở/két (race condition) → thông báo thân thiện
+        if (error.code === '23505' || /uq_cashier_sessions_one_open_per_fund/.test(error.message)) {
+          setAlertMsg({ type: 'error', text: `Két "${fund.name}" vừa được mở ca bởi nhân viên khác. Vui lòng tải lại.` })
+          checkActiveSession()
+          setSubmitting(false)
+          return
+        }
+        throw error
+      }
 
       setAlertMsg({ type: 'success', text: `Đã mở ca phiên quỹ thành công cho ${fund.name}.` })
       setIsSessionModalOpen(false)
       setSessionOpeningBal(0)
       setSessionNotes('')
-      
+
       // Reload
       checkActiveSession()
       loadSessions()
@@ -886,6 +1005,8 @@ export default function CashbookPage() {
         closing_balance: calculatedBalance,
         cash_actual: sessionActualClose,
         variance: variance,
+        closed_by: profile?.id,
+        variance_reason: variance !== 0 ? (sessionVarianceReason.trim() || null) : null,
         closed_at: new Date().toISOString(),
         notes: `Đối soát cuối ca. Chênh lệch: ${formatCurrency(variance)}. Lý do: ${sessionVarianceReason.trim() || 'Không có chênh lệch'}. Ghi chú: ${sessionNotes.trim()}`
       }
@@ -901,9 +1022,9 @@ export default function CashbookPage() {
       if (variance !== 0) {
         const flow = variance > 0 ? 'inflow' : 'outflow'
         const adjustAmount = Math.abs(variance)
-        
-        // Find category for other income / other expense
-        const code = flow === 'inflow' ? 'THU-KHAC' : 'CHI-NCC' // default expense category fallback
+
+        // Danh mục lệch quỹ riêng (thừa / thiếu) — không làm bẩn báo cáo khác
+        const code = flow === 'inflow' ? 'THU-LECH-QUY' : 'CHI-LECH-QUY'
         const cat = categories.find(c => c.code === code)
 
         const insertData: any = {
@@ -1216,13 +1337,7 @@ export default function CashbookPage() {
               
               {activeSession ? (
                 <button
-                  onClick={() => {
-                    setSessionAction('close')
-                    setSessionActualClose(0)
-                    setSessionNotes('')
-                    setSessionVarianceReason('')
-                    setIsSessionModalOpen(true)
-                  }}
+                  onClick={openCloseSessionModal}
                   className="px-3 h-8 bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 rounded-lg text-tiny font-bold transition-all shadow-sm flex items-center gap-1"
                 >
                   Đóng ca
@@ -1231,7 +1346,11 @@ export default function CashbookPage() {
                 <button
                   onClick={() => {
                     setSessionAction('open')
-                    setSessionOpeningBal(0)
+                    const fundId = sessionFundId || cashFunds[0]?.id || ''
+                    const fund = cashFunds.find(f => f.id === fundId)
+                    setSessionFundId(fundId)
+                    // Gợi ý tiền đầu ca = số dư tồn quỹ hệ thống (tiền bàn giao ca trước)
+                    setSessionOpeningBal(fund ? Math.round(Number(fund.balance) || 0) : 0)
                     setSessionNotes('')
                     setIsSessionModalOpen(true)
                   }}
@@ -1243,8 +1362,12 @@ export default function CashbookPage() {
             </div>
 
             <div className="mt-4 border-t border-gray-50 pt-3 flex justify-between items-center text-tiny text-gray-400">
-              <span>Mã phiên: {activeSession ? activeSession.id.slice(0, 8).toUpperCase() : 'N/A'}</span>
-              <span>Đầu ca: {activeSession ? formatCurrency(activeSession.opening_balance) : '0 ₫'}</span>
+              <span>Mã: {activeSession ? (activeSession.code || activeSession.id.slice(0, 8).toUpperCase()) : 'N/A'}</span>
+              {activeSession ? (
+                <span>Tồn quỹ hiện tại: <strong className="text-emerald-600 tabular-nums">{formatCurrency(cashFunds.find(f => f.id === activeSession.cash_fund_id)?.balance ?? activeSession.opening_balance)}</strong></span>
+              ) : (
+                <span>Đầu ca: 0 ₫</span>
+              )}
             </div>
           </div>
         </div>
@@ -2429,21 +2552,41 @@ export default function CashbookPage() {
                     </p>
                     
                     <div className="space-y-1">
-                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Quỹ tiền mặt *</label>
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Két / Quỹ tiền mặt *</label>
                       <select
                         className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
                         value={sessionFundId}
-                        onChange={e => setSessionFundId(e.target.value)}
+                        onChange={e => {
+                          const id = e.target.value
+                          setSessionFundId(id)
+                          const f = cashFunds.find(x => x.id === id)
+                          setSessionOpeningBal(f ? Math.round(Number(f.balance) || 0) : 0)
+                        }}
                         disabled={cashFunds.length <= 1}
                       >
                         {cashFunds.map(f => (
-                          <option key={f.id} value={f.id}>{f.name} ({formatCurrency(f.balance)})</option>
+                          <option key={f.id} value={f.id}>
+                            {f.name} ({formatCurrency(f.balance)}){f.is_default_cash ? ' • Mặc định' : ''}
+                          </option>
                         ))}
                       </select>
+                      {(() => {
+                        const f = cashFunds.find(x => x.id === (sessionFundId || cashFunds[0]?.id))
+                        if (f && f.is_default_cash === false) {
+                          return (
+                            <p className="text-[11px] text-amber-600 font-medium flex items-start gap-1 mt-1">
+                              <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                              Quỹ này KHÔNG phải quỹ mặc định. Tiền mặt bán hàng POS tự ghi vào quỹ mặc định nên có thể không khớp ca này.
+                            </p>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
-                    
+
                     <div className="space-y-1">
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Tiền mặt đầu ca (₫) *</label>
+                      <p className="text-[11px] text-gray-400 -mt-0.5">Gợi ý theo tồn quỹ hệ thống (tiền bàn giao ca trước) — sửa lại nếu đếm khác.</p>
                       <div className="relative flex items-center">
                         <input
                           type="number"
@@ -2490,10 +2633,65 @@ export default function CashbookPage() {
               ) : (
                 // CLOSE SESSION FORM (WITH RECONCILIATION)
                 <form onSubmit={handleCloseSession}>
-                  <div className="p-6 space-y-4">
+                  <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
                     <p className="text-tiny text-gray-500 leading-relaxed font-medium">
-                      Kết thúc ca làm việc. Vui lòng nhập tổng số tiền mặt đếm thực tế đầu ca + các giao dịch đã thực hiện trong két của bạn.
+                      Đối soát tiền mặt cuối ca — hệ thống tổng hợp mọi khoản thu/chi <strong>tiền mặt</strong> trong ca để bạn biết tồn quỹ dự kiến, rồi nhập số tiền đếm thực tế trong két.
                     </p>
+
+                    {/* BẢNG ĐỐI SOÁT TIỀN MẶT */}
+                    {reconcileLoading ? (
+                      <div className="py-6 text-center text-tiny text-gray-400">Đang tính đối soát ca...</div>
+                    ) : reconcile ? (
+                      <div className="rounded-xl border border-gray-150 overflow-hidden text-body-md bg-white">
+                        <div className="px-4 py-2.5 bg-gray-25 flex justify-between items-center">
+                          <span className="text-gray-500 font-medium">Tồn quỹ đầu ca</span>
+                          <span className="font-semibold tabular-nums text-gray-700">{formatCurrency(reconcile.opening)}</span>
+                        </div>
+
+                        {/* Thu tiền mặt */}
+                        <div className="px-4 py-2.5 border-t border-gray-100">
+                          <div className="flex justify-between text-emerald-700 font-semibold">
+                            <span>+ Thu tiền mặt trong ca</span>
+                            <span className="tabular-nums">{formatCurrency(reconcile.totalIn)}</span>
+                          </div>
+                          {reconcile.inflowGroups.length > 0 ? reconcile.inflowGroups.map(g => (
+                            <div key={g.label} className="flex justify-between text-tiny text-gray-500 pl-3 mt-1">
+                              <span>{g.label}</span>
+                              <span className="tabular-nums">{formatCurrency(g.amount)}</span>
+                            </div>
+                          )) : <p className="text-tiny text-gray-300 pl-3 mt-1">Chưa có khoản thu tiền mặt</p>}
+                        </div>
+
+                        {/* Chi tiền mặt */}
+                        <div className="px-4 py-2.5 border-t border-gray-100">
+                          <div className="flex justify-between text-red-600 font-semibold">
+                            <span>− Chi tiền mặt trong ca</span>
+                            <span className="tabular-nums">{formatCurrency(reconcile.totalOut)}</span>
+                          </div>
+                          {reconcile.outflowGroups.length > 0 ? reconcile.outflowGroups.map(g => (
+                            <div key={g.label} className="flex justify-between text-tiny text-gray-500 pl-3 mt-1">
+                              <span>{g.label}</span>
+                              <span className="tabular-nums">{formatCurrency(g.amount)}</span>
+                            </div>
+                          )) : <p className="text-tiny text-gray-300 pl-3 mt-1">Chưa có khoản chi tiền mặt</p>}
+                        </div>
+
+                        {/* Tồn dự kiến */}
+                        <div className="px-4 py-3 border-t border-gray-150 bg-blue-50 flex justify-between items-center">
+                          <span className="font-bold text-blue-700">= Tồn quỹ dự kiến</span>
+                          <span className="font-bold text-blue-700 text-body-lg tabular-nums">{formatCurrency(reconcile.expected)}</span>
+                        </div>
+
+                        {/* Chuyển khoản (tham khảo) */}
+                        {(reconcile.bankIn > 0 || reconcile.bankOut > 0) && (
+                          <div className="px-4 py-2.5 border-t border-gray-100 bg-indigo-50/40 text-tiny">
+                            <p className="font-semibold text-indigo-600 mb-1">Chuyển khoản phát sinh trong ca (KHÔNG nằm trong két tiền mặt):</p>
+                            <div className="flex justify-between text-gray-500"><span>Thu chuyển khoản</span><span className="tabular-nums">{formatCurrency(reconcile.bankIn)}</span></div>
+                            <div className="flex justify-between text-gray-500"><span>Chi chuyển khoản</span><span className="tabular-nums">{formatCurrency(reconcile.bankOut)}</span></div>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
 
                     <div className="space-y-1">
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Tiền mặt thực tế đếm được (₫) *</label>
@@ -2510,6 +2708,20 @@ export default function CashbookPage() {
                         <span className="absolute right-3 text-tiny text-gray-400 font-bold">₫</span>
                       </div>
                     </div>
+
+                    {/* Chênh lệch trực tiếp */}
+                    {reconcile && sessionActualClose > 0 && (() => {
+                      const v = sessionActualClose - reconcile.expected
+                      const cls = v === 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : v > 0 ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-red-50 text-red-600 border-red-200'
+                      return (
+                        <div className={`flex justify-between items-center px-4 py-2.5 rounded-lg border font-bold ${cls}`}>
+                          <span>{v === 0 ? '✓ Khớp quỹ' : v > 0 ? '▲ Thừa quỹ' : '▼ Thiếu quỹ'}</span>
+                          <span className="tabular-nums">{v > 0 ? '+' : ''}{formatCurrency(v)}</span>
+                        </div>
+                      )
+                    })()}
 
                     <div className="space-y-1">
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Lý do chênh lệch (nếu có)</label>
