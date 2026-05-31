@@ -39,6 +39,24 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-rose-50 text-rose-700 border-rose-150'
 }
 
+const COST_TYPE_LABELS: Record<string, string> = {
+  breeding_stock: 'Con giống',
+  medicine: 'Thuốc/Vaccine',
+  feed: 'Thức ăn',
+  product: 'Vật tư',
+  labor: 'Nhân công',
+  other: 'Khác'
+}
+
+const COST_TYPE_COLORS: Record<string, string> = {
+  breeding_stock: 'bg-amber-50 text-amber-750 border-amber-150',
+  medicine: 'bg-blue-50 text-blue-750 border-blue-150',
+  feed: 'bg-emerald-50 text-emerald-750 border-emerald-150',
+  product: 'bg-indigo-50 text-indigo-750 border-indigo-150',
+  labor: 'bg-purple-50 text-purple-750 border-purple-150',
+  other: 'bg-gray-100 text-gray-750 border-gray-200'
+}
+
 interface Customer {
   id: string
   farm_name: string
@@ -99,6 +117,26 @@ interface ProjectStep {
   completed_by?: string | null
   photos: string[] | null
   executor?: Profile | null
+  assigned_to?: string | null
+  manager_rating?: number | null
+  manager_rating_note?: string | null
+  customer_rating?: number | null
+  customer_rating_note?: string | null
+}
+
+interface HerdCostRow {
+  id: string
+  project_id: string
+  step_id: string | null
+  cost_type: 'product' | 'feed' | 'labor' | 'medicine' | 'breeding_stock' | 'other'
+  product_id: string | null
+  quantity: number
+  unit_cost: number
+  amount: number
+  incurred_date: string
+  notes: string | null
+  created_at: string
+  product?: { name: string; unit: string } | null
 }
 
 interface ProjectOutcome {
@@ -137,6 +175,7 @@ interface StockLot {
   quantity_reserved: number
   expiry_date: string | null
   warehouse_name?: string
+  cost_price?: number
 }
 
 export default function HerdProjectDetailPage() {
@@ -153,6 +192,17 @@ export default function HerdProjectDetailPage() {
   const [currentUser, setCurrentUser] = useState<any>(null)
   const { userRole, hasPermission } = useAuth()
 
+  // New cost management and view data states
+  const [costs, setCosts] = useState<HerdCostRow[]>([])
+  const [vets, setVets] = useState<Profile[]>([])
+  const [viewMetrics, setViewMetrics] = useState<{
+    age_days: number | null
+    cost_to_date: number
+    died_total: number
+    mortality_rate: number
+    region_name: string | null
+  } | null>(null)
+
   // Step Update Modal States
   const [activeStep, setActiveStep] = useState<ProjectStep | null>(null)
   const [stepModalOpen, setStepModalOpen] = useState(false)
@@ -161,6 +211,20 @@ export default function HerdProjectDetailPage() {
   const [stepNotes, setStepNotes] = useState('')
   const [stepPhotoUrl, setStepPhotoUrl] = useState('')
   const [stepProductsUsed, setStepProductsUsed] = useState<ProductUsed[]>([])
+  const [stepAssignedTo, setStepAssignedTo] = useState('')
+  const [stepManagerRating, setStepManagerRating] = useState<number>(5)
+  const [stepManagerRatingNote, setStepManagerRatingNote] = useState('')
+  const [stepCustomerRating, setStepCustomerRating] = useState<number>(5)
+  const [stepCustomerRatingNote, setStepCustomerRatingNote] = useState('')
+
+  // Add Manual Cost Modal States
+  const [costModalOpen, setCostModalOpen] = useState(false)
+  const [costIncurredDate, setCostIncurredDate] = useState('')
+  const [costType, setCostType] = useState<'product' | 'feed' | 'labor' | 'medicine' | 'breeding_stock' | 'other'>('other')
+  const [costProductId, setCostProductId] = useState('')
+  const [costQuantity, setCostQuantity] = useState<number>(1)
+  const [costUnitCost, setCostUnitCost] = useState<number>(0)
+  const [costNotes, setCostNotes] = useState('')
 
   // Lookups for Step Modal
   const [allProducts, setAllProducts] = useState<Product[]>([])
@@ -223,7 +287,7 @@ export default function HerdProjectDetailPage() {
         setProject(projData as unknown as HerdProject)
       }
 
-      // Fetch steps
+      // Fetch steps with the new rating & assignment columns
       const { data: stepsData } = await supabase
         .from('herd_project_steps')
         .select(`
@@ -237,7 +301,12 @@ export default function HerdProjectDetailPage() {
           notes,
           completed_by,
           photos,
-          executor:profiles!completed_by(id, full_name)
+          executor:profiles!completed_by(id, full_name),
+          assigned_to,
+          manager_rating,
+          manager_rating_note,
+          customer_rating,
+          customer_rating_note
         `)
         .eq('project_id', id)
         .order('sort_order')
@@ -285,7 +354,7 @@ export default function HerdProjectDetailPage() {
         setOutcome(null)
       }
 
-      // Fetch linked order (querying orders where notes matches project ID)
+      // Fetch linked order
       const { data: ordersData } = await supabase
         .from('orders')
         .select('id, order_code, grand_total, status, payment_status, created_at')
@@ -305,6 +374,34 @@ export default function HerdProjectDetailPage() {
         .eq('is_active', true)
         .order('name')
       if (productsData) setAllProducts(productsData)
+
+      // Preload active profiles/vets
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .order('full_name')
+      if (profilesData) setVets(profilesData as Profile[])
+
+      // Fetch view metrics (age_days, cost_to_date, died_total, mortality_rate, region_name)
+      const { data: viewData } = await supabase
+        .from('herd_project_list_view')
+        .select('age_days, cost_to_date, died_total, mortality_rate, region_name')
+        .eq('id', id)
+        .single()
+      if (viewData) {
+        setViewMetrics(viewData)
+      }
+
+      // Fetch detailed costs
+      const { data: costsData } = await supabase
+        .from('herd_project_costs')
+        .select('id, project_id, step_id, cost_type, product_id, quantity, unit_cost, amount, incurred_date, notes, created_at, product:products(name, unit)')
+        .eq('project_id', id)
+        .order('incurred_date', { ascending: false })
+      if (costsData) {
+        setCosts(costsData as unknown as HerdCostRow[])
+      }
 
     } catch (err) {
       console.error('Error fetching project details:', err)
@@ -329,6 +426,7 @@ export default function HerdProjectDetailPage() {
           quantity_on_hand,
           quantity_reserved,
           expiry_date,
+          cost_price,
           warehouse:warehouses(name)
         `)
         .eq('product_id', productId)
@@ -342,7 +440,8 @@ export default function HerdProjectDetailPage() {
           quantity_on_hand: lot.quantity_on_hand,
           quantity_reserved: lot.quantity_reserved,
           expiry_date: lot.expiry_date,
-          warehouse_name: lot.warehouse?.name
+          warehouse_name: lot.warehouse?.name,
+          cost_price: lot.cost_price ? Number(lot.cost_price) : 0
         }))
         setAvailableLots(prev => ({
           ...prev,
@@ -383,12 +482,24 @@ export default function HerdProjectDetailPage() {
   // Open Step Modal Handler
   const handleOpenStepModal = (step: ProjectStep) => {
     setActiveStep(step)
-    setStepActualDate(new Date().toISOString().split('T')[0])
-    setStepStatus('done')
+    setStepActualDate(step.actual_date || new Date().toISOString().split('T')[0])
+    setStepStatus(step.status === 'pending' ? 'done' : step.status)
     setStepNotes(step.notes || '')
     setStepPhotoUrl(step.photos && step.photos.length > 0 ? step.photos[0] : '')
     setStepProductsUsed(step.products_used || [])
+    setStepAssignedTo(step.assigned_to || '')
+    setStepManagerRating(step.manager_rating || 5)
+    setStepManagerRatingNote(step.manager_rating_note || '')
+    setStepCustomerRating(step.customer_rating || 5)
+    setStepCustomerRatingNote(step.customer_rating_note || '')
     setStepModalOpen(true)
+
+    // Preload lots for products already used in the step
+    if (step.products_used) {
+      step.products_used.forEach(p => {
+        loadLotsForProduct(p.product_id)
+      })
+    }
   }
 
   // Add Product to Step Used List
@@ -459,11 +570,62 @@ export default function HerdProjectDetailPage() {
           photos: photosArray,
           completed_by: stepStatus === 'done' ? currentUser?.id : null,
           products_used: stepStatus === 'done' ? stepProductsUsed : null,
+          assigned_to: stepAssignedTo || null,
+          manager_rating: stepStatus === 'done' ? stepManagerRating : null,
+          manager_rating_note: stepStatus === 'done' ? (stepManagerRatingNote.trim() || null) : null,
+          customer_rating: stepStatus === 'done' ? stepCustomerRating : null,
+          customer_rating_note: stepStatus === 'done' ? (stepCustomerRatingNote.trim() || null) : null,
           updated_at: new Date().toISOString()
         })
         .eq('id', activeStep.id)
 
       if (error) throw error
+
+      // Clean up previous costs for this step to prevent duplication or stale entries
+      const { error: deleteCostErr } = await supabase
+        .from('herd_project_costs')
+        .delete()
+        .eq('step_id', activeStep.id)
+      
+      if (deleteCostErr) throw deleteCostErr
+
+      // Auto-generate costs for the used products
+      if (stepStatus === 'done' && stepProductsUsed.length > 0) {
+        const lotIds = stepProductsUsed.map(p => p.lot_id).filter(id => !!id)
+        let lotsWithCost: any[] = []
+        if (lotIds.length > 0) {
+          const { data } = await supabase
+            .from('stock_lots')
+            .select('id, cost_price')
+            .in('id', lotIds)
+          if (data) lotsWithCost = data
+        }
+
+        const costRows = stepProductsUsed.map(p => {
+          const lotRecord = lotsWithCost.find(l => l.id === p.lot_id)
+          const unitCost = lotRecord ? Number(lotRecord.cost_price || 0) : 0
+          return {
+            project_id: project.id,
+            step_id: activeStep.id,
+            cost_type: 'medicine',
+            product_id: p.product_id,
+            quantity: p.quantity,
+            unit_cost: unitCost,
+            amount: unitCost * p.quantity,
+            incurred_date: stepActualDate,
+            notes: `Sử dụng thuốc/vaccine trong bước: ${activeStep.step_name}`,
+            created_by: currentUser?.id
+          }
+        })
+
+        if (costRows.length > 0) {
+          const { error: costErr } = await supabase
+            .from('herd_project_costs')
+            .insert(costRows)
+          if (costErr) throw costErr
+        }
+      }
+
       setStepModalOpen(false)
       loadData()
     } catch (err) {
@@ -712,6 +874,56 @@ export default function HerdProjectDetailPage() {
     }
   }
 
+  // Save Manual Cost Handler
+  const handleSaveManualCost = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!project) return
+    try {
+      const { error } = await supabase
+        .from('herd_project_costs')
+        .insert({
+          project_id: project.id,
+          cost_type: costType,
+          product_id: (costType === 'product' || costType === 'medicine') && costProductId ? costProductId : null,
+          quantity: costQuantity,
+          unit_cost: costUnitCost,
+          amount: costQuantity * costUnitCost,
+          incurred_date: costIncurredDate || new Date().toISOString().split('T')[0],
+          notes: costNotes.trim() || null,
+          created_by: currentUser?.id
+        })
+
+      if (error) throw error
+      setCostModalOpen(false)
+      // Reset form states
+      setCostNotes('')
+      setCostQuantity(1)
+      setCostUnitCost(0)
+      setCostProductId('')
+      loadData()
+    } catch (err) {
+      console.error('Error saving manual cost:', err)
+      alert('Không thể lưu chi phí mới.')
+    }
+  }
+
+  // Delete Cost Handler
+  const handleDeleteCost = async (costId: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa khoản chi phí này?')) return
+    try {
+      const { error } = await supabase
+        .from('herd_project_costs')
+        .delete()
+        .eq('id', costId)
+
+      if (error) throw error
+      loadData()
+    } catch (err) {
+      console.error('Error deleting cost:', err)
+      alert('Không thể xóa chi phí.')
+    }
+  }
+
   // Mortality rate calculation
   const getMortalityRate = () => {
     if (!project || !outcome) return 0
@@ -783,8 +995,18 @@ export default function HerdProjectDetailPage() {
                 {STATUS_LABELS[project.status]}
               </span>
             </div>
-            <p className="text-body-md text-gray-400">
-              Trang trại: <strong className="text-gray-600">{project.customer?.farm_name || 'Khách lẻ'}</strong> | Quy mô: <strong className="text-gray-600">{project.head_count.toLocaleString()} con</strong> | Bắt đầu: <strong className="text-gray-600">{formatDate(project.start_date)}</strong>
+            <p className="text-body-md text-gray-400 flex flex-wrap gap-x-4 gap-y-1 items-center">
+              <span>Trang trại: <strong className="text-gray-600">{project.customer?.farm_name || 'Khách lẻ'}</strong></span>
+              <span>•</span>
+              <span>Khu vực: <strong className="text-gray-600">{viewMetrics?.region_name || 'Chưa gán'}</strong></span>
+              <span>•</span>
+              <span>Quy mô: <strong className="text-gray-600">{project.head_count.toLocaleString()} con</strong></span>
+              <span>•</span>
+              <span>Tuổi đàn: <strong className="text-gray-600">{viewMetrics?.age_days != null ? `${viewMetrics.age_days} ngày` : 'N/A'}</strong></span>
+              <span>•</span>
+              <span>Chi phí: <strong className="text-gray-600 tabular-nums">{formatVND(viewMetrics?.cost_to_date || 0)}</strong></span>
+              <span>•</span>
+              <span>Bắt đầu: <strong className="text-gray-650">{formatDate(project.start_date)}</strong></span>
             </p>
           </div>
 
@@ -956,13 +1178,53 @@ export default function HerdProjectDetailPage() {
                             </div>
                           )}
 
-                          {/* Action Button for Pending Steps */}
-                          {project.status === 'active' && step.status === 'pending' && (
+                          {/* Executor and Assigned user info */}
+                          {(step.assigned_to || (isStepDone && step.executor?.full_name)) && (
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-tiny text-gray-400 font-medium">
+                              {step.assigned_to && (
+                                <span>Giao cho: <strong className="text-gray-500">{vets.find(v => v.id === step.assigned_to)?.full_name || 'N/A'}</strong></span>
+                              )}
+                              {isStepDone && step.executor?.full_name && (
+                                <span>Thực hiện: <strong className="text-gray-500">{step.executor.full_name}</strong></span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Ratings for completed step */}
+                          {isStepDone && (step.manager_rating || step.customer_rating) && (
+                            <div className="bg-amber-50/10 border border-amber-100/50 rounded-lg p-2.5 space-y-1.5 text-tiny text-gray-500">
+                              {step.manager_rating && (
+                                <div className="flex items-start gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-gray-400">Đánh giá QL:</span>
+                                  <div className="flex text-amber-400 mt-0.5">
+                                    {[...Array(5)].map((_, i) => (
+                                      <Star key={i} size={10} fill={i < (step.manager_rating || 0) ? '#f59e0b' : 'none'} className={i < (step.manager_rating || 0) ? 'text-amber-450' : 'text-gray-300'} />
+                                    ))}
+                                  </div>
+                                  {step.manager_rating_note && <span className="italic text-gray-500">"{step.manager_rating_note}"</span>}
+                                </div>
+                              )}
+                              {step.customer_rating && (
+                                <div className="flex items-start gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-gray-400">Đánh giá KH:</span>
+                                  <div className="flex text-amber-400 mt-0.5">
+                                    {[...Array(5)].map((_, i) => (
+                                      <Star key={i} size={10} fill={i < (step.customer_rating || 0) ? '#f59e0b' : 'none'} className={i < (step.customer_rating || 0) ? 'text-amber-450' : 'text-gray-300'} />
+                                    ))}
+                                  </div>
+                                  {step.customer_rating_note && <span className="italic text-gray-500">"{step.customer_rating_note}"</span>}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action Button for Steps */}
+                          {project.status === 'active' && (step.status === 'pending' || isStepDone) && (
                             <button
                               onClick={() => handleOpenStepModal(step)}
-                              className="text-tiny font-bold text-blue-500 bg-blue-50 border border-blue-100 px-3 py-1 rounded hover:bg-blue-100 transition-all flex items-center gap-1 w-fit"
+                              className="text-tiny font-bold text-blue-500 bg-blue-50 border border-blue-100 px-3 py-1 rounded hover:bg-blue-100 transition-all flex items-center gap-1 w-fit mt-1"
                             >
-                              Thực hiện bước này
+                              {isStepDone ? 'Chỉnh sửa bước này' : 'Thực hiện bước này'}
                               <ArrowRight size={12} />
                             </button>
                           )}
@@ -1156,73 +1418,190 @@ export default function HerdProjectDetailPage() {
                   </div>
                 )}
 
-                {/* TAB 2: CHI PHÍ & LỢI NHUẬN (Sinh đơn tự động) */}
+                {/* TAB 2: CHI PHÍ & LỢI NHUẬN */}
                 {activeTab === 'chi-phi' && (
-                  <div className="space-y-6 flex-1 flex flex-col justify-center">
-                    {linkedOrder ? (
-                      <div className="space-y-4">
-                        <div className="bg-emerald-50/20 border border-emerald-100 rounded-xl p-5 space-y-3">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <p className="text-tiny font-bold text-emerald-700 uppercase tracking-wider">Đơn hàng liên kết phát sinh</p>
-                              <Link
-                                to={`/orders/${linkedOrder.id}`}
-                                className="text-body-lg font-bold text-blue-500 hover:underline flex items-center gap-1 mt-0.5"
-                              >
-                                {linkedOrder.order_code}
-                                <ArrowRight size={14} />
-                              </Link>
-                            </div>
-                            <span className="px-3 py-1 bg-emerald-500 text-white text-tiny font-bold rounded-lg uppercase shadow-sm">
-                              {linkedOrder.status === 'completed' ? 'Hoàn tất' : 'Đã xác nhận'}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4 border-t border-emerald-50 pt-3 text-body-md text-gray-600">
-                            <div>
-                              <span className="text-gray-400">Trị giá đơn hàng:</span>
-                              <p className="font-bold text-gray-700 text-body-lg mt-0.5">{formatVND(linkedOrder.grand_total)}</p>
-                            </div>
-                            <div>
-                              <span className="text-gray-400">Trạng thái thanh toán:</span>
-                              <p className={`font-semibold text-body-md mt-0.5 ${
-                                linkedOrder.payment_status === 'paid' ? 'text-emerald-600' : 'text-rose-500'
-                              }`}>
-                                {linkedOrder.payment_status === 'paid' ? 'Đã thu tiền' : 'Ghi nhận công nợ'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="bg-gray-25 border border-gray-100 rounded-xl p-5 text-body-md text-gray-500 text-center">
-                          Hóa đơn kỹ thuật này được tự động lập dựa trên lượng thuốc/vaccine thực tế tiêm cho đàn và phí dịch vụ điều trị của Bác sĩ.
-                        </div>
+                  <div className="space-y-6 flex-1 flex flex-col justify-start">
+                    {/* Cost & Revenue summary cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Total Cost */}
+                      <div className="bg-gray-25 border border-gray-100 p-5 rounded-xl shadow-sm space-y-1">
+                        <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider">Tổng chi phí</p>
+                        <p className="text-h2 font-bold text-rose-600 tabular-nums">
+                          {formatVND(costs.reduce((sum, c) => sum + Number(c.amount || 0), 0))}
+                        </p>
+                        <p className="text-[11px] text-gray-400">Tất cả chi phí đã phát sinh</p>
                       </div>
-                    ) : (
-                      <div className="text-center py-10 space-y-6 max-w-md mx-auto">
-                        <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mx-auto shadow-inner">
-                          <DollarSign size={32} />
-                        </div>
-                        <div className="space-y-1">
-                          <h3 className="font-bold text-body-lg text-gray-700">Chưa lập hóa đơn chi phí</h3>
-                          <p className="text-body-md text-gray-400">
-                            Hệ thống có thể tự động gộp các loại thuốc/vaccine đã dùng ở tất cả các bước của dự án để lập hóa đơn bán hàng cho khách hàng.
-                          </p>
-                        </div>
 
-                        {project.status === 'completed' ? (
+                      {/* Total Revenue */}
+                      <div className="bg-gray-25 border border-gray-100 p-5 rounded-xl shadow-sm space-y-1">
+                        <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider">Doanh thu kỹ thuật</p>
+                        <p className="text-h2 font-bold text-emerald-600 tabular-nums">
+                          {formatVND(outcome?.revenue || linkedOrder?.grand_total || 0)}
+                        </p>
+                        <p className="text-[11px] text-gray-400">
+                          {linkedOrder ? `Hóa đơn: ${linkedOrder.order_code}` : 'Chưa ghi nhận doanh thu'}
+                        </p>
+                      </div>
+
+                      {/* Profit */}
+                      {(() => {
+                        const totalCost = costs.reduce((sum, c) => sum + Number(c.amount || 0), 0)
+                        const revenue = outcome?.revenue || linkedOrder?.grand_total || 0
+                        const profit = revenue - totalCost
+                        const isProfit = profit >= 0
+                        return (
+                          <div className={`border p-5 rounded-xl shadow-sm space-y-1 ${
+                            isProfit ? 'bg-emerald-50/15 border-emerald-100' : 'bg-rose-50/15 border-rose-100'
+                          }`}>
+                            <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider">Lợi nhuận ròng</p>
+                            <p className={`text-h2 font-bold tabular-nums ${isProfit ? 'text-emerald-700' : 'text-rose-700'}`}>
+                              {formatVND(profit)}
+                            </p>
+                            <p className="text-[11px] text-gray-400">Doanh thu trừ chi phí</p>
+                          </div>
+                        )
+                      })()}
+                    </div>
+
+                    {/* Quick actions row */}
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4">
+                      <h3 className="font-bold text-body-lg text-gray-700">Chi tiết bảng kê chi phí</h3>
+                      
+                      <div className="flex gap-2">
+                        {project.status === 'completed' && !linkedOrder && (
                           <button
                             onClick={handleAutoGenerateOrder}
-                            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold text-body-md px-6 py-2.5 rounded-lg shadow-sm transition-all active:scale-95 flex items-center justify-center gap-2 mx-auto"
+                            className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-tiny px-3.5 h-9 rounded-lg shadow-sm transition-all flex items-center gap-1.5"
                           >
-                            <ShoppingBag size={18} />
-                            Sinh đơn hàng tự động
+                            <ShoppingBag size={14} />
+                            Sinh hóa đơn tự động
                           </button>
-                        ) : (
-                          <p className="text-tiny text-amber-600 font-semibold bg-amber-50 border border-amber-100 p-2.5 rounded-lg">
-                            ⚠️ Cần chuyển trạng thái dự án sang "Hoàn thành" (Completed) trước khi lập hóa đơn chi phí.
-                          </p>
                         )}
+                        {(userRole?.code === 'admin' || hasPermission('herd_projects.update')) && (
+                          <button
+                            onClick={() => {
+                              setCostIncurredDate(new Date().toISOString().split('T')[0])
+                              setCostType('other')
+                              setCostProductId('')
+                              setCostQuantity(1)
+                              setCostUnitCost(0)
+                              setCostNotes('')
+                              setCostModalOpen(true)
+                            }}
+                            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold text-tiny px-3.5 h-9 rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                          >
+                            <Plus size={14} />
+                            Ghi nhận chi phí
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Cost Table list */}
+                    {costs.length === 0 ? (
+                      <div className="text-center py-12 text-gray-400 italic">
+                        Chưa ghi nhận chi phí nào cho dự án này.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-gray-150 rounded-xl bg-gray-0 shadow-sm">
+                        <table className="w-full text-left border-collapse text-body-md">
+                          <thead>
+                            <tr className="bg-gray-25 text-gray-400 font-bold border-b border-gray-150 uppercase tracking-wider text-[10px]">
+                              <th className="px-4 py-3">Ngày phát sinh</th>
+                              <th className="px-4 py-3">Loại chi phí</th>
+                              <th className="px-4 py-3">Chi tiết / Sản phẩm</th>
+                              <th className="px-4 py-3 text-right">Số lượng</th>
+                              <th className="px-4 py-3 text-right">Đơn giá</th>
+                              <th className="px-4 py-3 text-right">Thành tiền</th>
+                              <th className="px-4 py-3">Ghi chú</th>
+                              <th className="px-4 py-3 text-center">Tác vụ</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 font-medium text-gray-700">
+                            {costs.map(c => (
+                              <tr key={c.id} className="hover:bg-gray-25/40 transition-colors">
+                                <td className="px-4 py-3 text-gray-500">{formatDate(c.incurred_date)}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`px-2 py-0.5 border text-[10px] font-bold rounded-md uppercase ${
+                                    COST_TYPE_COLORS[c.cost_type] || 'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {COST_TYPE_LABELS[c.cost_type] || c.cost_type}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 max-w-[200px] truncate">
+                                  {c.product?.name ? (
+                                    <div className="flex flex-col">
+                                      <span className="font-semibold text-gray-800">{c.product.name}</span>
+                                      <span className="text-[10px] text-gray-400 font-normal">Vật tư dùng ở bước</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-500">{COST_TYPE_LABELS[c.cost_type]}</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                  {Number(c.quantity).toLocaleString()} {c.product?.unit || ''}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">{formatVND(c.unit_cost)}</td>
+                                <td className="px-4 py-3 text-right font-bold text-gray-800 tabular-nums">
+                                  {formatVND(c.amount)}
+                                </td>
+                                <td className="px-4 py-3 text-gray-500 max-w-[220px] truncate" title={c.notes || ''}>
+                                  {c.notes || '—'}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  {c.step_id ? (
+                                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded cursor-not-allowed" title="Chi phí này tự động phát sinh từ việc hoàn thành bước kỹ thuật">
+                                      Tự động
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleDeleteCost(c.id)}
+                                      className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                                      title="Xóa chi phí thủ công"
+                                    >
+                                      <Trash size={15} />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Linked Order info box */}
+                    {linkedOrder && (
+                      <div className="bg-emerald-50/20 border border-emerald-100 rounded-xl p-5 space-y-3 mt-4">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-tiny font-bold text-emerald-700 uppercase tracking-wider">Đơn hàng liên kết phát sinh doanh thu</p>
+                            <Link
+                              to={`/orders/${linkedOrder.id}`}
+                              className="text-body-lg font-bold text-blue-500 hover:underline flex items-center gap-1 mt-0.5"
+                            >
+                              {linkedOrder.order_code}
+                              <ArrowRight size={14} />
+                            </Link>
+                          </div>
+                          <span className="px-3 py-1 bg-emerald-500 text-white text-tiny font-bold rounded-lg uppercase shadow-sm">
+                            {linkedOrder.status === 'completed' ? 'Hoàn tất' : 'Đã xác nhận'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 border-t border-emerald-50 pt-3 text-body-md text-gray-600">
+                          <div>
+                            <span className="text-gray-400">Trị giá đơn hàng:</span>
+                            <p className="font-bold text-gray-700 text-body-lg mt-0.5">{formatVND(linkedOrder.grand_total)}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Trạng thái thanh toán:</span>
+                            <p className={`font-semibold text-body-md mt-0.5 ${
+                              linkedOrder.payment_status === 'paid' ? 'text-emerald-600' : 'text-rose-500'
+                            }`}>
+                              {linkedOrder.payment_status === 'paid' ? 'Đã thu tiền' : 'Ghi nhận công nợ'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1340,6 +1719,21 @@ export default function HerdProjectDetailPage() {
                 </div>
               </div>
 
+              {/* Assigned To selection */}
+              <div className="space-y-1">
+                <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Người được giao thực hiện</label>
+                <select
+                  value={stepAssignedTo}
+                  onChange={e => setStepAssignedTo(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">-- Chưa gán người thực hiện --</option>
+                  {vets.map(v => (
+                    <option key={v.id} value={v.id}>{v.full_name}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Step Notes */}
               <div className="space-y-1">
                 <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ghi chú chi tiết</label>
@@ -1363,6 +1757,67 @@ export default function HerdProjectDetailPage() {
                   className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none placeholder-gray-400"
                 />
               </div>
+
+              {/* Rating columns for QL and KH */}
+              {stepStatus === 'done' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-3">
+                  {/* Manager Rating */}
+                  <div className="space-y-1.5 bg-gray-25/50 border border-gray-100 p-3 rounded-xl shadow-sm">
+                    <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Đánh giá của Quản lý</label>
+                    <div className="flex gap-1 text-gray-300">
+                      {[1, 2, 3, 4, 5].map(num => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => setStepManagerRating(num)}
+                          className="focus:outline-none"
+                        >
+                          <Star
+                            size={20}
+                            fill={num <= stepManagerRating ? '#f59e0b' : 'none'}
+                            className={num <= stepManagerRating ? 'text-amber-400' : 'text-gray-300'}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Ý kiến đánh giá của Quản lý..."
+                      value={stepManagerRatingNote}
+                      onChange={e => setStepManagerRatingNote(e.target.value)}
+                      className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Customer Rating */}
+                  <div className="space-y-1.5 bg-gray-25/50 border border-gray-100 p-3 rounded-xl shadow-sm">
+                    <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Đánh giá của Khách hàng</label>
+                    <div className="flex gap-1 text-gray-300">
+                      {[1, 2, 3, 4, 5].map(num => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => setStepCustomerRating(num)}
+                          className="focus:outline-none"
+                        >
+                          <Star
+                            size={20}
+                            fill={num <= stepCustomerRating ? '#f59e0b' : 'none'}
+                            className={num <= stepCustomerRating ? 'text-amber-400' : 'text-gray-300'}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Nhận xét từ Khách hàng..."
+                      value={stepCustomerRatingNote}
+                      onChange={e => setStepCustomerRatingNote(e.target.value)}
+                      className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Dynamic Products Used list */}
               {stepStatus === 'done' && (
@@ -1713,6 +2168,140 @@ export default function HerdProjectDetailPage() {
                   className="px-5 py-2 bg-blue-500 text-white font-semibold rounded-lg text-body-md hover:bg-blue-600 shadow-sm"
                 >
                   Lưu thay đổi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: THÊM CHI PHÍ THỦ CÔNG
+          ───────────────────────────────────────────────────────────── */}
+      {costModalOpen && (
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-0 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-body-lg text-gray-700">Ghi nhận chi phí phát sinh</h3>
+              <button onClick={() => setCostModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
+            </div>
+            
+            <form onSubmit={handleSaveManualCost} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {/* Incurred Date */}
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ngày phát sinh</label>
+                  <input
+                    type="date"
+                    value={costIncurredDate}
+                    onChange={e => setCostIncurredDate(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                {/* Cost Type Selection */}
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Loại chi phí</label>
+                  <select
+                    value={costType}
+                    onChange={e => {
+                      setCostType(e.target.value as any)
+                      setCostProductId('')
+                    }}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="breeding_stock">Con giống</option>
+                    <option value="medicine">Thuốc / Vaccine</option>
+                    <option value="feed">Thức ăn</option>
+                    <option value="product">Hàng hóa / Vật tư</option>
+                    <option value="labor">Nhân công</option>
+                    <option value="other">Chi phí khác</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Optional Product selection for products/medicine */}
+              {(costType === 'product' || costType === 'medicine') && (
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Chọn hàng hóa / vật tư</label>
+                  <select
+                    value={costProductId}
+                    onChange={e => setCostProductId(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    required
+                  >
+                    <option value="">-- Chọn sản phẩm --</option>
+                    {allProducts.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Quantity */}
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Số lượng</label>
+                  <input
+                    type="number"
+                    min={0.01}
+                    step="any"
+                    value={costQuantity || ''}
+                    onChange={e => setCostQuantity(Number(e.target.value))}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                {/* Unit Cost */}
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Đơn giá vốn (₫)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={costUnitCost || ''}
+                    onChange={e => setCostUnitCost(Number(e.target.value))}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Cost Notes */}
+              <div className="space-y-1">
+                <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ghi chú / Mô tả</label>
+                <textarea
+                  placeholder="Mô tả mục đích sử dụng chi phí..."
+                  value={costNotes}
+                  onChange={e => setCostNotes(e.target.value)}
+                  rows={3}
+                  className="w-full p-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none placeholder-gray-400"
+                />
+              </div>
+
+              {/* Total amount preview */}
+              <div className="bg-gray-25 p-3 rounded-lg border border-gray-150 flex justify-between items-center text-body-md">
+                <span className="font-semibold text-gray-400">Thành tiền dự kiến:</span>
+                <span className="font-bold text-rose-600 text-body-lg tabular-nums">
+                  {formatVND(costQuantity * costUnitCost)}
+                </span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setCostModalOpen(false)}
+                  className="px-4 py-2 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-500 hover:bg-gray-55"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-500 text-white font-semibold rounded-lg text-body-md hover:bg-blue-600 shadow-sm"
+                >
+                  Lưu chi phí
                 </button>
               </div>
             </form>

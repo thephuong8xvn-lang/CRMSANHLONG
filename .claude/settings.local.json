@@ -11,7 +11,20 @@
       "PowerShell(npm --version)",
       "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); cd E:\\\\CRMSANHLONG; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" install vite-plugin-pwa --save-dev 2>&1)",
       "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\",\"User\"\\); cd E:\\\\CRMSANHLONG; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 20)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(ls \"d:\\\\CRMSANHLONGVETCO\\\\docs\")",
+      "Bash(ls \"d:\\\\CRMSANHLONGVETCO\\\\roadmap_tasks\")",
+      "Bash(ls \"d:\\\\CRMSANHLONGVETCO\\\\.claude\")",
+      "Bash(python -c ' *)",
+      "Bash(echo \"TSC_EXIT=$?\")",
+      "Bash(npm run *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\({...p.dependencies,...p.devDependencies},null,1\\)\\)\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"console.log\\('exceljs', require\\('./package.json'\\).dependencies.exceljs\\)\")",
+      "Bash(xargs -I{} sh -c 'echo \"$\\(wc -c < \"{}\"\\) {}\"')",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

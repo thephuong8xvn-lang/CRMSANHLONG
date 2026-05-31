@@ -942,10 +942,10 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
   - `HerdProjectFormPage` → **tạo cơ sở + đàn inline** (loài/con giống/giá giống/ngày vào/dự kiến xuất/số lượng) standalone + **chọn thành viên** (đa chi nhánh + vai trò) → ghi herd_project_members.
   - `HerdProjectDetailPage` → tab **"Thành viên"** (component `HerdMembersSection.tsx`): thêm/đổi vai trò/gỡ, gate canManage (owner|admin|manage_members).
 
-**CÒN LẠI trong GĐ1 (chưa làm phiên này — wiring UI, DB đã sẵn cột):**
-- Tab Chi phí nối vào `herd_project_costs` (hiện đang dùng outcomes.cost); tổng "chi phí đến hiện tại".
-- Step modal: nhập `assigned_to` + đánh giá QL/khách (cột đã có); khi gắn vaccine→tạo dòng cost.
-- Overview detail dùng số liệu view mới (tuổi đàn/chi phí/hao hụt).
+**Đã hoàn thành (Phiên 2026-05-31 tiếp theo):**
+- Đã liên kết đầy đủ Tab Chi phí vào bảng `herd_project_costs` hiển thị danh sách chi tiết chi phí và các thẻ KPI tổng chi phí, doanh thu, lợi nhuận ròng.
+- Step modal: Hỗ trợ gán người thực hiện (`assigned_to`) và đánh giá QL/khách (số sao + ý kiến nhận xét). Khi hoàn thành bước có sử dụng thuốc/vaccine, hệ thống tự động sinh dòng chi phí thuốc dựa trên giá vốn (`cost_price`) của lô tương ứng.
+- Overview detail: Header trang hiển thị đầy đủ khu vực, tuổi đàn và tổng chi phí thời gian thực lấy từ view `herd_project_list_view`.
 
 ---
 
@@ -961,4 +961,8 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
   - **Trang Quản lý đàn** `HerdsManagePage.tsx` + route `/herd-projects/herds` (đặt trước `:id`): list+search+CRUD+toggle status+giá vật nuôi; tạo đàn (chọn KH→trại).
 - Tái dùng `src/components/SmartSearchSelect.tsx` (combobox lọc không dấu, cap 100).
 
-**Vẫn còn (GĐ sau)**: wiring tab Chi phí đầy đủ (CRUD chi phí khác) + đánh giá QL/khách theo task + overview detail dùng view mới.
+**Đã hoàn thành (Phiên 2026-05-31 tiếp theo):**
+- Tab Chi phí tích hợp hoàn chỉnh (bao gồm cả CRUD chi phí khác thủ công như nhân công, thức ăn, chi phí chung).
+- Đánh giá QL/KH và gán người thực hiện ở Step modal.
+- Overview detail tích hợp đầy đủ số liệu view mới.
+- Sửa lỗi tạo dự án chăn nuôi bị báo lỗi hệ thống: Sửa hàm trigger `public.fn_fill_org_from_owner()` để bắt lỗi `undefined_column` khi gán các trường `team_id`/`branch_id` vào bảng record không có cột đó (như `herd_projects` không có cột `branch_id`). Migration `20260610000000_fix-fill-org-trigger.sql` đã được tự động áp dụng lên remote database thành công.

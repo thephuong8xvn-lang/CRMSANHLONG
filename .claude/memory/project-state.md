@@ -111,6 +111,19 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - **`CashbookPage.tsx`**: `checkActiveSession` theo két; mở ca chặn két đã mở + gợi ý đầu ca + cảnh báo quỹ≠mặc định + `opened_by`; đóng ca có **bảng đối soát** (tồn dự kiến + chênh lệch live + CK tham khảo) + `closed_by`/`variance_reason` + danh mục lệch quỹ; thẻ ca hiện "Tồn quỹ hiện tại".
 - `tsc --noEmit` PASS.
 
+## 2026-05-31 (S4) — Hoàn thiện module Dự án Chăn nuôi (Tab Chi phí, Đánh giá, Overview)
+
+- **Chi phí & Lợi nhuận**: Tab Chi phí hoàn chỉnh liên kết bảng `herd_project_costs`. Tự động thêm chi phí vaccine/medicine (loại `medicine`) lấy theo đơn giá vốn (`cost_price`) của lô tương ứng từ database khi hoàn thành bước có sử dụng thuốc. Hỗ trợ CRUD chi phí thủ công (thức ăn, nhân công, chi phí khác) trực tiếp trên tab và hiển thị các khối KPI Doanh thu, Chi phí, Lợi nhuận ròng.
+- **Đánh giá & Phân công**: Step modal hỗ trợ gán người thực hiện (`assigned_to`) và đánh giá QL/KH khi hoàn thành (star rating + notes). Các đánh giá này được trực quan hóa trên checklist lịch trình chăn nuôi bên trái.
+- **Thống kê nâng cao**: Header trang chi tiết hiển thị live Khu vực, Tuổi đàn (ngày) và Tổng chi phí lấy trực tiếp từ view `herd_project_list_view`.
+- `tsc --noEmit` PASS.
+
+## 2026-05-31 (S4) — Sửa lỗi tạo dự án chăn nuôi (Trigger fill_org)
+
+- **Sửa lỗi cơ sở dữ liệu**: Sửa bug trigger `public.fn_fill_org_from_owner()` do cố gắng gán `NEW.branch_id` khi chèn/cập nhật vào bảng `herd_projects` (không có cột `branch_id`), gây ra lỗi `record "new" has no field "branch_id"`. Hàm trigger mới được bọc khối `BEGIN ... EXCEPTION WHEN undefined_column THEN ... END` để động hóa và bỏ qua lỗi nếu cột `branch_id` hoặc `team_id` không tồn tại trong bảng đích.
+- **Áp dụng Migration**: Đã repair các migration cũ trên bảng Remote history của Supabase bằng `npx supabase migration repair` và tự động push thành công migration `20260610000000_fix-fill-org-trigger.sql`.
+- **Cải tiến UI**: Thay đổi thông báo lỗi trong catch block của `HerdProjectFormPage.tsx` để hiển thị chi tiết thông báo lỗi thực tế từ cơ sở dữ liệu thay vì thông báo lỗi chung chung.
+
 ---
 
 ## Files quan trọng cần biết

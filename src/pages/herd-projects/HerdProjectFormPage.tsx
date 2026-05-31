@@ -373,9 +373,9 @@ export default function HerdProjectFormPage() {
         // Navigate to project detail page
         navigate(`/herd-projects/${newProj.id}`)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating herd project:', err)
-      alert('Đã xảy ra lỗi khi tạo dự án chăn nuôi.')
+      alert('Đã xảy ra lỗi khi tạo dự án chăn nuôi: ' + (err?.message || err?.details || JSON.stringify(err)))
     } finally {
       setLoading(false)
     }
