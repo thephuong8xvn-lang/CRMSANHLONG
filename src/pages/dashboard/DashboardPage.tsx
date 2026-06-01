@@ -4,19 +4,26 @@ import {
   Wallet,
   AlertTriangle,
   Package,
-  Info,
   Calendar,
   Receipt,
   Building2,
-  Boxes,
+  ClipboardList,
+  ArrowRight,
+  UserX,
+  Clock,
+  CalendarClock,
+  TrendingUp,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import Layout from '../../components/Layout'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useDashboardStats } from '../../hooks/queries/useDashboardStats'
-import { usePendingDisbursements, useTodayAppointments } from '../../hooks/queries/useDashboardLists'
+import { usePendingDisbursements, useTodayAppointments, useAtRiskRegulars, useUpcomingDebts } from '../../hooks/queries/useDashboardLists'
 import { useBranches } from '../../hooks/queries/useBranches'
+import { useUpcomingHerdTasks } from '../../hooks/queries/useHerdProjects'
+import { useExpiringLots, useExpiryBuckets, useReorderSuggestions, bucketForDays, DEFAULT_EXPIRY_COLORS } from '../../hooks/queries/useInventoryInsights'
+import { lunarLabel } from '../../lib/lunarDate'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -42,6 +49,14 @@ export default function DashboardPage() {
   const statsQuery   = useDashboardStats(!!profile?.id, effectiveBranchId)
   const disbursQuery = usePendingDisbursements(3, effectiveBranchId)
   const apptQuery    = useTodayAppointments(3, effectiveBranchId)
+  const herdTasksQuery = useUpcomingHerdTasks(7, !!profile?.id)
+  const canViewCustomers = hasPermission('customers.view_own') || hasPermission('customers.view_team') || hasPermission('customers.view_all')
+  const atRiskQuery = useAtRiskRegulars(10, !!profile?.id && canViewCustomers)
+  const upcomingDebtsQuery = useUpcomingDebts(10, 10, !!profile?.id && canViewCustomers)
+  const canViewInventory = hasPermission('inventory.view')
+  const expiringQuery = useExpiringLots(90, !!profile?.id && canViewInventory)
+  const expiryColorsQuery = useExpiryBuckets()
+  const reorderQuery = useReorderSuggestions({ coverDays: 30, minOrders: 3 }, !!profile?.id && canViewInventory)
 
   const stats = statsQuery.data
   const chartData = stats?.cashflow_6m ?? []
@@ -51,6 +66,15 @@ export default function DashboardPage() {
   const isError = statsQuery.isError
 
   const formatVND = (num: number) => formatCurrency(num)
+  const herdTasks = herdTasksQuery.data ?? []
+  const urgentHerdCount = herdTasks.filter(t => t.days_left <= 3).length
+  const taskDayLabel = (d: number) => d < 0 ? `Quá hạn ${Math.abs(d)}n` : d === 0 ? 'Hôm nay' : d === 1 ? 'Ngày mai' : `Còn ${d}n`
+  const atRisk = atRiskQuery.data ?? []
+  const upcomingDebts = upcomingDebtsQuery.data ?? []
+  const debtDayLabel = (d: number) => d < 0 ? `Quá hạn ${Math.abs(d)}n` : d === 0 ? 'Hôm nay' : `Còn ${d}n`
+  const expiringLots = expiringQuery.data ?? []
+  const expiryColors = expiryColorsQuery.data ?? DEFAULT_EXPIRY_COLORS
+  const reorderCount = (reorderQuery.data ?? []).filter(r => r.days_cover != null && r.days_cover <= 14).length
 
   const getGreeting = () => {
     const hour = new Date().getHours()
@@ -67,83 +91,6 @@ export default function DashboardPage() {
   const scopeLabel = effectiveBranchId
     ? `chi nhánh ${currentBranchName ?? ''}`.trim()
     : 'toàn hệ thống'
-
-  const renderRoleAlerts = () => {
-    if (userRole.code === 'sales') {
-      return (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
-          <Info className="text-blue-500 mt-0.5 flex-shrink-0" size={18} strokeWidth={1.5} />
-          <div>
-            <h4 className="font-semibold text-blue-700 text-body-md">Lưu ý cho Nhân viên kinh doanh</h4>
-            <p className="text-gray-500 text-tiny mt-1">Hãy tập trung chăm sóc các khách hàng có cảnh báo "Nguy cơ rời trại" và hỗ trợ kế toán đôn đốc công nợ sắp đến hạn thanh toán.</p>
-          </div>
-        </div>
-      )
-    }
-    if (userRole.code === 'accountant') {
-      return (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-          <AlertTriangle className="text-amber-600 mt-0.5 flex-shrink-0" size={18} strokeWidth={1.5} />
-          <div>
-            <h4 className="font-semibold text-amber-800 text-body-md">Nhắc nhở Kế toán</h4>
-            <p className="text-gray-500 text-tiny mt-1">Hiện có {stats?.overdue_debt_count ?? 0} khách hàng trễ hạn thanh toán. Hãy kiểm tra các phiếu chi chờ duyệt để đảm bảo dòng tiền được đối soát chính xác cuối ngày.</p>
-          </div>
-        </div>
-      )
-    }
-    if (userRole.code === 'branch_manager') {
-      return (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
-          <Building2 className="text-blue-500 mt-0.5 flex-shrink-0" size={18} strokeWidth={1.5} />
-          <div>
-            <h4 className="font-semibold text-blue-700 text-body-md">Tổng quan Quản lý chi nhánh</h4>
-            <p className="text-gray-500 text-tiny mt-1">Số liệu dưới đây chỉ tính trong phạm vi {scopeLabel}. Theo dõi doanh thu, công nợ quá hạn và phiếu chi chờ duyệt của chi nhánh bạn phụ trách.</p>
-          </div>
-        </div>
-      )
-    }
-    if (userRole.code === 'warehouse_keeper') {
-      return (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-          <Boxes className="text-amber-600 mt-0.5 flex-shrink-0" size={18} strokeWidth={1.5} />
-          <div>
-            <h4 className="font-semibold text-amber-800 text-body-md">Nhắc nhở Thủ kho</h4>
-            <p className="text-gray-500 text-tiny mt-1">Có {stats?.expiring_lots_count ?? 0} lô hàng sắp hết hạn trong 30 ngày tới. Hãy ưu tiên xuất các lô cận hạn (FEFO) và kiểm tra tồn kho an toàn.</p>
-          </div>
-        </div>
-      )
-    }
-    return null
-  }
-
-  // Bộ chọn / nhãn phạm vi chi nhánh
-  const renderBranchContext = () => (
-    <div className="mb-6 flex flex-wrap items-center gap-3 p-3 bg-gray-25 border border-gray-100 rounded-lg">
-      <div className="flex items-center gap-2 text-gray-500">
-        <Building2 size={16} className="text-blue-500" />
-        <span className="text-tiny font-semibold uppercase tracking-wide">Phạm vi dữ liệu</span>
-      </div>
-      {isAdmin ? (
-        <select
-          value={selectedBranchId ?? ''}
-          onChange={(e) => setSelectedBranchId(e.target.value || null)}
-          className="h-9 px-3 rounded-lg border border-gray-200 bg-gray-0 text-body-md font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
-        >
-          <option value="">Tất cả chi nhánh</option>
-          {branches.map(b => (
-            <option key={b.id} value={b.id}>{b.name}</option>
-          ))}
-        </select>
-      ) : (
-        <span className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-body-md font-semibold">
-          {currentBranchName ?? 'Chưa gán chi nhánh'}
-        </span>
-      )}
-      <span className="text-tiny text-gray-400">
-        Đang xem số liệu {scopeLabel}
-      </span>
-    </div>
-  )
 
   // Skeleton cho lần tải đầu — mượt hơn spinner toàn trang
   const renderSkeleton = () => (
@@ -179,36 +126,239 @@ export default function DashboardPage() {
   return (
     <Layout activeMenu="Bảng điều khiển">
       <div className="p-4 md:p-10 max-w-[1600px] w-full mx-auto">
-        {/* Welcome Header */}
-        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-h1 font-semibold text-gray-700">{getGreeting()}, {profile?.full_name || 'Quản trị viên'}</h2>
-            <p className="text-body-md text-gray-400 mt-1">
-              Đây là tóm tắt hoạt động {scopeLabel} hôm nay.
-            </p>
+        {/* Welcome Header — gộp gọn 1 hàng: lời chào + chi nhánh + POS + ngày (kèm âm lịch) */}
+        <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-h2 font-semibold text-gray-700">{getGreeting()}, {profile?.full_name || 'Quản trị viên'}</h2>
+            {isAdmin ? (
+              <select
+                value={selectedBranchId ?? ''}
+                onChange={(e) => setSelectedBranchId(e.target.value || null)}
+                className="h-9 px-3 rounded-lg border border-gray-200 bg-gray-0 text-tiny font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                title="Phạm vi dữ liệu"
+              >
+                <option value="">Tất cả chi nhánh</option>
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-tiny font-semibold">
+                <Building2 size={14} />{currentBranchName ?? 'Chưa gán chi nhánh'}
+              </span>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
             <button
               onClick={() => navigate('/orders/pos')}
-              className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white px-5 h-11 rounded-lg font-bold text-body-md active:scale-95 transition-all flex items-center gap-2 shadow-md"
+              className="bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white px-4 h-10 rounded-lg font-bold text-tiny active:scale-95 transition-all flex items-center gap-1.5 shadow-md"
             >
-              <Receipt size={18} strokeWidth={2} />
+              <Receipt size={16} strokeWidth={2} />
               <span>Bán hàng POS</span>
             </button>
-
-            <div className="bg-gray-0 border border-gray-100 rounded-lg px-4 py-2.5 flex items-center gap-2">
-              <Calendar size={16} className="text-blue-500" />
-              <span className="text-body-md font-semibold tabular-nums">
-                {new Date().toLocaleDateString('vi-VN', {
-                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-                })}
+            <div className="bg-gray-0 border border-gray-100 rounded-lg px-3 h-10 flex items-center gap-2">
+              <Calendar size={15} className="text-blue-500" />
+              <span className="text-tiny font-semibold tabular-nums text-gray-700">
+                {new Date().toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })}
               </span>
+              <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5">{lunarLabel()}</span>
             </div>
           </div>
         </div>
 
-        {renderBranchContext()}
-        {renderRoleAlerts()}
+        {/* ── Dải Công việc chăn nuôi 7 ngày — trên cùng, trực quan, cho mọi user ── */}
+        {herdTasksQuery.isLoading ? (
+          <div className="mb-8 bg-gray-0 border border-gray-100 rounded-lg p-5 animate-pulse">
+            <div className="h-4 w-56 bg-gray-100 rounded mb-4" />
+            <div className="flex gap-3 overflow-hidden">
+              {[0, 1, 2, 3].map(i => <div key={i} className="h-20 w-56 bg-gray-50 rounded-lg flex-shrink-0" />)}
+            </div>
+          </div>
+        ) : herdTasks.length > 0 ? (
+          <div className="mb-8 bg-gray-0 border border-gray-100 rounded-lg shadow-sm overflow-hidden">
+            <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
+              <h3 className="text-h2 font-semibold text-gray-700 flex items-center gap-2">
+                <ClipboardList size={20} className="text-blue-500" /> Công việc chăn nuôi 7 ngày
+                {urgentHerdCount > 0 && (
+                  <span className="text-tiny font-bold px-2 py-0.5 rounded-full bg-red-50 text-danger-600 border border-red-100">
+                    {urgentHerdCount} việc gấp
+                  </span>
+                )}
+              </h3>
+              <button
+                onClick={() => navigate('/herd-projects')}
+                className="text-blue-500 text-body-md font-semibold hover:underline flex-shrink-0"
+              >
+                Tất cả
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[13px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 uppercase text-[10px] font-bold tracking-wider whitespace-nowrap">
+                    <th className="py-2.5 px-5">Công việc</th>
+                    <th className="py-2.5 px-3">Dự án</th>
+                    <th className="py-2.5 px-3">Khách hàng</th>
+                    <th className="py-2.5 px-3">Người phụ trách</th>
+                    <th className="py-2.5 px-3 text-right">Hạn</th>
+                    <th className="py-2.5 px-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {herdTasks.slice(0, 10).map((t) => {
+                    const urgent = t.days_left <= 3
+                    return (
+                      <tr
+                        key={t.step_id}
+                        onClick={() => navigate(`/herd-projects/${t.project_id}`)}
+                        className="hover:bg-blue-50/30 cursor-pointer transition-colors group"
+                      >
+                        <td className="py-3 px-5">
+                          <span className={`font-bold ${urgent ? 'text-danger-600' : 'text-blue-700'}`}>{t.step_name}</span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="font-semibold text-gray-700 line-clamp-1">{t.project_name}</div>
+                          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{t.project_code}</div>
+                        </td>
+                        <td className="py-3 px-3 text-gray-600 max-w-[160px] truncate">{t.customer_name || 'Khách lẻ'}</td>
+                        <td className="py-3 px-3 text-gray-600 max-w-[140px] truncate">{t.assigned_name || '—'}</td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${urgent ? 'bg-red-50 text-danger-600 border-red-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                            {taskDayLabel(t.days_left)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right"><ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500" /></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+
+        {/* ── 2 khối điều hành: Khách quen chưa mua lại + Công nợ sắp đến hạn ── */}
+        {canViewCustomers && (atRisk.length > 0 || upcomingDebts.length > 0) && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {/* Khách quen chưa mua lại */}
+            {atRisk.length > 0 && (
+              <section className="bg-gray-0 border border-gray-100 rounded-lg shadow-sm overflow-hidden">
+                <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
+                  <h3 className="text-h2 font-semibold text-gray-700 flex items-center gap-2">
+                    <UserX size={18} className="text-amber-500" /> Khách quen chưa mua lại
+                  </h3>
+                  <button onClick={() => navigate('/reports/customer-profile')} className="text-blue-500 text-body-md font-semibold hover:underline flex-shrink-0">Xem tất cả</button>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {atRisk.map((c) => (
+                    <button key={c.id} onClick={() => navigate(`/customers/${c.id}`)}
+                      className="w-full text-left flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-25 transition-colors">
+                      <div className="min-w-0">
+                        <p className="text-body-md font-semibold text-gray-700 truncate">{c.farm_name}</p>
+                        <p className="text-tiny text-gray-400 truncate">{c.code || ''}{c.code ? ' · ' : ''}{c.orders_count} đơn · mua cuối {c.daysSince} ngày trước</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {c.total_debt > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-danger-600 border border-red-100">Nợ {formatVND(c.total_debt)}</span>
+                        )}
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100 whitespace-nowrap">{c.daysSince} ngày</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Công nợ sắp đến hạn (10 ngày) */}
+            {upcomingDebts.length > 0 && (
+              <section className="bg-gray-0 border border-gray-100 rounded-lg shadow-sm overflow-hidden">
+                <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
+                  <h3 className="text-h2 font-semibold text-gray-700 flex items-center gap-2">
+                    <Clock size={18} className="text-danger-500" /> Công nợ sắp đến hạn (10 ngày)
+                  </h3>
+                  {hasPermission('reports.debt') && (
+                    <button onClick={() => navigate('/reports/debt')} className="text-blue-500 text-body-md font-semibold hover:underline flex-shrink-0">Báo cáo</button>
+                  )}
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {upcomingDebts.map((d) => {
+                    const urgent = d.daysLeft <= 3
+                    return (
+                      <button key={d.id} onClick={() => navigate(`/customers/${d.customer_id}`)}
+                        className="w-full text-left flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-25 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-body-md font-semibold text-gray-700 truncate">{d.farm_name}</p>
+                          <p className={`text-tiny font-bold tabular-nums ${urgent ? 'text-danger-600' : 'text-blue-600'}`}>{formatVND(d.amount)}</p>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 whitespace-nowrap ${urgent ? 'bg-red-50 text-danger-600 border-red-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                          {debtDayLabel(d.daysLeft)}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* ── Hàng sắp hết hạn (3 tháng) + alert gợi ý đặt hàng ── */}
+        {canViewInventory && (expiringLots.length > 0 || reorderCount > 0) && (
+          <div className="mb-8 space-y-3">
+            {reorderCount > 0 && (
+              <button onClick={() => navigate('/inventory/reorder')}
+                className="w-full flex items-center justify-between gap-2 px-5 py-3 bg-blue-50/60 border border-blue-100 rounded-lg hover:bg-blue-50 transition-colors">
+                <span className="flex items-center gap-2 text-body-md font-semibold text-blue-700">
+                  <TrendingUp size={18} /> {reorderCount} mặt hàng bán chạy sắp hết — nên đặt thêm
+                </span>
+                <ArrowRight size={16} className="text-blue-500" />
+              </button>
+            )}
+            {expiringLots.length > 0 && (
+              <div className="bg-gray-0 border border-gray-100 rounded-lg shadow-sm overflow-hidden">
+                <div className="flex justify-between items-center px-5 py-3.5 border-b border-gray-100">
+                  <h3 className="text-h2 font-semibold text-gray-700 flex items-center gap-2">
+                    <CalendarClock size={20} className="text-amber-500" /> Hàng sắp hết hạn (3 tháng)
+                    <span className="text-tiny font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{expiringLots.length} lô</span>
+                  </h3>
+                  <button onClick={() => navigate('/inventory/expiry')} className="text-blue-500 text-body-md font-semibold hover:underline flex-shrink-0">Tất cả</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[13px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 uppercase text-[10px] font-bold tracking-wider whitespace-nowrap">
+                        <th className="py-2.5 px-5">Sản phẩm</th>
+                        <th className="py-2.5 px-3">Kho</th>
+                        <th className="py-2.5 px-3">Lô</th>
+                        <th className="py-2.5 px-3 text-right">SL tồn</th>
+                        <th className="py-2.5 px-3 text-center">Còn lại</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {expiringLots.slice(0, 8).map((l) => {
+                        const c = expiryColors[bucketForDays(l.daysLeft).key] || '#64748b'
+                        return (
+                          <tr key={l.lot_id} onClick={() => navigate('/inventory/expiry')} className="hover:bg-gray-25 cursor-pointer transition-colors">
+                            <td className="py-3 px-5">
+                              <div className="font-semibold text-gray-700 truncate max-w-[260px]">{l.product_name}</div>
+                              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{l.sku}</div>
+                            </td>
+                            <td className="py-3 px-3 text-gray-600 max-w-[120px] truncate">{l.warehouse_name}</td>
+                            <td className="py-3 px-3 text-gray-600">{l.lot_number}</td>
+                            <td className="py-3 px-3 text-right tabular-nums font-semibold text-gray-700">{l.qty.toLocaleString('vi-VN')} {l.unit}</td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border" style={{ color: c, borderColor: c + '55', backgroundColor: c + '14' }}>
+                                {l.daysLeft < 0 ? `Hết hạn ${Math.abs(l.daysLeft)}n` : l.daysLeft === 0 ? 'Hôm nay' : `Còn ${l.daysLeft} ngày`}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {isError ? (
           <div className="p-8 bg-red-50 border border-red-100 rounded-lg flex flex-col items-center text-center gap-3">

@@ -137,6 +137,7 @@ export default function ManageHerdCatalogModal({ onClose }: Props) {
                   <div className="flex-1 min-w-0">
                     <span className="font-semibold text-gray-700 text-body-md">{r.name}</span>
                     {tab === 'species' && r.category && <span className="ml-2 text-[11px] text-gray-400">({r.category})</span>}
+                    {tab === 'types' && r.species_id && <span className="ml-2 text-[11px] text-blue-500">· {speciesActive.find(s => s.id === r.species_id)?.name || 'Vật nuôi'}</span>}
                     {!r.is_active && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Ngừng</span>}
                   </div>
                   <button onClick={() => toggle(r.id, r.is_active)} title={r.is_active ? 'Đang dùng' : 'Đang ngừng'}

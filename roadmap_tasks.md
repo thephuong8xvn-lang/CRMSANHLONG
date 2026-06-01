@@ -966,3 +966,60 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - Đánh giá QL/KH và gán người thực hiện ở Step modal.
 - Overview detail tích hợp đầy đủ số liệu view mới.
 - Sửa lỗi tạo dự án chăn nuôi bị báo lỗi hệ thống: Sửa hàm trigger `public.fn_fill_org_from_owner()` để bắt lỗi `undefined_column` khi gán các trường `team_id`/`branch_id` vào bảng record không có cột đó (như `herd_projects` không có cột `branch_id`). Migration `20260610000000_fix-fill-org-trigger.sql` đã được tự động áp dụng lên remote database thành công.
+
+---
+
+### 🐔 Phiên 2026-06-01 — Herd-Projects: Hoàn thiện thao tác (lịch trình, sửa/xóa, view bảng)
+
+**Đã làm (tsc --noEmit EXIT=0; KHÔNG cần migration — tái dùng RLS sẵn có):**
+
+- **Trang danh sách** (`HerdProjectListPage.tsx`):
+  - Nút **"Tạo đàn"** cạnh "Quản lý đàn"/"Quản lý danh mục" → `/herd-projects/herds?new=1` (auto mở modal tạo đàn).
+  - **Toggle Card ↔ Bảng** (lưu `localStorage` `herd_view_mode`). View bảng đủ cột: Mã/Tên · Khách hàng · Vật nuôi · Khu vực · Tổng đàn · Tuổi đàn · Chi phí · Hao hụt · Người phụ trách · Trạng thái; click hàng mở chi tiết; giữ badge "Quá hạn".
+- **Trang quản lý đàn** (`HerdsManagePage.tsx`): đọc `?new=1` (`useSearchParams`) tự mở modal tạo đàn rồi xóa param.
+- **Trang chi tiết** (`HerdProjectDetailPage.tsx`) — thay đổi chính:
+  - **Sửa dự án (giới hạn)**: nút "Sửa" (gate `hasPermission('herd_projects.update')`) → modal sửa `name/owner/project_type/region/head_count/start_date/end_date/notes`. KHÔNG đụng customer/farm/herd (bảo toàn chi phí đã ghi).
+  - **Lịch trình bước — CRUD + đổi thứ tự** (tính năng cốt lõi): nút "Thêm bước" (kể cả khi lịch trình rỗng); mỗi bước có nút Lên/Xuống (hoán đổi `sort_order`) + Xóa (dọn chi phí auto gắn `step_id` trước khi xóa); modal cập nhật bước mở rộng cho sửa `step_name` + `planned_date` + `assigned_to` (đổi người làm vaccine). Thao tác bước cho phép khi `status ∈ {draft, active, on_hold}` (trước đây chỉ `active`).
+  - **Xóa dự án**: nút "Xóa dự án" chỉ hiện khi `status ∈ {draft, cancelled}` + gate `hasPermission('herd_projects.delete')`, confirm mạnh, hard delete (CASCADE bước/chi phí/thành viên/kết quả). `active/on_hold/completed` giữ "Hủy".
+- **Danh mục** (`ManageHerdCatalogModal.tsx`): tab "Loại kế hoạch" hiển thị tên loài gắn kèm (`species_id`).
+
+**Phân quyền/bảo mật**: nút UI gate bằng permission; RLS sẵn có là lớp thực thi thật (`herd_proj_update`/`herd_proj_delete`, `herd_steps_manage`, `herd_costs_manage` qua `fn_can_edit_herd_project`). Lưu ý: RLS `herd_proj_delete` chỉ cho admin/owner/manager-member — branch_manager/team_lead có permission nhưng không sở hữu sẽ bị RLS chặn (hiện alert lỗi thân thiện).
+
+---
+
+### 🐔 Phiên 2026-06-01 (tiếp) — Herd-Projects: Tổng quan vật nuôi + Công việc 7 ngày + Tạo trại
+
+**Đã làm (tsc --noEmit EXIT=0):**
+
+- **DB** — `supabase/migrations/20260611000000_herd_overview.sql` (⚠️ **CẦN APPLY REMOTE** — môi trường agent không có SUPABASE_ACCESS_TOKEN; apply bằng `supabase db push` với token, hoặc dán SQL vào Supabase SQL editor):
+  - RPC `fn_upcoming_herd_tasks(p_days int)` `SECURITY DEFINER` + `GRANT authenticated` + guard `fn_is_active()`: trả các bước `pending` có `planned_date <= today+N` (gồm quá hạn) của dự án `active`; field an toàn (không chi phí). Cho **mọi user** xem để nhắc nhau.
+- **Hooks** (`src/hooks/queries/useHerdProjects.ts`) + keys (`src/lib/queryClient.ts`): `useUpcomingHerdTasks(days)` (gọi RPC), `useHerdOverviewStats()` (đọc `herd_project_list_view` RLS-scoped → activeCount/totalHeadActive/memberTotal/avgMortality), `useHerdCustomerFeedback(limit)` (gộp `herd_project_outcomes` rating+comment & `herd_project_steps.customer_rating`).
+- **Trang `/herd-projects`** (`HerdProjectListPage.tsx`): giữ header + 4 nút; thêm **Overview** = 4 KPI card + "Công việc 7 ngày tới" (≤3 ngày/quá hạn = đỏ, 4–7 = xanh, click→chi tiết) + "Ý kiến khách hàng gần đây". **Bỏ toggle Card/Bảng**; danh sách dự án **nhóm theo Khách hàng** (mỗi KH 1 section, bảng list, click→chi tiết). Giữ filter + phân trang (nhóm trong trang).
+- **Dashboard chính** (`DashboardPage.tsx`): section "Công việc chăn nuôi 7 ngày" (cột phải) cho **mọi user** (RPC), màu đỏ/xanh theo hạn, nút "Tất cả"→`/herd-projects`. Graceful nếu RPC chưa apply (hiện rỗng).
+- **Modal Tạo đàn** (`HerdsManagePage.tsx`): thêm **tạo Cơ sở/Trại inline** (toggle "+ Tạo trại mới" ↔ "Chọn có sẵn"); khi Lưu insert `farms{customer_id,name}` rồi gán `farm_id` cho đàn.
+
+**Bảo mật**: RPC chỉ lộ field không nhạy cảm; Overview page chạy RLS-scoped (mỗi người chỉ thấy phạm vi dự án mình). Tạo trại dùng RLS farms sẵn có.
+
+- **(tiếp) Bố cục Dashboard**: chuyển widget "Công việc chăn nuôi 7 ngày" từ cuối cột phải → **full-width trên cùng** (trên cụm KPI tài chính, sau role alerts), **dạng bảng/list** (cột: Công việc/Dự án/Khách hàng/Người phụ trách/Hạn), **tối đa 10** dòng, dòng gấp ≤3 ngày/quá hạn chữ **đỏ** else **xanh**, badge "N việc gấp", click dòng→chi tiết, **ẩn khi rỗng**. Chỉ sửa `DashboardPage.tsx`, không đụng DB/RLS. tsc PASS.
+
+### 📊 Phiên 2026-06-01 (tiếp) — Tinh gọn header Dashboard + 2 widget điều hành
+
+**Đã làm (tsc EXIT=0, KHÔNG migration):**
+- **Header gọn 1 hàng** (`DashboardPage.tsx`): lời chào + selector/chip chi nhánh + nút POS + ô ngày kèm **âm lịch**; **bỏ** subtitle "Đây là tóm tắt…", band "Phạm vi dữ liệu", và **toàn bộ band nhắc nhở vai trò** (`renderRoleAlerts`/`renderBranchContext` đã xóa).
+- **Âm lịch** `src/lib/lunarDate.ts` (MỚI): thuật toán Hồ Ngọc Đức self-contained (`solarToLunar`, `lunarLabel` → "ÂL d/m"). Không thêm dependency.
+- **2 khối điều hành mới** (dưới dải chăn nuôi, grid 2 cột, gate `customers.view_*`, ẩn khi rỗng):
+  - "Khách quen chưa mua lại" — `useAtRiskRegulars` (`customer_summary_view`: orders_count≥3 & last_order_at<today-30d, RLS-scoped) → click `/customers/:id`, nút "Xem tất cả"→`/reports/customer-profile`.
+  - "Công nợ sắp đến hạn (10 ngày)" — `useUpcomingDebts` (`customer_debts` is_settled=false & due_date≤today+10, gồm quá hạn, RLS-scoped) → số tiền + badge hạn (đỏ ≤3 ngày/quá hạn), click `/customers/:customer_id`, nút "Báo cáo"→`/reports/debt` (gate `reports.debt`).
+- Hooks trong `useDashboardLists.ts`, keys trong `queryClient.ts`. **Bảo mật**: dùng RLS thật (không SECURITY DEFINER) vì dữ liệu nợ/KH nhạy cảm. Lưu ý: 2 khối chạy theo RLS-scope, bộ chọn chi nhánh admin không siết thêm (view/bảng không có branch_id riêng).
+
+### 📦 Phiên 2026-06-01 (tiếp) — Products: gọn toolbar + Hạn sử dụng + Gợi ý đặt hàng
+
+**Đã làm (tsc EXIT=0):**
+- **DB** `supabase/migrations/20260612000000_product_expiry_reorder.sql` (⚠️ **CẦN APPLY REMOTE** — agent không có token): view `product_reorder_view` (security_invoker; sold_30d/90d/orders_90d từ order_lines+orders status confirmed→completed, soh từ stock_lots, avg_weekly, days_cover); seed `system_settings.expiry_buckets` + policy `system_settings_select_active` (đọc cho user active).
+- **Hooks** `src/hooks/queries/useInventoryInsights.ts` (MỚI): `useExpiringLots(maxDays)`, `useReorderSuggestions({coverDays,minOrders})`, `useExpiryBuckets`/`useSaveExpiryBuckets`, hằng số `EXPIRY_BUCKETS` (d10/m1/m3/m6/y1) + `bucketForDays`. Keys `qk.inventory.*`.
+- **Trang mới**: `/inventory/expiry` (`ExpiryPage.tsx` — tab mốc 10n/1/3/6 tháng/1 năm, màu theo system_settings, admin có nút "Cấu hình màu", giá trị tồn) + `/inventory/reorder` (`ReorderPage.tsx` — bán 30/90n, TB/tuần, days_cover, gợi ý đặt theo coverDays). Route + nav "Kho & Hàng hóa" (Layout). Gate `inventory.view`.
+- **Dashboard**: widget "Hàng sắp hết hạn (3 tháng)" (màu bucket, link `/inventory/expiry`) + alert "N mặt hàng bán chạy sắp hết" → `/inventory/reorder`. Gate `inventory.view`, ẩn khi rỗng.
+- **ProductListPage**: gọn toolbar — dropdown "Quản lý danh mục" (Nhóm/Thương hiệu/ĐVT) + Import + Xuất file đưa lên top header cạnh "Bảng giá"/"Thêm mới"; gỡ nút ⚙ ở sidebar + Import/Export ở toolbar bảng. Sidebar còn lọc + trạng thái.
+- **Bảo mật**: RLS thật (reorder view security_invoker, stock_lots/order_lines scoped); cấu hình màu ghi chỉ admin.
+- **(tiếp) ProductListPage — bỏ sidebar trái**: xóa hẳn aside lọc (Nhóm/Thương hiệu/ĐVT/Trạng thái) → bảng **full-width**. Bộ lọc chuyển thành 3 select (Nhóm SP / Thương hiệu / Trạng thái) + "Xóa lọc" trên **toolbar bảng** (desktop `hidden md:flex`); giữ nút "Lọc" + panel mobile. Quản lý danh mục vẫn ở dropdown header. Chỉ UI, tsc PASS.
+- **Fix migration 20260612**: bảng `system_settings` chưa từng được CREATE (chỉ tham chiếu trong trigger loyalty) → đã thêm `CREATE TABLE IF NOT EXISTS public.system_settings(key PK, value jsonb, updated_at)` + RLS (select active / manage admin) + grant trước seed. Re-run toàn file (idempotent).

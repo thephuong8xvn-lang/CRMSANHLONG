@@ -200,3 +200,122 @@ export function useHerdProjectCosts(projectId: string, enabled = true) {
     },
   })
 }
+
+// ── Overview: công việc sắp tới (RPC SECURITY DEFINER — mọi user thấy) ──
+export interface UpcomingHerdTask {
+  step_id: string
+  project_id: string
+  project_code: string
+  project_name: string
+  customer_name: string | null
+  step_name: string
+  planned_date: string
+  assigned_to: string | null
+  assigned_name: string | null
+  days_left: number
+}
+
+export function useUpcomingHerdTasks(days = 7, enabled = true) {
+  return useQuery({
+    queryKey: qk.herdProjects.upcomingTasks(days),
+    enabled,
+    queryFn: async (): Promise<UpcomingHerdTask[]> => {
+      const { data, error } = await supabase.rpc('fn_upcoming_herd_tasks', { p_days: days })
+      if (error) { logger.error('[useUpcomingHerdTasks]', error.message); throw error }
+      return (data ?? []) as UpcomingHerdTask[]
+    },
+    staleTime: 2 * 60_000,
+  })
+}
+
+// ── Overview: thống kê tổng quan (RLS scoped qua view) ──
+export interface HerdOverviewStats {
+  activeCount: number
+  totalHeadActive: number
+  memberTotal: number
+  avgMortality: number
+  projectTotal: number
+}
+
+export function useHerdOverviewStats(enabled = true) {
+  return useQuery({
+    queryKey: qk.herdProjects.overview,
+    enabled,
+    queryFn: async (): Promise<HerdOverviewStats> => {
+      const { data, error } = await supabase
+        .from('herd_project_list_view')
+        .select('status, head_count, member_count, mortality_rate')
+      if (error) { logger.error('[useHerdOverviewStats]', error.message); throw error }
+      const rows = (data ?? []) as { status: string; head_count: number; member_count: number; mortality_rate: number }[]
+      const active = rows.filter(r => r.status === 'active')
+      const mortalityVals = rows.filter(r => Number(r.mortality_rate) > 0).map(r => Number(r.mortality_rate))
+      return {
+        projectTotal: rows.length,
+        activeCount: active.length,
+        totalHeadActive: active.reduce((s, r) => s + (r.head_count || 0), 0),
+        memberTotal: rows.reduce((s, r) => s + (r.member_count || 0), 0),
+        avgMortality: mortalityVals.length ? Number((mortalityVals.reduce((s, v) => s + v, 0) / mortalityVals.length).toFixed(2)) : 0,
+      }
+    },
+    staleTime: 2 * 60_000,
+  })
+}
+
+// ── Overview: ý kiến khách hàng (gộp outcomes hoàn thành + đánh giá theo bước) ──
+export interface HerdFeedbackItem {
+  id: string
+  source: 'outcome' | 'step'
+  rating: number
+  comment: string
+  projectId: string
+  projectName: string
+  customerName: string | null
+  at: string
+}
+
+export function useHerdCustomerFeedback(limit = 6, enabled = true) {
+  return useQuery({
+    queryKey: qk.herdProjects.feedback(limit),
+    enabled,
+    queryFn: async (): Promise<HerdFeedbackItem[]> => {
+      const [outRes, stepRes] = await Promise.all([
+        supabase
+          .from('herd_project_outcomes')
+          .select('id, project_id, notes, created_at, project:herd_projects(name, customer:customers(farm_name))')
+          .order('created_at', { ascending: false })
+          .limit(limit),
+        supabase
+          .from('herd_project_steps')
+          .select('id, project_id, step_name, customer_rating, customer_rating_note, updated_at, project:herd_projects(name, customer:customers(farm_name))')
+          .not('customer_rating', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(limit),
+      ])
+      if (outRes.error) logger.error('[useHerdCustomerFeedback/out]', outRes.error.message)
+      if (stepRes.error) logger.error('[useHerdCustomerFeedback/step]', stepRes.error.message)
+
+      const items: HerdFeedbackItem[] = []
+      for (const o of (outRes.data ?? []) as any[]) {
+        let rating = 0, comment = ''
+        try { const j = JSON.parse(o.notes || '{}'); rating = Number(j.rating) || 0; comment = j.comment || '' } catch { /* ignore */ }
+        if (rating > 0 || comment) {
+          items.push({
+            id: `out-${o.id}`, source: 'outcome', rating, comment,
+            projectId: o.project_id, projectName: o.project?.name || '',
+            customerName: o.project?.customer?.farm_name ?? null, at: o.created_at,
+          })
+        }
+      }
+      for (const s of (stepRes.data ?? []) as any[]) {
+        items.push({
+          id: `step-${s.id}`, source: 'step', rating: Number(s.customer_rating) || 0,
+          comment: s.customer_rating_note || s.step_name || '',
+          projectId: s.project_id, projectName: s.project?.name || '',
+          customerName: s.project?.customer?.farm_name ?? null, at: s.updated_at,
+        })
+      }
+      return items.sort((a, b) => (b.at || '').localeCompare(a.at || '')).slice(0, limit)
+    },
+    staleTime: 2 * 60_000,
+  })
+}

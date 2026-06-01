@@ -54,6 +54,7 @@ export default function ProductListPage() {
   const [isManageBrandsOpen, setIsManageBrandsOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isManageUnitsOpen, setIsManageUnitsOpen] = useState(false)
+  const [catMenuOpen, setCatMenuOpen] = useState(false)
 
   // Filters State
   const [searchTerm, setSearchTerm]           = useState('')
@@ -190,7 +191,40 @@ export default function ProductListPage() {
             <h2 className="text-display-xs font-bold text-gray-800">Danh mục Hàng hóa</h2>
             <p className="text-body-sm text-gray-500">Quản lý nhóm sản phẩm, giá bán lẻ, giá vốn và định lượng tồn kho</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Quản lý danh mục dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setCatMenuOpen(v => !v)}
+                onBlur={() => setTimeout(() => setCatMenuOpen(false), 150)}
+                className="h-9 px-3.5 border border-gray-200 rounded text-tiny font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <Settings size={15} className="text-blue-500" /> Quản lý danh mục
+                <ChevronDown size={14} className={`text-gray-400 transition-transform ${catMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {catMenuOpen && (
+                <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-150 rounded-lg shadow-lg z-30 py-1">
+                  <button onMouseDown={() => { setIsManageCatsOpen(true); setCatMenuOpen(false) }}
+                    className="w-full text-left px-3 py-2 text-tiny font-semibold text-gray-600 hover:bg-gray-50 flex items-center gap-2"><Layers size={14} className="text-gray-400" /> Nhóm sản phẩm</button>
+                  <button onMouseDown={() => { setIsManageBrandsOpen(true); setCatMenuOpen(false) }}
+                    className="w-full text-left px-3 py-2 text-tiny font-semibold text-gray-600 hover:bg-gray-50 flex items-center gap-2"><Award size={14} className="text-gray-400" /> Thương hiệu</button>
+                  <button onMouseDown={() => { setIsManageUnitsOpen(true); setCatMenuOpen(false) }}
+                    className="w-full text-left px-3 py-2 text-tiny font-semibold text-gray-600 hover:bg-gray-50 flex items-center gap-2"><Settings size={14} className="text-gray-400" /> Đơn vị tính</button>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="h-9 px-3 border border-gray-200 rounded text-tiny font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all flex items-center gap-1.5 shadow-sm"
+            >
+              <Upload size={15} className="text-gray-400" /> Import
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="h-9 px-3 border border-gray-200 rounded text-tiny font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all flex items-center gap-1.5 shadow-sm"
+            >
+              <Download size={15} className="text-gray-400" /> Xuất file
+            </button>
             <button
               onClick={() => navigate('/products/prices')}
               className="h-9 px-3.5 border border-gray-200 rounded text-tiny font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all flex items-center gap-1.5 shadow-sm"
@@ -208,163 +242,57 @@ export default function ProductListPage() {
           </div>
         </div>
 
-        {/* Outer Split Container */}
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-          {/* 1. Left Filters Sidebar Pane */}
-          <aside className="hidden md:block w-full md:w-[22%] bg-white border border-gray-100 rounded-xl p-4 shrink-0 shadow-sm space-y-6">
-            {/* Nhóm sản phẩm */}
-            <div className="space-y-2.5">
-              <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers size={14} className="text-gray-400" /> Nhóm sản phẩm
-                </span>
-                <button onClick={() => setIsManageCatsOpen(true)} className="p-1 text-blue-500 hover:bg-blue-50 rounded transition-all" title="Quản lý nhóm sản phẩm">
-                  <Settings size={14} />
-                </button>
-              </div>
-              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
-                <button
-                  onClick={() => setSelectedCategory('')}
-                  className={`text-left text-tiny font-semibold px-2 py-1.5 rounded transition-all ${
-                    !selectedCategory ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Tất cả nhóm sản phẩm
-                </button>
-                {categories.map((cat: any) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    className={`text-left text-tiny font-semibold px-2 py-1.5 rounded transition-all flex items-center justify-between ${
-                      selectedCategory === cat.id ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="truncate pr-1">{cat.name}</span>
-                    {!cat.is_active && (
-                      <span className="text-[8px] bg-gray-100 text-gray-400 px-1 py-0.2 rounded border border-gray-200 uppercase shrink-0 font-bold">Ngừng</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Thương hiệu */}
-            <div className="space-y-2.5">
-              <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Award size={14} className="text-gray-400" /> Thương hiệu
-                </span>
-                <button onClick={() => setIsManageBrandsOpen(true)} className="p-1 text-blue-500 hover:bg-blue-50 rounded transition-all" title="Quản lý thương hiệu">
-                  <Settings size={14} />
-                </button>
-              </div>
-              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
-                <button
-                  onClick={() => setSelectedBrand('')}
-                  className={`text-left text-tiny font-semibold px-2 py-1.5 rounded transition-all ${
-                    !selectedBrand ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Tất cả thương hiệu
-                </button>
-                {brands.map((brand: any) => (
-                  <button
-                    key={brand.id}
-                    onClick={() => setSelectedBrand(brand.id)}
-                    className={`text-left text-tiny font-semibold px-2 py-1.5 rounded transition-all flex items-center justify-between ${
-                      selectedBrand === brand.id ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="truncate pr-1">{brand.name}</span>
-                    {!brand.is_active && (
-                      <span className="text-[8px] bg-gray-100 text-gray-400 px-1 py-0.2 rounded border border-gray-200 uppercase shrink-0 font-bold">Ngừng</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Đơn vị tính */}
-            <div className="space-y-2.5">
-              <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Settings size={14} className="text-gray-400" /> Đơn vị tính
-                </span>
-                <button onClick={() => setIsManageUnitsOpen(true)} className="p-1 text-blue-500 hover:bg-blue-50 rounded transition-all" title="Quản lý đơn vị tính">
-                  <Settings size={14} />
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-400">Cấu hình các đơn vị đo lường (lọ, chai, gói, cái...).</p>
-            </div>
-
-            {/* Trạng thái */}
-            <div className="space-y-2.5 pt-1">
-              <span className="text-tiny font-extrabold text-gray-400 uppercase tracking-wider block border-b border-gray-100 pb-2">
-                Trạng thái kinh doanh
-              </span>
-              <div className="flex flex-col gap-2.5">
-                {[
-                  { value: 'active',   label: 'Đang kinh doanh' },
-                  { value: 'inactive', label: 'Ngừng kinh doanh' },
-                  { value: 'all',      label: 'Tất cả trạng thái' },
-                ].map(item => (
-                  <label key={item.value} className="flex items-center gap-2 text-tiny font-bold text-gray-600 cursor-pointer select-none">
-                    <input
-                      type="radio"
-                      name="status-filter"
-                      value={item.value}
-                      checked={selectedStatus === item.value}
-                      onChange={e => setSelectedStatus(e.target.value as 'active' | 'inactive' | 'all')}
-                      className="text-blue-500 focus:ring-blue-500 w-3.5 h-3.5"
-                    />
-                    <span>{item.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </aside>
-
-          {/* 2. Right Products Table Panel */}
-          <div className="flex-1 w-full bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex flex-col min-w-0">
-            {/* Toolbar */}
-            <div className="p-4 border-b border-gray-100 bg-gray-25 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-              <div className="flex w-full sm:max-w-xs items-center gap-2 text-gray-700">
-                <div className="relative flex-grow">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                  <input
-                    type="text"
-                    placeholder="Theo mã, tên hàng..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="w-full h-9 pl-9 pr-4 bg-white border border-gray-205 rounded text-tiny focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <button
-                  onClick={() => setMobileFiltersOpen(true)}
-                  className="flex md:hidden h-9 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 items-center justify-center gap-1.5 shadow-sm transition-all"
-                >
-                  <Filter size={14} className="text-gray-400" />
-                  <span>Lọc</span>
-                  {(selectedCategory || selectedBrand || selectedStatus !== 'active') && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                  )}
-                </button>
+        {/* Products Table Panel (full width — sidebar đã chuyển thành bộ lọc trên toolbar) */}
+        <div className="w-full">
+          <div className="w-full bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex flex-col min-w-0">
+            {/* Toolbar: tìm kiếm + bộ lọc (Nhóm / Thương hiệu / Trạng thái) */}
+            <div className="p-4 border-b border-gray-100 bg-gray-25 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                <input
+                  type="text"
+                  placeholder="Theo mã, tên hàng..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full h-9 pl-9 pr-4 bg-white border border-gray-205 rounded text-tiny focus:outline-none focus:border-blue-500"
+                />
               </div>
 
-              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
-                <button
-                  onClick={() => setIsImportModalOpen(true)}
-                  className="h-9 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
-                >
-                  <Upload size={14} className="text-gray-400" /> Import file
-                </button>
-                <button
-                  onClick={handleExportCSV}
-                  className="h-9 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 flex items-center gap-1.5 shadow-sm transition-all"
-                >
-                  <Download size={14} className="text-gray-400" /> Xuất file
-                </button>
+              {/* Bộ lọc desktop */}
+              <div className="hidden md:flex flex-wrap items-center gap-2">
+                <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+                  className="h-9 px-2.5 bg-white border border-gray-200 rounded text-tiny text-gray-600 focus:border-blue-500 focus:outline-none cursor-pointer">
+                  <option value="">Tất cả nhóm SP</option>
+                  {categories.map((cat: any) => <option key={cat.id} value={cat.id}>{cat.name}{!cat.is_active ? ' (Ngừng)' : ''}</option>)}
+                </select>
+                <select value={selectedBrand} onChange={e => setSelectedBrand(e.target.value)}
+                  className="h-9 px-2.5 bg-white border border-gray-200 rounded text-tiny text-gray-600 focus:border-blue-500 focus:outline-none cursor-pointer">
+                  <option value="">Tất cả thương hiệu</option>
+                  {brands.map((brand: any) => <option key={brand.id} value={brand.id}>{brand.name}{!brand.is_active ? ' (Ngừng)' : ''}</option>)}
+                </select>
+                <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value as 'active' | 'inactive' | 'all')}
+                  className="h-9 px-2.5 bg-white border border-gray-200 rounded text-tiny text-gray-600 focus:border-blue-500 focus:outline-none cursor-pointer">
+                  <option value="active">Đang kinh doanh</option>
+                  <option value="inactive">Ngừng kinh doanh</option>
+                  <option value="all">Tất cả trạng thái</option>
+                </select>
+                {(selectedCategory || selectedBrand || selectedStatus !== 'active') && (
+                  <button onClick={() => { setSelectedCategory(''); setSelectedBrand(''); setSelectedStatus('active') }}
+                    className="h-9 px-2.5 text-tiny font-semibold text-gray-500 hover:text-blue-600">Xóa lọc</button>
+                )}
               </div>
+
+              {/* Nút lọc mobile */}
+              <button
+                onClick={() => setMobileFiltersOpen(true)}
+                className="flex md:hidden h-9 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-600 items-center justify-center gap-1.5 shadow-sm transition-all self-start"
+              >
+                <Filter size={14} className="text-gray-400" />
+                <span>Lọc</span>
+                {(selectedCategory || selectedBrand || selectedStatus !== 'active') && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                )}
+              </button>
             </div>
 
             {/* Table */}

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, Plus, Search, Pencil, Trash2, ToggleLeft, ToggleRight, X, Bird } from 'lucide-react'
 import Layout from '../../components/Layout'
@@ -22,6 +22,7 @@ const emptyForm = { id: '', name: '', species_id: '', breed: '', breed_price: ''
 
 export default function HerdsManagePage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { formatCurrency } = useDisplaySettings()
   const [search, setSearch] = useState('')
@@ -30,6 +31,8 @@ export default function HerdsManagePage() {
   const [form, setForm] = useState<typeof emptyForm>(emptyForm)
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([])
   const [busy, setBusy] = useState(false)
+  const [creatingFarm, setCreatingFarm] = useState(false)
+  const [newFarmName, setNewFarmName] = useState('')
   const isEdit = !!form.id
 
   const herdsQuery = useQuery({
@@ -77,8 +80,19 @@ export default function HerdsManagePage() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['herd-projects', 'herds', 'manage'] })
 
-  const openCreate = () => { setForm(emptyForm); setModalOpen(true) }
+  const openCreate = () => { setForm(emptyForm); setCreatingFarm(false); setNewFarmName(''); setModalOpen(true) }
+
+  // Mở sẵn modal tạo đàn khi điều hướng kèm ?new=1 (từ nút "Tạo đàn" ngoài trang danh sách dự án)
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      openCreate()
+      searchParams.delete('new')
+      setSearchParams(searchParams, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const openEdit = (h: HerdRow) => {
+    setCreatingFarm(false); setNewFarmName('')
     setForm({ id: h.id, name: h.name, species_id: h.species_id || '', breed: h.breed || '', breed_price: h.breed_price ? String(h.breed_price) : '',
       current_quantity: h.current_quantity, entry_date: h.entry_date || '', expected_exit_date: h.expected_exit_date || '', farm_id: h.farm_id, customer_id: '' })
     setModalOpen(true)
@@ -86,7 +100,10 @@ export default function HerdsManagePage() {
 
   const save = async () => {
     if (!form.name.trim() || !form.species_id) { alert('Cần tên đàn và loài.'); return }
-    if (!isEdit && !form.farm_id) { alert('Cần chọn cơ sở/trại cho đàn mới.'); return }
+    if (!isEdit) {
+      if (!form.customer_id) { alert('Cần chọn khách hàng cho đàn mới.'); return }
+      if (creatingFarm ? !newFarmName.trim() : !form.farm_id) { alert('Cần chọn hoặc tạo cơ sở/trại cho đàn mới.'); return }
+    }
     setBusy(true)
     try {
       const payload: any = {
@@ -99,8 +116,19 @@ export default function HerdsManagePage() {
         const { error } = await supabase.from('herds').update(payload).eq('id', form.id)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('herds').insert({ ...payload, farm_id: form.farm_id, is_active: true })
+        // Tạo cơ sở/trại inline nếu chọn
+        let farmId = form.farm_id
+        if (creatingFarm && newFarmName.trim()) {
+          const { data: nf, error: fErr } = await supabase
+            .from('farms')
+            .insert({ customer_id: form.customer_id, name: newFarmName.trim() })
+            .select('id').single()
+          if (fErr) throw fErr
+          farmId = nf.id
+        }
+        const { error } = await supabase.from('herds').insert({ ...payload, farm_id: farmId, is_active: true })
         if (error) throw error
+        queryClient.invalidateQueries({ queryKey: ['herd-projects', 'farms'] })
       }
       setModalOpen(false); invalidate()
     } catch (e: any) { logger.error('[HerdsManage save]', e?.message); alert('Lưu thất bại (kiểm tra quyền với khách hàng/trại này).') }
@@ -203,15 +231,28 @@ export default function HerdsManagePage() {
                   <div className="space-y-1">
                     <label className="text-[11px] font-bold text-gray-400 uppercase">Khách hàng <span className="text-rose-500">*</span></label>
                     <SmartSearchSelect options={(customersQuery.data ?? []).map((c: any) => ({ value: c.id, label: c.farm_name, desc: c.code }))}
-                      value={form.customer_id} onChange={v => setForm({ ...form, customer_id: v, farm_id: '' })} placeholder="-- Chọn khách --" searchPlaceholder="Tìm khách..." />
+                      value={form.customer_id} onChange={v => { setForm({ ...form, customer_id: v, farm_id: '' }); setCreatingFarm(false); setNewFarmName('') }} placeholder="-- Chọn khách --" searchPlaceholder="Tìm khách..." />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-gray-400 uppercase">Cơ sở/Trại <span className="text-rose-500">*</span></label>
-                    <select value={form.farm_id} onChange={e => setForm({ ...form, farm_id: e.target.value })} disabled={!form.customer_id}
-                      className="w-full h-10 px-2.5 bg-gray-25 border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none disabled:opacity-50">
-                      <option value="">-- Chọn trại --</option>
-                      {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
+                    <label className="text-[11px] font-bold text-gray-400 uppercase flex items-center justify-between gap-1">
+                      <span>Cơ sở/Trại <span className="text-rose-500">*</span></span>
+                      {form.customer_id && (
+                        <button type="button" onClick={() => { setCreatingFarm(v => !v); setForm({ ...form, farm_id: '' }); setNewFarmName('') }}
+                          className="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 normal-case">
+                          {creatingFarm ? <><X size={10} />Chọn có sẵn</> : <><Plus size={10} />Tạo trại mới</>}
+                        </button>
+                      )}
+                    </label>
+                    {creatingFarm ? (
+                      <input value={newFarmName} onChange={e => setNewFarmName(e.target.value)} placeholder="Tên cơ sở/trại mới"
+                        className="w-full h-10 px-2.5 bg-white border border-blue-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
+                    ) : (
+                      <select value={form.farm_id} onChange={e => setForm({ ...form, farm_id: e.target.value })} disabled={!form.customer_id}
+                        className="w-full h-10 px-2.5 bg-gray-25 border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none disabled:opacity-50">
+                        <option value="">-- Chọn trại --</option>
+                        {farms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    )}
                   </div>
                 </div>
               )}

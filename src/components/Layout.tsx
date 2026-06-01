@@ -24,7 +24,9 @@ import {
   Settings,
   ChevronDown,
   Tag,
-  MapPin
+  MapPin,
+  CalendarClock,
+  TrendingUp
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -90,6 +92,8 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
         { label: 'Bệnh & Phác đồ', icon: Stethoscope, path: '/diseases', perms: ['herd_projects.view_all', 'herd_projects.create'] },
         { label: 'Khuyến mãi', icon: Tag, path: '/promotions', perms: ['promotions.manage'] },
         { label: 'Kho hàng', icon: Warehouse, path: '/inventory', perms: ['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer'] },
+        { label: 'Hạn sử dụng', icon: CalendarClock, path: '/inventory/expiry', perms: ['inventory.view'] },
+        { label: 'Gợi ý đặt hàng', icon: TrendingUp, path: '/inventory/reorder', perms: ['inventory.view'] },
         { label: 'Nhà cung cấp', icon: Truck, path: '/suppliers', perms: ['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive'] }
       ]
     },

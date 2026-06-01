@@ -51,6 +51,13 @@ export const qk = {
       ['dashboard', 'pending-disbursements', branchId, limit] as const,
     appointments: (branchId: string | null, limit: number) =>
       ['dashboard', 'today-appointments', branchId, limit] as const,
+    atRiskRegulars: (limit: number) => ['dashboard', 'at-risk-regulars', limit] as const,
+    upcomingDebts: (days: number, limit: number) => ['dashboard', 'upcoming-debts', days, limit] as const,
+  },
+  inventory: {
+    expiringLots: (maxDays: number) => ['inventory', 'expiring-lots', maxDays] as const,
+    reorder: (params: object) => ['inventory', 'reorder', params] as const,
+    expiryBuckets: ['inventory', 'expiry-buckets'] as const,
   },
   branches: {
     all: ['branches'] as const,
@@ -65,6 +72,9 @@ export const qk = {
     herds: (params: object) => ['herd-projects', 'herds', params] as const,
     members: (id: string) => ['herd-projects', 'members', id] as const,
     costs: (id: string) => ['herd-projects', 'costs', id] as const,
+    upcomingTasks: (days: number) => ['herd-projects', 'upcoming-tasks', days] as const,
+    overview: ['herd-projects', 'overview'] as const,
+    feedback: (limit: number) => ['herd-projects', 'feedback', limit] as const,
   },
   auth: {
     rolePermissions: (userId: string) => ['auth', 'role-permissions', userId] as const,

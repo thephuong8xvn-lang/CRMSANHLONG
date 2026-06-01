@@ -16,7 +16,9 @@ import {
   ShoppingBag,
   Star,
   Edit,
-  ArrowRight
+  ArrowRight,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -90,6 +92,9 @@ interface HerdProject {
   head_count: number
   notes: string | null
   customer_id: string
+  owner_user_id: string | null
+  project_type_id: string | null
+  region_id: string | null
   customer?: Customer | null
   herd?: Herd | null
   project_type?: ProjectType | null
@@ -253,6 +258,33 @@ export default function HerdProjectDetailPage() {
   const [vetNoteModalOpen, setVetNoteModalOpen] = useState(false)
   const [editVetNotesText, setEditVetNotesText] = useState('')
 
+  // Edit Project Modal State (sửa giới hạn — không đụng customer/farm/herd)
+  const [projTypes, setProjTypes] = useState<{ id: string; name: string }[]>([])
+  const [regions, setRegions] = useState<{ id: string; name: string }[]>([])
+  const [editProjOpen, setEditProjOpen] = useState(false)
+  const [epName, setEpName] = useState('')
+  const [epOwnerId, setEpOwnerId] = useState('')
+  const [epTypeId, setEpTypeId] = useState('')
+  const [epRegionId, setEpRegionId] = useState('')
+  const [epHeadCount, setEpHeadCount] = useState<number>(0)
+  const [epStartDate, setEpStartDate] = useState('')
+  const [epEndDate, setEpEndDate] = useState('')
+  const [epNotes, setEpNotes] = useState('')
+
+  // Add Step Modal State
+  const [addStepOpen, setAddStepOpen] = useState(false)
+  const [asName, setAsName] = useState('')
+  const [asPlannedDate, setAsPlannedDate] = useState('')
+  const [asAssignedTo, setAsAssignedTo] = useState('')
+
+  // Step edit-extension states (sửa tên bước + ngày kế hoạch ngay trong modal bước)
+  const [stepName, setStepName] = useState('')
+  const [stepPlannedDate, setStepPlannedDate] = useState('')
+
+  const canEdit = hasPermission('herd_projects.update')
+  const canDelete = hasPermission('herd_projects.delete')
+  const canManageSteps = canEdit && project?.status !== 'completed' && project?.status !== 'cancelled'
+
   // Load Data
   const loadData = useCallback(async () => {
     if (!id) return
@@ -274,6 +306,9 @@ export default function HerdProjectDetailPage() {
           head_count,
           notes,
           customer_id,
+          owner_user_id,
+          project_type_id,
+          region_id,
           customer:customers(id, farm_name, price_list_id),
           herd:herds(id, name),
           project_type:herd_project_types(id, name, code),
@@ -383,6 +418,22 @@ export default function HerdProjectDetailPage() {
         .order('full_name')
       if (profilesData) setVets(profilesData as Profile[])
 
+      // Preload loại kế hoạch + khu vực (cho modal sửa dự án)
+      const { data: typesData } = await supabase
+        .from('herd_project_types')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name')
+      if (typesData) setProjTypes(typesData)
+
+      const { data: regionsData } = await supabase
+        .from('herd_regions')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('name')
+      if (regionsData) setRegions(regionsData)
+
       // Fetch view metrics (age_days, cost_to_date, died_total, mortality_rate, region_name)
       const { data: viewData } = await supabase
         .from('herd_project_list_view')
@@ -479,9 +530,134 @@ export default function HerdProjectDetailPage() {
     }
   }
 
+  // ── Sửa dự án (giới hạn trường an toàn) ──
+  const handleOpenEditProject = () => {
+    if (!project) return
+    setEpName(project.name)
+    setEpOwnerId(project.owner_user_id || '')
+    setEpTypeId(project.project_type_id || '')
+    setEpRegionId(project.region_id || '')
+    setEpHeadCount(project.head_count)
+    setEpStartDate(project.start_date || '')
+    setEpEndDate(project.end_date || '')
+    setEpNotes(project.notes || '')
+    setEditProjOpen(true)
+  }
+
+  const handleSaveProjectEdit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!project) return
+    if (!epName.trim() || !epOwnerId) { alert('Tên dự án và BSTY phụ trách là bắt buộc.'); return }
+    if (epStartDate && epEndDate && epEndDate < epStartDate) { alert('Ngày kết thúc phải sau ngày bắt đầu.'); return }
+    try {
+      const { error } = await supabase
+        .from('herd_projects')
+        .update({
+          name: epName.trim(),
+          owner_user_id: epOwnerId,
+          project_type_id: epTypeId || null,
+          region_id: epRegionId || null,
+          head_count: epHeadCount || 0,
+          start_date: epStartDate || null,
+          end_date: epEndDate || null,
+          notes: epNotes.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', project.id)
+      if (error) throw error
+      setEditProjOpen(false)
+      loadData()
+    } catch (err: any) {
+      console.error('Error updating project:', err)
+      alert('Không thể lưu thay đổi dự án: ' + (err?.message || 'Kiểm tra quyền chỉnh sửa.'))
+    }
+  }
+
+  // ── Xóa dự án (chỉ draft/cancelled) ──
+  const handleDeleteProject = async () => {
+    if (!project) return
+    if (project.status !== 'draft' && project.status !== 'cancelled') {
+      alert('Chỉ có thể xóa dự án ở trạng thái Bản nháp hoặc Đã hủy. Dự án đang vận hành hãy dùng "Hủy dự án".')
+      return
+    }
+    if (!window.confirm(`XÓA VĨNH VIỄN dự án "${project.name}" (${project.project_code})?\n\nToàn bộ bước lịch trình, chi phí, thành viên và kết quả của dự án sẽ bị xóa theo và KHÔNG THỂ khôi phục.`)) return
+    try {
+      const { error } = await supabase.from('herd_projects').delete().eq('id', project.id)
+      if (error) throw error
+      navigate('/herd-projects')
+    } catch (err: any) {
+      console.error('Error deleting project:', err)
+      alert('Không thể xóa dự án: ' + (err?.message || 'Kiểm tra quyền xóa.'))
+    }
+  }
+
+  // ── Thêm bước thủ công vào lịch trình ──
+  const handleAddStep = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!project) return
+    if (!asName.trim()) { alert('Tên bước là bắt buộc.'); return }
+    try {
+      const maxOrder = steps.reduce((m, s) => Math.max(m, s.sort_order), 0)
+      const { error } = await supabase
+        .from('herd_project_steps')
+        .insert({
+          project_id: project.id,
+          default_step_id: null,
+          step_name: asName.trim(),
+          sort_order: maxOrder + 1,
+          planned_date: asPlannedDate || null,
+          status: 'pending',
+          products_used: [],
+          assigned_to: asAssignedTo || null,
+        })
+      if (error) throw error
+      setAddStepOpen(false)
+      setAsName(''); setAsPlannedDate(''); setAsAssignedTo('')
+      loadData()
+    } catch (err: any) {
+      console.error('Error adding step:', err)
+      alert('Không thể thêm bước: ' + (err?.message || 'Kiểm tra quyền.'))
+    }
+  }
+
+  // ── Xóa bước (dọn chi phí auto gắn bước trước) ──
+  const handleDeleteStep = async (step: ProjectStep) => {
+    if (!window.confirm(`Xóa bước "${step.step_name}"? Chi phí thuốc/vaccine ghi nhận tự động cho bước này (nếu có) cũng sẽ bị xóa.`)) return
+    try {
+      const { error: costErr } = await supabase.from('herd_project_costs').delete().eq('step_id', step.id)
+      if (costErr) throw costErr
+      const { error } = await supabase.from('herd_project_steps').delete().eq('id', step.id)
+      if (error) throw error
+      loadData()
+    } catch (err: any) {
+      console.error('Error deleting step:', err)
+      alert('Không thể xóa bước: ' + (err?.message || 'Kiểm tra quyền.'))
+    }
+  }
+
+  // ── Đổi thứ tự bước (hoán đổi sort_order với bước liền kề) ──
+  const handleMoveStep = async (index: number, dir: -1 | 1) => {
+    const target = index + dir
+    if (target < 0 || target >= steps.length) return
+    const a = steps[index]
+    const b = steps[target]
+    try {
+      const { error: e1 } = await supabase.from('herd_project_steps').update({ sort_order: b.sort_order }).eq('id', a.id)
+      if (e1) throw e1
+      const { error: e2 } = await supabase.from('herd_project_steps').update({ sort_order: a.sort_order }).eq('id', b.id)
+      if (e2) throw e2
+      loadData()
+    } catch (err: any) {
+      console.error('Error reordering steps:', err)
+      alert('Không thể đổi thứ tự bước: ' + (err?.message || 'Kiểm tra quyền.'))
+    }
+  }
+
   // Open Step Modal Handler
   const handleOpenStepModal = (step: ProjectStep) => {
     setActiveStep(step)
+    setStepName(step.step_name)
+    setStepPlannedDate(step.planned_date || '')
     setStepActualDate(step.actual_date || new Date().toISOString().split('T')[0])
     setStepStatus(step.status === 'pending' ? 'done' : step.status)
     setStepNotes(step.notes || '')
@@ -564,6 +740,8 @@ export default function HerdProjectDetailPage() {
       const { error } = await supabase
         .from('herd_project_steps')
         .update({
+          step_name: stepName.trim() || activeStep.step_name,
+          planned_date: stepPlannedDate || null,
           status: stepStatus,
           actual_date: stepStatus === 'done' ? stepActualDate : null,
           notes: stepNotes.trim() || null,
@@ -1010,9 +1188,28 @@ export default function HerdProjectDetailPage() {
             </p>
           </div>
 
-          {/* Quick Actions Panel */}
-          {project.status !== 'completed' && project.status !== 'cancelled' && (
-            <div className="flex flex-wrap gap-2">
+          {/* Header Actions */}
+          <div className="flex flex-wrap gap-2">
+            {canEdit && project.status !== 'cancelled' && (
+              <button
+                onClick={handleOpenEditProject}
+                className="bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 px-4 h-10 rounded-lg font-semibold text-body-md transition-all flex items-center gap-1.5"
+              >
+                <Edit size={16} />
+                Sửa
+              </button>
+            )}
+            {canDelete && (project.status === 'draft' || project.status === 'cancelled') && (
+              <button
+                onClick={handleDeleteProject}
+                className="bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100 px-4 h-10 rounded-lg font-semibold text-body-md transition-all flex items-center gap-1.5"
+              >
+                <Trash size={16} />
+                Xóa dự án
+              </button>
+            )}
+            {project.status !== 'completed' && project.status !== 'cancelled' && (
+              <>
               {project.status === 'draft' && (
                 <button
                   onClick={() => handleUpdateStatus('active')}
@@ -1064,8 +1261,9 @@ export default function HerdProjectDetailPage() {
                 <CheckCircle2 size={16} />
                 Hoàn thành dự án
               </button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* 2-Columns Layout Grid */}
@@ -1074,15 +1272,35 @@ export default function HerdProjectDetailPage() {
           {/* LEFT COLUMN: Checklist Stepper (col-span-5) */}
           <div className="col-span-12 lg:col-span-5 space-y-6">
             <div className="bg-gray-0 border border-gray-100 rounded-xl p-6 shadow-sm">
-              <h2 className="text-body-lg font-bold text-gray-700 mb-6 flex items-center gap-2 border-b border-gray-55 pb-3">
-                <Activity className="text-blue-500" size={18} />
-                Lịch trình Kỹ thuật Thú y
-              </h2>
+              <div className="flex items-center justify-between mb-6 border-b border-gray-55 pb-3">
+                <h2 className="text-body-lg font-bold text-gray-700 flex items-center gap-2">
+                  <Activity className="text-blue-500" size={18} />
+                  Lịch trình Kỹ thuật Thú y
+                </h2>
+                {canManageSteps && (
+                  <button
+                    onClick={() => { setAsName(''); setAsPlannedDate(''); setAsAssignedTo(''); setAddStepOpen(true) }}
+                    className="text-tiny font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 transition-all flex items-center gap-1"
+                  >
+                    <Plus size={13} /> Thêm bước
+                  </button>
+                )}
+              </div>
 
               {steps.length === 0 ? (
-                <p className="text-body-md text-gray-400 italic text-center py-6">
-                  Chưa khởi tạo lịch trình các bước cho dự án này.
-                </p>
+                <div className="text-center py-6 space-y-3">
+                  <p className="text-body-md text-gray-400 italic">
+                    Chưa khởi tạo lịch trình các bước cho dự án này.
+                  </p>
+                  {canManageSteps && (
+                    <button
+                      onClick={() => { setAsName(''); setAsPlannedDate(''); setAsAssignedTo(''); setAddStepOpen(true) }}
+                      className="text-tiny font-bold text-blue-600 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-all inline-flex items-center gap-1"
+                    >
+                      <Plus size={13} /> Thêm bước đầu tiên
+                    </button>
+                  )}
+                </div>
               ) : (
                 <div className="relative pl-2 space-y-8">
                   {/* Stepper Vertical Line */}
@@ -1140,9 +1358,27 @@ export default function HerdProjectDetailPage() {
                                 )}
                               </p>
                             </div>
-                            <span className={`px-2 py-0.5 border text-[10px] font-bold rounded ${statusBadgeClass}`}>
-                              {statusText}
-                            </span>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <span className={`px-2 py-0.5 border text-[10px] font-bold rounded ${statusBadgeClass}`}>
+                                {statusText}
+                              </span>
+                              {canManageSteps && (
+                                <div className="flex items-center">
+                                  <button onClick={() => handleMoveStep(idx, -1)} disabled={idx === 0} title="Lên"
+                                    className="p-0.5 text-gray-300 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-300">
+                                    <ChevronUp size={14} />
+                                  </button>
+                                  <button onClick={() => handleMoveStep(idx, 1)} disabled={idx === steps.length - 1} title="Xuống"
+                                    className="p-0.5 text-gray-300 hover:text-blue-600 disabled:opacity-30 disabled:hover:text-gray-300">
+                                    <ChevronDown size={14} />
+                                  </button>
+                                  <button onClick={() => handleDeleteStep(step)} title="Xóa bước"
+                                    className="p-0.5 text-gray-300 hover:text-rose-500">
+                                    <Trash size={13} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
 
                           {/* Notes & Products Used */}
@@ -1219,12 +1455,12 @@ export default function HerdProjectDetailPage() {
                           )}
 
                           {/* Action Button for Steps */}
-                          {project.status === 'active' && (step.status === 'pending' || isStepDone) && (
+                          {canManageSteps && (
                             <button
                               onClick={() => handleOpenStepModal(step)}
                               className="text-tiny font-bold text-blue-500 bg-blue-50 border border-blue-100 px-3 py-1 rounded hover:bg-blue-100 transition-all flex items-center gap-1 w-fit mt-1"
                             >
-                              {isStepDone ? 'Chỉnh sửa bước này' : 'Thực hiện bước này'}
+                              {isStepDone ? 'Chỉnh sửa bước này' : 'Thực hiện / Cập nhật bước'}
                               <ArrowRight size={12} />
                             </button>
                           )}
@@ -1691,6 +1927,29 @@ export default function HerdProjectDetailPage() {
             </div>
             
             <form onSubmit={handleSaveStepUpdate} className="p-6 space-y-4">
+              {/* Tên bước + Ngày kế hoạch (sửa được trực tiếp) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Tên bước</label>
+                  <input
+                    type="text"
+                    value={stepName}
+                    onChange={e => setStepName(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ngày kế hoạch</label>
+                  <input
+                    type="date"
+                    value={stepPlannedDate}
+                    onChange={e => setStepPlannedDate(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 {/* Actual Date */}
                 <div className="space-y-1">
@@ -2303,6 +2562,136 @@ export default function HerdProjectDetailPage() {
                 >
                   Lưu chi phí
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: THÊM BƯỚC LỊCH TRÌNH
+          ───────────────────────────────────────────────────────────── */}
+      {addStepOpen && (
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-0 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-body-lg text-gray-700">Thêm bước lịch trình</h3>
+              <button onClick={() => setAddStepOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
+            </div>
+            <form onSubmit={handleAddStep} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Tên bước <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  placeholder="VD: Tiêm vaccine Newcastle lần 2"
+                  value={asName}
+                  onChange={e => setAsName(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ngày kế hoạch</label>
+                <input
+                  type="date"
+                  value={asPlannedDate}
+                  onChange={e => setAsPlannedDate(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Người được giao thực hiện</label>
+                <select
+                  value={asAssignedTo}
+                  onChange={e => setAsAssignedTo(e.target.value)}
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">-- Chưa gán người thực hiện --</option>
+                  {vets.map(v => <option key={v.id} value={v.id}>{v.full_name}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button type="button" onClick={() => setAddStepOpen(false)}
+                  className="px-4 py-2 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-500 hover:bg-gray-55">Hủy bỏ</button>
+                <button type="submit"
+                  className="px-5 py-2 bg-blue-500 text-white font-semibold rounded-lg text-body-md hover:bg-blue-600 shadow-sm">Thêm bước</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAL: SỬA DỰ ÁN (giới hạn trường an toàn)
+          ───────────────────────────────────────────────────────────── */}
+      {editProjOpen && (
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-0 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+              <h3 className="font-bold text-body-lg text-gray-700">Sửa dự án</h3>
+              <button onClick={() => setEditProjOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
+            </div>
+            <form onSubmit={handleSaveProjectEdit} className="p-6 space-y-4 overflow-y-auto">
+              <p className="text-tiny text-gray-400 bg-gray-25 border border-gray-100 rounded-lg p-2.5">
+                Khách hàng / Cơ sở / Đàn không sửa tại đây để bảo toàn dữ liệu chi phí đã ghi. Cần đổi đàn, vui lòng tạo dự án mới.
+              </p>
+              <div className="space-y-1">
+                <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Tên dự án <span className="text-rose-500">*</span></label>
+                <input type="text" value={epName} onChange={e => setEpName(e.target.value)} required
+                  className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">BSTY phụ trách <span className="text-rose-500">*</span></label>
+                  <select value={epOwnerId} onChange={e => setEpOwnerId(e.target.value)} required
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none">
+                    <option value="">-- Chọn người phụ trách --</option>
+                    {vets.map(v => <option key={v.id} value={v.id}>{v.full_name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Loại kế hoạch</label>
+                  <select value={epTypeId} onChange={e => setEpTypeId(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none">
+                    <option value="">-- Chọn loại kế hoạch --</option>
+                    {projTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Khu vực</label>
+                  <select value={epRegionId} onChange={e => setEpRegionId(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none">
+                    <option value="">-- Chọn khu vực --</option>
+                    {regions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Quy mô đàn (số con)</label>
+                  <input type="number" min={0} value={epHeadCount || ''} onChange={e => setEpHeadCount(Number(e.target.value))}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ngày bắt đầu</label>
+                  <input type="date" value={epStartDate} onChange={e => setEpStartDate(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ngày kết thúc dự kiến</label>
+                  <input type="date" value={epEndDate} onChange={e => setEpEndDate(e.target.value)}
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ghi chú</label>
+                <textarea rows={3} value={epNotes} onChange={e => setEpNotes(e.target.value)}
+                  className="w-full p-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button type="button" onClick={() => setEditProjOpen(false)}
+                  className="px-4 py-2 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-500 hover:bg-gray-55">Hủy bỏ</button>
+                <button type="submit"
+                  className="px-5 py-2 bg-blue-500 text-white font-semibold rounded-lg text-body-md hover:bg-blue-600 shadow-sm">Lưu thay đổi</button>
               </div>
             </form>
           </div>
