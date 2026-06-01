@@ -49,6 +49,24 @@ interface CartItem {
   discountPercent: number
 }
 
+// Nạp ĐẦY ĐỦ mọi dòng, vượt giới hạn mặc định 1000 dòng của PostgREST.
+async function fetchAllRows<T = any>(
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: any; error: any }>,
+  batch = 1000,
+): Promise<T[]> {
+  const all: T[] = []
+  let from = 0
+  for (let guard = 0; guard < 100; guard++) {
+    const { data, error } = await makeQuery(from, from + batch - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    all.push(...(data as T[]))
+    if (data.length < batch) break
+    from += batch
+  }
+  return all
+}
+
 export default function MobileOrderPage() {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -87,11 +105,16 @@ export default function MobileOrderPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const { data: cust } = await supabase
-          .from('customers')
-          .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
-          .eq('is_active', true)
-        if (cust) setCustomers(cust as unknown as Customer[])
+        const cust = await fetchAllRows<Customer>((from, to) =>
+          supabase
+            .from('customers')
+            .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
+            .eq('is_active', true)
+            .order('farm_name')
+            .order('id')
+            .range(from, to)
+        )
+        setCustomers(cust)
 
         const { data: cat } = await supabase
           .from('product_categories')
@@ -99,24 +122,29 @@ export default function MobileOrderPage() {
           .eq('is_active', true)
         if (cat) setCategories(cat)
 
-        const { data: prod } = await supabase
-          .from('products')
-          .select(`
-            id,
-            sku,
-            name,
-            unit,
-            is_lot_managed,
-            is_active,
-            category_id,
-            package_specs,
-            image_urls,
-            product_categories(id, code, name),
-            brands(name),
-            price_list_items(selling_price, price_list:price_lists(code))
-          `)
-          .eq('is_active', true)
-        if (prod) setProducts(prod as unknown as Product[])
+        const prod = await fetchAllRows<Product>((from, to) =>
+          supabase
+            .from('products')
+            .select(`
+              id,
+              sku,
+              name,
+              unit,
+              is_lot_managed,
+              is_active,
+              category_id,
+              package_specs,
+              image_urls,
+              product_categories(id, code, name),
+              brands(name),
+              price_list_items(selling_price, price_list:price_lists(code))
+            `)
+            .eq('is_active', true)
+            .order('name')
+            .order('id')
+            .range(from, to)
+        )
+        setProducts(prod)
       } catch (err) {
         console.error('Error loading mobile order data:', err)
       }

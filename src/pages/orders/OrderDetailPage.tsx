@@ -48,6 +48,8 @@ interface Order {
   order_code: string
   created_at: string
   status: string
+  sale_channel: string
+  owner_user_id: string
   payment_status: string
   payment_method: string
   subtotal: number
@@ -80,6 +82,7 @@ export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { profile, userRole } = useAuth()
+  const isAdmin = userRole.code === 'admin' || userRole.code === 'ceo'
 
   // State
   const [order, setOrder] = useState<Order | null>(null)
@@ -93,6 +96,11 @@ export default function OrderDetailPage() {
   const [payMethod, setPayMethod] = useState<'cash' | 'bank_transfer' | 'card_pos'>('cash')
   const [payReference, setPayReference] = useState('')
   const [payNotes, setPayNotes] = useState('')
+  // 'record' = ghi thêm thanh toán (đơn đã hoàn tất còn nợ); 'complete_delivery' = thu tiền + hoàn tất đơn giao
+  const [payModalMode, setPayModalMode] = useState<'record' | 'complete_delivery'>('record')
+
+  // Sửa giá/CK từng dòng (admin duyệt đơn nháp giao hàng)
+  const [editedLines, setEditedLines] = useState<Record<string, { unit_price: number; discount: number }>>({})
 
   // FAB overlay menu state
   const [showFabMenu, setShowFabMenu] = useState(false)
@@ -272,6 +280,8 @@ export default function OrderDetailPage() {
           order_code,
           created_at,
           status,
+          sale_channel,
+          owner_user_id,
           payment_status,
           payment_method,
           subtotal,
@@ -444,6 +454,80 @@ export default function OrderDetailPage() {
     }
   }
 
+  // Lưu chỉnh sửa giá/CK từng dòng (admin) — trigger recalc tự cập nhật tổng
+  const handleSaveLinePrices = async (): Promise<boolean> => {
+    const entries = Object.entries(editedLines)
+    if (entries.length === 0) return true
+    for (const [lineId, vals] of entries) {
+      const { error } = await supabase
+        .from('order_lines')
+        .update({ unit_price: vals.unit_price, discount: vals.discount })
+        .eq('id', lineId)
+      if (error) {
+        setAlertMsg({ type: 'error', text: 'Lưu giá dòng thất bại: ' + error.message })
+        return false
+      }
+    }
+    setEditedLines({})
+    return true
+  }
+
+  // Admin xác nhận đơn giao hàng (lưu giá đã sửa trước) → trừ kho FEFO
+  const handleConfirmOrder = async () => {
+    if (!order) return
+    setSubmitting(true)
+    try {
+      const ok = await handleSaveLinePrices()
+      if (!ok) return
+      const { error } = await supabase.rpc('fn_confirm_order', { p_order_id: order.id })
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã xác nhận đơn & trừ kho. Nhân viên có thể bắt đầu giao hàng.' })
+      loadOrderDetails()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Xác nhận đơn thất bại: ' + err.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Chủ đơn/Admin chuyển tiến trình giao: confirmed→shipping→delivered
+  const handleAdvanceDelivery = async (toStatus: 'shipping' | 'delivered') => {
+    if (!order) return
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.rpc('fn_advance_delivery', { p_order_id: order.id, p_to_status: toStatus })
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: toStatus === 'shipping' ? 'Đơn đã chuyển sang "Đang giao".' : 'Đơn đã chuyển sang "Đã giao". Tiến hành thu tiền.' })
+      loadOrderDetails()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Cập nhật tiến trình thất bại: ' + err.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Chủ đơn/Admin: thu tiền (có thể trả thiếu → ghi nợ) + hoàn tất đơn giao
+  const handleCompleteDelivery = async () => {
+    if (!order) return
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.rpc('fn_complete_delivery_payment', {
+        p_order_id: order.id,
+        p_paid_amount: payMethod === 'card_pos' || payMethod === 'cash' || payMethod === 'bank_transfer' ? payAmount : 0,
+        p_payment_method: payMethod
+      })
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã thu tiền & hoàn tất đơn giao hàng. Dữ liệu đã ghi sổ quỹ.' })
+      setShowPayModal(false)
+      setPayAmount(0); setPayReference(''); setPayNotes('')
+      loadOrderDetails()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Thu tiền & hoàn tất thất bại: ' + err.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   // Format currency
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val)
@@ -536,10 +620,14 @@ export default function OrderDetailPage() {
     )
   }
 
+  const isDelivery = order.sale_channel === 'delivery'
+  const canStaffAct = isAdmin || order.owner_user_id === profile?.id
+  const canEditLines = isAdmin && isDelivery && order.status === 'draft'
+
   return (
     <Layout activeMenu="Đơn hàng">
       <div className="p-4 md:p-10 max-w-[1600px] mx-auto space-y-6">
-        
+
         {/* Toast alert notifications */}
         {alertMsg && (
           <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border animate-in fade-in slide-in-from-top-4 duration-300 ${
@@ -558,57 +646,61 @@ export default function OrderDetailPage() {
             >
               <ArrowLeft size={16} />
             </button>
-            <h2 className="text-headline-lg font-bold text-gray-800">Chi tiết đơn hàng #{order.order_code}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-headline-lg font-bold text-gray-800">Chi tiết đơn hàng #{order.order_code}</h2>
+              <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider ${
+                isDelivery ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-blue-100 text-blue-700 border border-blue-200'
+              }`}>
+                {isDelivery ? 'Giao hàng' : 'Bán tại quầy'}
+              </span>
+            </div>
           </div>
 
-          {/* Action buttons based on status */}
+          {/* Action buttons — đơn giao hàng đi qua RPC phân quyền; đơn bán tại quầy đã hoàn tất sẵn */}
           <div className="flex items-center gap-3">
-            {order.status === 'draft' && (
+            {isDelivery && order.status === 'draft' && (
               <>
-                <button
-                  disabled={submitting}
-                  onClick={() => updateOrderStatus('cancelled')}
-                  className="h-10 px-4 border border-red-250 text-red-600 font-semibold rounded-lg hover:bg-red-50/50 transition-colors"
-                >
-                  Hủy đơn
-                </button>
-                <button
-                  disabled={submitting}
-                  onClick={() => updateOrderStatus('confirmed')}
-                  className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
-                >
-                  <CheckCircle2 size={16} />
-                  Xác nhận đơn (FEFO)
-                </button>
+                {canStaffAct && (
+                  <button
+                    disabled={submitting}
+                    onClick={() => updateOrderStatus('cancelled')}
+                    className="h-10 px-4 border border-red-250 text-red-600 font-semibold rounded-lg hover:bg-red-50/50 transition-colors"
+                  >
+                    Hủy đơn
+                  </button>
+                )}
+                {isAdmin ? (
+                  <button
+                    disabled={submitting}
+                    onClick={handleConfirmOrder}
+                    className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
+                  >
+                    <CheckCircle2 size={16} />
+                    Xác nhận đơn (FEFO)
+                  </button>
+                ) : (
+                  <span className="h-10 px-4 inline-flex items-center gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg text-tiny font-semibold">
+                    <Clock size={14} /> Chờ Admin xác nhận & duyệt giá
+                  </span>
+                )}
               </>
             )}
 
-            {order.status === 'confirmed' && (
-              order.delivery_address === 'Giao trực tiếp tại quầy POS' ? (
-                <button
-                  disabled={submitting}
-                  onClick={() => updateOrderStatus('completed')}
-                  className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
-                >
-                  <CheckCircle2 size={16} />
-                  Hoàn tất đơn hàng
-                </button>
-              ) : (
-                <button
-                  disabled={submitting}
-                  onClick={() => updateOrderStatus('shipping')}
-                  className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
-                >
-                  <Clock size={16} />
-                  Bắt đầu giao hàng
-                </button>
-              )
-            )}
-
-            {order.status === 'shipping' && order.delivery_address !== 'Giao trực tiếp tại quầy POS' && (
+            {isDelivery && order.status === 'confirmed' && canStaffAct && (
               <button
                 disabled={submitting}
-                onClick={() => updateOrderStatus('delivered')}
+                onClick={() => handleAdvanceDelivery('shipping')}
+                className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
+              >
+                <Clock size={16} />
+                Bắt đầu giao hàng
+              </button>
+            )}
+
+            {isDelivery && order.status === 'shipping' && canStaffAct && (
+              <button
+                disabled={submitting}
+                onClick={() => handleAdvanceDelivery('delivered')}
                 className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
               >
                 <CheckCircle2 size={16} />
@@ -616,14 +708,14 @@ export default function OrderDetailPage() {
               </button>
             )}
 
-            {(order.status === 'delivered' || order.status === 'paid') && order.delivery_address !== 'Giao trực tiếp tại quầy POS' && (
+            {isDelivery && order.status === 'delivered' && canStaffAct && (
               <button
                 disabled={submitting}
-                onClick={() => updateOrderStatus('completed')}
-                className="h-10 px-5 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
+                onClick={() => { setPayModalMode('complete_delivery'); setPayAmount(Number(order.grand_total)); setShowPayModal(true) }}
+                className="h-10 px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-all shadow-sm active:scale-95 flex items-center gap-2"
               >
                 <CheckCircle2 size={16} />
-                Hoàn tất đơn hàng
+                Thu tiền & hoàn tất
               </button>
             )}
 
@@ -699,22 +791,45 @@ export default function OrderDetailPage() {
               <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-body-lg font-bold text-gray-800">Sản phẩm đặt hàng</h3>
-                  <span className="text-tiny bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-bold">{lines.length} sản phẩm</span>
+                  <div className="flex items-center gap-2">
+                    {canEditLines && <span className="text-tiny bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold">Admin: sửa giá/CK rồi Xác nhận đơn</span>}
+                    <span className="text-tiny bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-bold">{lines.length} sản phẩm</span>
+                  </div>
                 </div>
 
                 <div className="space-y-3.5 max-h-[260px] overflow-y-auto pr-1">
-                  {lines.map(line => (
-                    <div key={line.id} className="flex justify-between items-center pb-3 border-b border-gray-50">
-                      <div>
-                        <p className="text-body-md font-bold text-gray-800 leading-tight">{line.product_snapshot?.name || 'Sản phẩm'}</p>
-                        <p className="text-tiny text-gray-400 mt-0.5 font-semibold">
-                          {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} x {line.unit_price.toLocaleString('vi-VN')} ₫
-                          {line.discount > 0 && <span className="text-red-500 ml-1.5">-{(line.discount * line.quantity).toLocaleString('vi-VN')} ₫</span>}
-                        </p>
+                  {lines.map(line => {
+                    const ed = editedLines[line.id]
+                    const up = ed ? ed.unit_price : line.unit_price
+                    const dc = ed ? ed.discount : line.discount
+                    const lineTotal = canEditLines ? (up - dc) * line.quantity : line.line_total
+                    return (
+                      <div key={line.id} className="flex justify-between items-center pb-3 border-b border-gray-50">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-body-md font-bold text-gray-800 leading-tight">{line.product_snapshot?.name || 'Sản phẩm'}</p>
+                          {canEditLines ? (
+                            <div className="flex items-center gap-2 mt-1 text-tiny">
+                              <span className="text-gray-400">{line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} ×</span>
+                              <label className="text-gray-400">Đơn giá</label>
+                              <input type="number" min={0} value={up}
+                                onChange={e => setEditedLines(prev => ({ ...prev, [line.id]: { unit_price: Number(e.target.value), discount: dc } }))}
+                                className="w-24 h-7 px-1.5 border border-gray-200 rounded text-right font-bold focus:outline-none focus:border-blue-500" />
+                              <label className="text-gray-400">CK/đv</label>
+                              <input type="number" min={0} value={dc}
+                                onChange={e => setEditedLines(prev => ({ ...prev, [line.id]: { unit_price: up, discount: Number(e.target.value) } }))}
+                                className="w-20 h-7 px-1.5 border border-gray-200 rounded text-right text-red-500 font-bold focus:outline-none focus:border-blue-500" />
+                            </div>
+                          ) : (
+                            <p className="text-tiny text-gray-400 mt-0.5 font-semibold">
+                              {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} x {line.unit_price.toLocaleString('vi-VN')} ₫
+                              {line.discount > 0 && <span className="text-red-500 ml-1.5">-{(line.discount * line.quantity).toLocaleString('vi-VN')} ₫</span>}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-body-md font-bold text-gray-800 ml-2 shrink-0">{lineTotal.toLocaleString('vi-VN')} ₫</span>
                       </div>
-                      <span className="text-body-md font-bold text-gray-800">{line.line_total.toLocaleString('vi-VN')} ₫</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
 
                 <div className="pt-4 space-y-2 text-tiny mt-4">
@@ -772,7 +887,7 @@ export default function OrderDetailPage() {
 
               {order.debt_amount > 0 && order.status !== 'cancelled' && (
                 <button
-                  onClick={() => setShowPayModal(true)}
+                  onClick={() => { setPayModalMode('record'); setShowPayModal(true) }}
                   className="mt-6 w-full py-2.5 rounded-lg border-2 border-dashed border-gray-200 text-blue-500 font-bold text-body-md hover:bg-blue-50/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                 >
                   <PlusCircle size={16} />
@@ -908,7 +1023,7 @@ export default function OrderDetailPage() {
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
-              <h3 className="text-body-lg font-bold text-gray-700">Ghi nhận thanh toán</h3>
+              <h3 className="text-body-lg font-bold text-gray-700">{payModalMode === 'complete_delivery' ? 'Thu tiền & hoàn tất đơn giao' : 'Ghi nhận thanh toán'}</h3>
               <button onClick={() => setShowPayModal(false)} className="p-1 hover:bg-gray-100 rounded-full text-gray-400"><X size={20} /></button>
             </div>
             
@@ -969,11 +1084,11 @@ export default function OrderDetailPage() {
                 Hủy
               </button>
               <button
-                onClick={handleAddPayment}
-                disabled={submitting || payAmount <= 0}
+                onClick={payModalMode === 'complete_delivery' ? handleCompleteDelivery : handleAddPayment}
+                disabled={submitting || (payModalMode === 'record' && payAmount <= 0)}
                 className="h-10 px-5 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 disabled:opacity-50"
               >
-                Xác nhận thanh toán
+                {payModalMode === 'complete_delivery' ? 'Thu tiền & hoàn tất' : 'Xác nhận thanh toán'}
               </button>
             </div>
           </div>

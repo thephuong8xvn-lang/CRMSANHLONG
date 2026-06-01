@@ -124,6 +124,26 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - **Áp dụng Migration**: Đã repair các migration cũ trên bảng Remote history của Supabase bằng `npx supabase migration repair` và tự động push thành công migration `20260610000000_fix-fill-org-trigger.sql`.
 - **Cải tiến UI**: Thay đổi thông báo lỗi trong catch block của `HerdProjectFormPage.tsx` để hiển thị chi tiết thông báo lỗi thực tế từ cơ sở dữ liệu thay vì thông báo lỗi chung chung.
 
+## 2026-06-01 (tiếp) — Fix xuất PDF "Could not resolve font"
+
+- **Bug**: `src/lib/exporters/documentPdf.tsx` chỉ `Font.register` biến thể normal (Regular-400, SemiBold-600), nhưng styles `words`/`signHint` dùng `fontStyle:'italic'`. react-pdf không nghiêng giả lập → `resolve()` không tìm thấy nguồn italic → throw `Could not resolve font for BeVietnamPro, fontWeight 400`. Khối chữ ký có ở cả 6 loại chứng từ ⇒ PDF luôn fail.
+- **Fix**: thêm 2 dòng `Font.register` `fontStyle:'italic'` trỏ lại Regular/SemiBold sẵn có (không thêm asset; chữ hiển thị đứng — chuẩn chứng từ VN). Verify: tsc PASS + render thử react-pdf OK 11KB.
+- **Rà soát**: phiếu chuyển kho `quantityActual = quantity` là đúng (`stock_transfer_lines` chỉ 1 cột `quantity`, chuyển atomic). `/print-preview` chỉ `ProtectedRoute` — ranh giới thật là RLS, giữ nguyên.
+
+## 2026-06-01 (tiếp) — Nâng cấp orders/pos: 2 luồng bán + RPC atomic
+
+- **Migration `20260613000000_pos_order_rpcs.sql`** ⚠️ **CHƯA APPLY REMOTE** (cần token): cột `orders.sale_channel` (pos_quick/delivery) + 5 RPC SECURITY DEFINER (`fn_pos_quick_sale`, `fn_create_delivery_draft`, `fn_confirm_order` chỉ admin, `fn_advance_delivery`, `fn_complete_delivery_payment`) + 2 helper nội bộ (`fn_pos_build_draft`, `fn_pos_settle_payment`). Atomic hoá tạo đơn, giữ chiết khấu cấp hoá đơn, check hạn mức server-side. **Phải apply mới chạy được POS mới.**
+- **Luồng**: bán nhanh quầy = draft→confirmed→completed (1 RPC, thu tiền ngay, hỗ trợ trả một phần→ghi nợ). Giao hàng = draft(NV)→confirmed(Admin duyệt giá, trừ kho)→shipping→delivered→completed+thu tiền(chủ đơn/Admin).
+- **POSPage**: toggle chế độ bán thật (trước là `<span>` giả), mặc định ẩn danh mục + tắt tự in, ô Khách trả ghi nợ phần thiếu, gọi RPC, bỏ receipt/Zalo/công ty giả → modal thành công + mở `/print-preview`.
+- **OrderDetailPage**: admin sửa giá/CK dòng inline + xác nhận đơn; chủ đơn/Admin đang giao/đã giao/thu tiền qua RPC; badge loại đơn. **OrderListPage**: quick view "Đơn giao chờ xác nhận".
+- Trigger `order_payments`→sổ quỹ + gắn session ca thu ngân (sẵn có) tự lo "thu tiền trong đơn vẫn báo cáo". tsc + build PASS.
+
+## 2026-06-01 (tiếp) — Fix POS không tìm thấy SP/KH (cap 1000 dòng PostgREST)
+
+- **Gốc lỗi:** query nạp `products`/`customers` trong POSPage & MobileOrderPage không `.order()`/`.limit()` → dính **giới hạn 1000 dòng mặc định PostgREST**. Thực tế 1002 SP / 1907 KH active → rớt SP mới + ~907 KH khỏi POS. Mọi tìm kiếm/grid/gợi ý lọc client-side trên mảng bị cắt.
+- **Fix (Cách A):** helper `fetchAllRows()` lặp `.range()` theo lô 1000 + `.order('name'/'farm_name').order('id')`, áp cho products+customers ở cả 2 trang. Xác minh DB thật: nạp đủ 1002 SP (3 SKU đều found) + 1907 KH. tsc+build PASS.
+- **Bài học:** mọi chỗ preload danh sách lớn rồi lọc client-side đều có nguy cơ cap 1000 — cần `fetchAllRows` hoặc search server-side. Catalog lớn về sau nên chuyển search server-side (`ilike`+limit).
+
 ---
 
 ## Files quan trọng cần biết

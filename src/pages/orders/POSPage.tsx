@@ -12,8 +12,6 @@ import {
   X,
   CheckCircle2,
   Package,
-  ScanLine,
-  Smartphone,
   ChevronDown,
   User,
   Receipt,
@@ -140,6 +138,8 @@ interface InvoiceTab {
   selectedPriceListId: string
   selectedDiseaseId: string
   treatmentPurpose: string
+  salesMode: 'quick' | 'delivery'
+  deliveryAddress: string
 }
 
 // Helpers for input masking and currency format
@@ -153,6 +153,26 @@ const formatNumberString = (val: number | string) => {
 const parseNumberString = (val: string) => {
   const cleaned = val.replace(/\D/g, '')
   return cleaned ? parseInt(cleaned, 10) : 0
+}
+
+// Nạp ĐẦY ĐỦ mọi dòng, vượt giới hạn mặc định 1000 dòng của PostgREST.
+// makeQuery phải có .order() ổn định để phân trang chính xác; gọi .range() theo lô.
+async function fetchAllRows<T = any>(
+  makeQuery: (from: number, to: number) => PromiseLike<{ data: any; error: any }>,
+  batch = 1000,
+): Promise<T[]> {
+  const all: T[] = []
+  let from = 0
+  // Giới hạn vòng lặp an toàn (tối đa 100k dòng) để tránh lặp vô hạn nếu lỗi.
+  for (let guard = 0; guard < 100; guard++) {
+    const { data, error } = await makeQuery(from, from + batch - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    all.push(...(data as T[]))
+    if (data.length < batch) break
+    from += batch
+  }
+  return all
 }
 
 export default function POSPage() {
@@ -211,7 +231,9 @@ export default function POSPage() {
       notes: '',
       selectedPriceListId: '',
       selectedDiseaseId: '',
-      treatmentPurpose: ''
+      treatmentPurpose: '',
+      salesMode: 'quick',
+      deliveryAddress: ''
     }
   ])
   const [activeTabId, setActiveTabId] = useState<string>('1')
@@ -221,8 +243,11 @@ export default function POSPage() {
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [focusedSearchIndex, setFocusedSearchIndex] = useState(-1)
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
-  const [showGrid, setShowGrid] = useState(true)
+  // Mặc định ẩn danh mục để tăng diện tích thao tác (bật/tắt bất kỳ lúc nào)
+  const [showGrid, setShowGrid] = useState(false)
   const [showProductImages, setShowProductImages] = useState(true)
+  // Mặc định KHÔNG tự in sau thanh toán; có thể bật bất kỳ lúc nào
+  const [autoPrint, setAutoPrint] = useState(false)
 
   // Promotion / voucher (lọc theo chi nhánh của nhân viên đăng nhập)
   const branchId = profile?.branch_id ?? null
@@ -236,6 +261,7 @@ export default function POSPage() {
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [showReceiptModal, setShowReceiptModal] = useState(false)
   const [createdOrderCode, setCreatedOrderCode] = useState('')
+  const [createdOrderId, setCreatedOrderId] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   // Focus search input
@@ -254,6 +280,8 @@ export default function POSPage() {
   const selectedPriceListId = activeTab.selectedPriceListId
   const selectedDiseaseId = activeTab.selectedDiseaseId || ''
   const treatmentPurpose = activeTab.treatmentPurpose || ''
+  const salesMode = activeTab.salesMode || 'quick'
+  const deliveryAddress = activeTab.deliveryAddress || ''
 
   const updateActiveTab = (fields: Partial<InvoiceTab>) => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, ...fields } : t))
@@ -295,6 +323,14 @@ export default function POSPage() {
 
   const setSelectedDiseaseId = (diseaseId: string) => {
     updateActiveTab({ selectedDiseaseId: diseaseId })
+  }
+
+  const setSalesMode = (mode: 'quick' | 'delivery') => {
+    updateActiveTab({ salesMode: mode })
+  }
+
+  const setDeliveryAddress = (addr: string) => {
+    updateActiveTab({ deliveryAddress: addr })
   }
 
   const setTreatmentPurpose = (purpose: string) => {
@@ -342,11 +378,16 @@ export default function POSPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const { data: custData } = await supabase
-          .from('customers')
-          .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
-          .eq('is_active', true)
-        if (custData) setCustomers(custData as unknown as Customer[])
+        const custData = await fetchAllRows<Customer>((from, to) =>
+          supabase
+            .from('customers')
+            .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
+            .eq('is_active', true)
+            .order('farm_name')
+            .order('id')
+            .range(from, to)
+        )
+        setCustomers(custData)
 
         const { data: catData } = await supabase
           .from('product_categories')
@@ -394,25 +435,30 @@ export default function POSPage() {
           }
         }
 
-        const { data: prodData } = await supabase
-          .from('products')
-          .select(`
-            id,
-            sku,
-            name,
-            unit,
-            is_lot_managed,
-            is_active,
-            category_id,
-            package_specs,
-            image_urls,
-            product_categories(id, code, name),
-            brands(name),
-            price_list_items(price_list_id, cost_price, selling_price, price_list:price_lists(id, code, name)),
-            product_active_ingredients(active_ingredient_id, percentage_or_dosage, active_ingredient:active_ingredients(id, name, code))
-          `)
-          .eq('is_active', true)
-        if (prodData) setProducts(prodData as unknown as Product[])
+        const prodData = await fetchAllRows<Product>((from, to) =>
+          supabase
+            .from('products')
+            .select(`
+              id,
+              sku,
+              name,
+              unit,
+              is_lot_managed,
+              is_active,
+              category_id,
+              package_specs,
+              image_urls,
+              product_categories(id, code, name),
+              brands(name),
+              price_list_items(price_list_id, cost_price, selling_price, price_list:price_lists(id, code, name)),
+              product_active_ingredients(active_ingredient_id, percentage_or_dosage, active_ingredient:active_ingredients(id, name, code))
+            `)
+            .eq('is_active', true)
+            .order('name')
+            .order('id')
+            .range(from, to)
+        )
+        setProducts(prodData)
 
         const { data: compatData } = await supabase
           .from('active_ingredient_compatibility')
@@ -824,9 +870,13 @@ export default function POSPage() {
 
   const grandTotal = useMemo(() => Math.max(0, subtotal - invoiceDiscount), [subtotal, invoiceDiscount])
 
-  // Credit limit validation
-  const isCreditLimitExceeded = selectedCustomer &&
-    (customerDebt + grandTotal > selectedCustomer.credit_limit)
+  // Số tiền khách thực trả (mặc định trả đủ nếu để trống); ghi nợ = phần còn thiếu.
+  const effectivePaid = paymentMethod === 'credit' ? 0 : (paymentAmount || grandTotal)
+  const debtAmount = paymentMethod === 'credit' ? grandTotal : Math.max(0, grandTotal - effectivePaid)
+
+  // Vượt hạn mức khi phần ghi nợ phát sinh khiến tổng nợ > hạn mức (khớp logic RPC server)
+  const isCreditLimitExceeded = !!selectedCustomer && debtAmount > 0 &&
+    (customerDebt + debtAmount > selectedCustomer.credit_limit)
 
   // Autocomplete products
   const searchResults = useMemo(() => products.filter(p => {
@@ -889,8 +939,7 @@ export default function POSPage() {
     setPaymentAmount(amount)
   }
 
-  const effectivePaymentAmount = paymentMethod === 'credit' ? 0 : (paymentAmount || grandTotal)
-  const changeDue = Math.max(0, effectivePaymentAmount - grandTotal)
+  const changeDue = Math.max(0, effectivePaid - grandTotal)
 
   // Tabs management
   const handleAddTab = () => {
@@ -917,7 +966,9 @@ export default function POSPage() {
       notes: '',
       selectedPriceListId: defPlId,
       selectedDiseaseId: '',
-      treatmentPurpose: ''
+      treatmentPurpose: '',
+      salesMode: 'quick',
+      deliveryAddress: ''
     }
     setTabs([...tabs, newTab])
     setActiveTabId(newId)
@@ -944,7 +995,9 @@ export default function POSPage() {
           notes: '',
           selectedPriceListId: defPlId,
           selectedDiseaseId: '',
-          treatmentPurpose: ''
+          treatmentPurpose: '',
+          salesMode: 'quick',
+          deliveryAddress: ''
         }
       ])
       return
@@ -960,161 +1013,110 @@ export default function POSPage() {
     }
   }
 
-  // Submit billing
+  // Dọn tab hiện tại sau khi tạo đơn thành công
+  const resetActiveTab = () => {
+    const def = priceLists.find(pl => pl.id === branchDefaultPriceListId) ||
+                priceLists.find(pl => pl.is_default) ||
+                priceLists.find(pl => pl.code === 'GIA-LE') ||
+                priceLists[0]
+    updateActiveTab({
+      cart: [],
+      invoiceDiscount: 0,
+      paymentMethod: 'cash',
+      selectedCustomerId: '',
+      customerSearchQuery: '',
+      paymentAmount: 0,
+      notes: '',
+      selectedPriceListId: def ? def.id : '',
+      selectedDiseaseId: '',
+      treatmentPurpose: '',
+      deliveryAddress: ''
+    })
+    setAppliedDiscount(null)
+    setVoucherCode('')
+    setVoucherError('')
+  }
+
+  // Submit: bán nhanh (atomic RPC) hoặc tạo đơn giao hàng nháp
   const handlePayment = async () => {
     if (cart.length === 0) {
       setAlertMsg({ type: 'error', text: 'Giỏ hàng đang trống. Vui lòng thêm sản phẩm.' })
       return
     }
     if (!selectedCustomerId) {
-      setAlertMsg({ type: 'error', text: 'Vui lòng chọn khách hàng để thanh toán.' })
+      setAlertMsg({ type: 'error', text: 'Vui lòng chọn khách hàng.' })
       return
     }
     if (!profile?.id) {
       setAlertMsg({ type: 'error', text: 'Lỗi tài khoản. Vui lòng đăng nhập lại.' })
       return
     }
-
-    if (paymentMethod === 'credit' && isCreditLimitExceeded) {
+    // Chặn vượt hạn mức khi bán nhanh có phát sinh ghi nợ
+    if (salesMode === 'quick' && isCreditLimitExceeded && selectedCustomer) {
       setAlertMsg({
         type: 'error',
-        text: `Khách hàng vượt quá hạn mức nợ cho phép. Hạn mức: ${selectedCustomer.credit_limit.toLocaleString('vi-VN')} ₫. Nợ hiện tại: ${customerDebt.toLocaleString('vi-VN')} ₫`
+        text: `Vượt hạn mức nợ. Hạn mức: ${selectedCustomer.credit_limit.toLocaleString('vi-VN')} ₫, nợ hiện tại: ${customerDebt.toLocaleString('vi-VN')} ₫, phát sinh: ${debtAmount.toLocaleString('vi-VN')} ₫.`
       })
       return
     }
 
     setSubmitting(true)
     try {
-      const rand = Math.floor(10000 + Math.random() * 90000)
-      const orderCode = `DH-${rand}`
-
-      const orderInsertDraft = {
-        order_code: orderCode,
-        customer_id: selectedCustomerId,
-        status: 'draft',
-        payment_status: paymentMethod === 'credit' ? 'unpaid' : 'paid',
-        payment_method: paymentMethod,
-        owner_user_id: profile.id,
-        branch_id: profile?.branch_id || null,
-        warehouse_id: selectedWarehouseId || null,
-        price_list_id: selectedPriceListId || null,
-        subtotal: subtotal,
-        discount_total: invoiceDiscount,
-        grand_total: grandTotal,
-        paid_amount: paymentMethod === 'credit' ? 0 : grandTotal,
-        delivery_address: 'Giao trực tiếp tại quầy POS',
-        notes: notes || 'Đơn hàng bán lẻ từ hệ thống POS desktop.',
-        disease_id: selectedDiseaseId || null,
-        treatment_purpose: treatmentPurpose || null
-      }
-
-      const { data: orderData, error: orderErr } = await supabase
-        .from('orders')
-        .insert([orderInsertDraft])
-        .select()
-        .single()
-
-      if (orderErr) throw orderErr
-
-      const linesInsert = cart.map((item) => ({
-        order_id: orderData.id,
-        variant_id: null,
+      // discount per-unit (khớp order_lines.discount); invoice_discount giữ voucher/KM cấp HĐ
+      const lines = cart.map(item => ({
         product_id: item.product.id,
         quantity: item.quantity,
         unit_price: item.unitPrice,
-        discount: item.unitPrice * (item.discountPercent / 100)
+        discount: Math.round(item.unitPrice * (item.discountPercent / 100))
       }))
-
-      const { error: linesErr } = await supabase
-        .from('order_lines')
-        .insert(linesInsert)
-
-      if (linesErr) {
-        await supabase.from('orders').delete().eq('id', orderData.id)
-        throw linesErr
+      const basePayload = {
+        customer_id: selectedCustomerId,
+        warehouse_id: selectedWarehouseId || null,
+        price_list_id: selectedPriceListId || null,
+        invoice_discount: invoiceDiscount || 0,
+        notes: notes || null,
+        disease_id: selectedDiseaseId || null,
+        treatment_purpose: treatmentPurpose || null,
+        payment_method: paymentMethod,
+        lines
       }
 
-      // Update order status to 'confirmed' to trigger stock deduction trigger
-      const { error: confirmErr } = await supabase
-        .from('orders')
-        .update({
-          status: 'confirmed',
-          confirmed_by: profile.id
+      if (salesMode === 'delivery') {
+        const { data, error } = await supabase.rpc('fn_create_delivery_draft', {
+          p_payload: { ...basePayload, delivery_address: deliveryAddress || null }
         })
-        .eq('id', orderData.id)
-
-      if (confirmErr) {
-        await supabase.from('order_lines').delete().eq('order_id', orderData.id)
-        await supabase.from('orders').delete().eq('id', orderData.id)
-        throw confirmErr
+        if (error) throw error
+        const res = data as { order_id: string; order_code: string }
+        resetActiveTab()
+        setAlertMsg({ type: 'success', text: `Đã tạo đơn giao hàng ${res.order_code} (nháp). Chờ Admin xác nhận đơn & duyệt giá bán.` })
+        return
       }
 
-      // Store sale is completed immediately at the counter (no shipping needed)
-      const { error: completeErr } = await supabase
-        .from('orders')
-        .update({
-          status: 'completed'
-        })
-        .eq('id', orderData.id)
-
-      if (completeErr) throw completeErr
-
-      if (paymentMethod !== 'credit') {
-        const { error: payErr } = await supabase
-          .from('order_payments')
-          .insert([{
-            order_id: orderData.id,
-            payment_method: paymentMethod,
-            amount: grandTotal,
-            reference_no: paymentMethod === 'bank_transfer' ? `POS-BANK-${rand}` : `POS-CASH-${rand}`,
-            notes: 'Thanh toán trực tiếp tại quầy POS.',
-            created_by: profile.id
-          }])
-
-        if (payErr) throw payErr
-      } else {
-        const { error: debtErr } = await supabase
-          .from('customer_debts')
-          .insert([{
-            customer_id: selectedCustomerId,
-            order_id: orderData.id,
-            debt_type: 'order_debt',
-            amount: grandTotal,
-            due_date: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
-            is_settled: false,
-            notes: `Công nợ đơn hàng POS ${orderCode}`,
-            created_by: profile.id
-          }])
-
-        if (debtErr) throw debtErr
-      }
-
-      setCreatedOrderCode(orderCode)
-      setShowReceiptModal(true)
-
-      const def = priceLists.find(pl => pl.is_default) || priceLists.find(pl => pl.code === 'GIA-LE') || priceLists[0]
-      const defPlId = def ? def.id : ''
-      updateActiveTab({
-        cart: [],
-        invoiceDiscount: 0,
-        paymentMethod: 'cash',
-        selectedCustomerId: '',
-        customerSearchQuery: '',
-        paymentAmount: 0,
-        notes: '',
-        selectedPriceListId: defPlId,
-        selectedDiseaseId: '',
-        treatmentPurpose: ''
+      // Bán nhanh tại quầy — atomic
+      const { data, error } = await supabase.rpc('fn_pos_quick_sale', {
+        p_payload: {
+          ...basePayload,
+          paid_amount: paymentMethod === 'credit' ? 0 : effectivePaid,
+          delivery_address: 'Giao trực tiếp tại quầy POS'
+        }
       })
-      
-      // Refresh stock levels on UI
+      if (error) throw error
+      const res = data as { order_id: string; order_code: string }
+
+      setCreatedOrderCode(res.order_code)
+      setCreatedOrderId(res.order_id)
+      resetActiveTab()
       fetchStockData()
 
-      setAlertMsg({ type: 'success', text: `Hóa đơn ${orderCode} đã thanh toán thành công.` })
-
+      if (autoPrint) {
+        navigate(`/print-preview?type=invoice&id=${res.order_id}`)
+      } else {
+        setShowReceiptModal(true)
+        setAlertMsg({ type: 'success', text: `Hóa đơn ${res.order_code} đã thanh toán thành công.` })
+      }
     } catch (err: any) {
       console.error('POS billing error:', err)
-      setAlertMsg({ type: 'error', text: 'Thanh toán thất bại: ' + err.message })
+      setAlertMsg({ type: 'error', text: 'Thao tác thất bại: ' + (err.message || 'Lỗi không xác định') })
     } finally {
       setSubmitting(false)
     }
@@ -1262,6 +1264,16 @@ export default function POSPage() {
               className="px-3 py-1 rounded bg-[#006cc0] hover:bg-[#005ba3] text-tiny font-bold flex items-center gap-1.5 transition-colors border border-[#005ba3]"
             >
               <span>{showGrid ? 'Ẩn danh mục' : 'Xem danh mục'}</span>
+            </button>
+            <button
+              onClick={() => setAutoPrint(prev => !prev)}
+              className={`px-3 py-1 rounded text-tiny font-bold flex items-center gap-1.5 transition-colors border ${
+                autoPrint ? 'bg-emerald-600 hover:bg-emerald-700 border-emerald-700' : 'bg-[#005ba3]/40 hover:bg-[#005ba3]/60 border-[#005ba3]'
+              }`}
+              title="Bật/tắt tự động mở bản in sau khi thanh toán"
+            >
+              <Printer size={13} />
+              <span>{autoPrint ? 'Tự in: BẬT' : 'Tự in: TẮT'}</span>
             </button>
             <div className="flex items-center gap-2 border-l border-[#006cc0] pl-3 text-tiny">
               <User size={15} />
@@ -1478,7 +1490,7 @@ export default function POSPage() {
             </div>
 
             {/* Bottom Note & Sale Mode Selection */}
-            <div className="mt-3 shrink-0 bg-white border border-gray-150 p-2.5 rounded shadow-sm">
+            <div className="mt-3 shrink-0 bg-white border border-gray-150 p-2.5 rounded shadow-sm space-y-2">
               <div className="flex gap-4 items-center">
                 <textarea
                   placeholder="Ghi chú hóa đơn..."
@@ -1489,16 +1501,32 @@ export default function POSPage() {
                 <div className="flex flex-col gap-1 items-end shrink-0">
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Chế độ bán</span>
                   <div className="flex gap-1 bg-gray-100 p-0.5 rounded border border-gray-200">
-                    {['Bán nhanh', 'Bán giao hàng'].map(mode => (
-                      <span key={mode} className={`px-2 py-0.5 text-[10px] font-bold rounded cursor-pointer ${
-                        mode === 'Bán nhanh' ? 'bg-[#007edb] text-white' : 'text-gray-500 hover:text-gray-800'
-                      }`}>
-                        {mode}
-                      </span>
+                    {([['quick', 'Bán nhanh'], ['delivery', 'Bán giao hàng']] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSalesMode(mode)}
+                        className={`px-2.5 py-1 text-[10px] font-bold rounded transition-colors ${
+                          salesMode === mode ? 'bg-[#007edb] text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'
+                        }`}
+                      >
+                        {label}
+                      </button>
                     ))}
                   </div>
                 </div>
               </div>
+
+              {/* Địa chỉ giao — chỉ hiện khi bán giao hàng */}
+              {salesMode === 'delivery' && (
+                <input
+                  type="text"
+                  placeholder="Địa chỉ giao hàng (tùy chọn)..."
+                  value={deliveryAddress}
+                  onChange={e => setDeliveryAddress(e.target.value)}
+                  className="w-full h-8 px-2 border border-gray-200 rounded text-tiny focus:outline-none focus:border-[#007edb] placeholder-gray-400"
+                />
+              )}
             </div>
           </div>
 
@@ -1847,36 +1875,41 @@ export default function POSPage() {
                   )}
 
                   <div className="flex justify-between items-center text-[12px] font-bold pt-1.5 border-t border-dashed border-gray-200">
-                    <span>Tiền thừa</span>
-                    <span className="text-emerald-600 text-[13px]">
-                      {changeDue.toLocaleString('vi-VN')} ₫
+                    <span>{debtAmount > 0 ? 'Ghi nợ' : 'Tiền thừa'}</span>
+                    <span className={debtAmount > 0 ? 'text-red-600 text-[13px]' : 'text-emerald-600 text-[13px]'}>
+                      {(debtAmount > 0 ? debtAmount : changeDue).toLocaleString('vi-VN')} ₫
                     </span>
                   </div>
                 </div>
               )}
 
-              {/* Credit Limit Warning Message */}
-              {paymentMethod === 'credit' && isCreditLimitExceeded && (
+              {/* Cảnh báo vượt hạn mức — khi có phần ghi nợ vượt hạn mức (mọi PTTT) */}
+              {isCreditLimitExceeded && (
                 <div className="pt-1">
                   <div className="flex items-start gap-1.5 p-2 bg-red-50 text-red-800 rounded border border-red-100">
                     <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <div className="text-[10px] leading-tight">
-                      <span className="font-bold">Vượt hạn mức nợ!</span>
+                      <span className="font-bold">Vượt hạn mức nợ!</span> Phần ghi nợ {debtAmount.toLocaleString('vi-VN')} ₫ vượt hạn mức còn lại.
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Pay and Print Receipt Button */}
+              {/* Nút thanh toán / tạo đơn — thích ứng theo chế độ bán */}
               <div className="pt-2 border-t border-gray-200/60">
                 <button
                   id="btn-pos-pay"
                   onClick={handlePayment}
-                  disabled={submitting || cart.length === 0}
-                  className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all shadow disabled:opacity-50"
+                  disabled={submitting || cart.length === 0 || (salesMode === 'quick' && isCreditLimitExceeded)}
+                  className={`w-full h-10 rounded font-bold text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all shadow disabled:opacity-50 text-white ${
+                    salesMode === 'delivery' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
                 >
-                  <Printer size={14} />
-                  Thanh toán &amp; In (F9)
+                  {salesMode === 'delivery' ? (
+                    <><Package size={14} /> Tạo đơn giao hàng (F9)</>
+                  ) : (
+                    <>{autoPrint ? <Printer size={14} /> : <CheckCircle2 size={14} />} {autoPrint ? 'Thanh toán & In (F9)' : 'Thanh toán (F9)'}</>
+                  )}
                 </button>
               </div>
             </div>
@@ -1884,94 +1917,36 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* Invoice Receipt Modal */}
+      {/* Modal xác nhận thanh toán thành công */}
       {showReceiptModal && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 text-[13px]">
-            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
-              <h3 className="font-bold text-gray-755 text-body-md">Hóa đơn bán lẻ</h3>
+          <div className="bg-white w-full max-w-sm rounded-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 text-[13px]">
+            <div className="p-6 flex flex-col items-center text-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center">
+                <CheckCircle2 size={30} className="text-emerald-500" />
+              </div>
+              <h3 className="font-bold text-gray-800 text-body-md">Thanh toán thành công</h3>
+              <p className="text-gray-500">
+                Hóa đơn <span className="font-bold text-blue-600 font-mono">{createdOrderCode}</span> đã được ghi nhận và báo cáo sổ quỹ.
+              </p>
+            </div>
+            <div className="p-5 bg-gray-25 border-t border-gray-100 grid grid-cols-2 gap-3">
               <button
                 onClick={() => setShowReceiptModal(false)}
-                className="p-1 hover:bg-gray-100 rounded-full text-gray-400"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            {/* Simulation receipt print format */}
-            <div className="p-6 overflow-y-auto max-h-[50vh]">
-              <div className="bg-white border border-gray-200 shadow-inner p-6 rounded-lg text-center font-mono text-tiny text-gray-700">
-                <div className="mb-4">
-                  <h4 className="text-body-md font-bold text-blue-600">SANH LONG VETCO</h4>
-                  <p className="text-[10px] text-gray-400">789 Veterinary Blvd, TP. Hồ Chí Minh</p>
-                  <p className="text-[10px] text-gray-400">Hotline: 1900 6789</p>
-                </div>
-                
-                <div className="text-body-md font-bold border-y border-dashed border-gray-200 py-2 mb-4">
-                  HÓA ĐƠN BÁN LẺ
-                  <div className="text-[10px] font-normal mt-0.5">Mã đơn: #{createdOrderCode}</div>
-                  <div className="text-[10px] font-normal">Ngày: {new Date().toLocaleDateString('vi-VN')}</div>
-                </div>
-
-                <div className="space-y-2 text-left mb-4">
-                  {cart.map(item => (
-                    <div key={item.id} className="flex justify-between text-[11px]">
-                      <span>{item.product.name} (x{item.quantity.toLocaleString('vi-VN')})</span>
-                      <span>{((item.unitPrice * (1 - item.discountPercent / 100)) * item.quantity).toLocaleString('vi-VN')}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="border-t border-dashed border-gray-200 pt-2 space-y-1 mb-4 text-left">
-                  <div className="flex justify-between text-[11px]">
-                    <span>Tạm tính:</span>
-                    <span>{subtotal.toLocaleString('vi-VN')}</span>
-                  </div>
-                  {invoiceDiscount > 0 && (
-                    <div className="flex justify-between text-[11px] text-red-500">
-                      <span>Giảm giá:</span>
-                      <span>-{invoiceDiscount.toLocaleString('vi-VN')}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-body-sm font-bold pt-2 border-t border-dashed border-gray-200">
-                    <span>TỔNG CỘNG:</span>
-                    <span>{grandTotal.toLocaleString('vi-VN')}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-center justify-center space-y-2 mt-4 pt-4 border-t border-dashed border-gray-200">
-                  <div className="w-24 h-24 bg-gray-50 border border-gray-105 p-2 rounded flex items-center justify-center relative">
-                    <div className="w-full h-full opacity-10" style={{ backgroundImage: 'radial-gradient(#1e5a9c 1px, transparent 1px)', backgroundSize: '4px 4px' }}></div>
-                    <ScanLine className="absolute text-blue-500" size={32} />
-                  </div>
-                  <p className="text-[9px] text-gray-400">Quét mã QR để xác nhận giao dịch</p>
-                </div>
-
-                <div className="mt-6 text-[10px] italic text-gray-400">
-                  Cảm ơn quý khách đã tin dùng Sanh Long Vetco!
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 bg-gray-25 border-t border-gray-100 grid grid-cols-2 gap-4">
-              <button
-                onClick={() => {
-                  window.print()
-                }}
                 className="h-10 border border-gray-200 text-gray-700 rounded-lg text-body-md font-semibold hover:bg-gray-50 flex items-center justify-center gap-2"
               >
-                <Printer size={16} />
-                In hóa đơn
+                Đóng
               </button>
               <button
                 onClick={() => {
-                  setAlertMsg({ type: 'success', text: 'Đã gửi liên kết hóa đơn đến Zalo/SMS.' })
                   setShowReceiptModal(false)
+                  if (createdOrderId) navigate(`/print-preview?type=invoice&id=${createdOrderId}`)
                 }}
-                className="h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-body-md font-semibold flex items-center justify-center gap-2"
+                disabled={!createdOrderId}
+                className="h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-body-md font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Smartphone size={16} />
-                Gửi Zalo/SMS
+                <Printer size={16} />
+                Mở bản in
               </button>
             </div>
           </div>

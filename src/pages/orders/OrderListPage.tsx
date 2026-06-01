@@ -27,6 +27,7 @@ interface Order {
   order_code: string
   created_at: string
   status: string
+  sale_channel?: string
   payment_status: string
   grand_total: number
   paid_amount: number
@@ -54,6 +55,7 @@ export default function OrderListPage() {
   const [selectedStatus, setSelectedStatus] = useState('')
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
   const [selectedDateRange, setSelectedDateRange] = useState('all') // 'all', 'today', '7days', '30days'
+  const [quickDeliveryPending, setQuickDeliveryPending] = useState(false) // lọc nhanh đơn giao chờ xác nhận
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
   // Pagination State
@@ -71,6 +73,7 @@ export default function OrderListPage() {
           order_code,
           created_at,
           status,
+          sale_channel,
           payment_status,
           grand_total,
           paid_amount,
@@ -135,8 +138,14 @@ export default function OrderListPage() {
       }
     }
 
-    return matchesSearch && matchesStatus && matchesPaymentStatus && matchesDate
+    // 5. Quick view: đơn giao hàng đang chờ Admin xác nhận
+    const matchesQuick = !quickDeliveryPending || (order.sale_channel === 'delivery' && order.status === 'draft')
+
+    return matchesSearch && matchesStatus && matchesPaymentStatus && matchesDate && matchesQuick
   })
+
+  // Số đơn giao chờ xác nhận (cho badge quick view)
+  const deliveryPendingCount = orders.filter(o => o.sale_channel === 'delivery' && o.status === 'draft').length
 
   // Pagination calculations
   const totalItems = filteredOrders.length
@@ -147,7 +156,7 @@ export default function OrderListPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, selectedStatus, selectedPaymentStatus, selectedDateRange])
+  }, [debouncedSearch, selectedStatus, selectedPaymentStatus, selectedDateRange, quickDeliveryPending])
 
   // Helper to format currency
   const formatCurrency = (value: number) => {
@@ -289,6 +298,25 @@ export default function OrderListPage() {
             </button>
           </div>
         </div>
+
+        {/* Quick view: đơn giao hàng chờ xác nhận */}
+        {(deliveryPendingCount > 0 || quickDeliveryPending) && (
+          <button
+            onClick={() => setQuickDeliveryPending(v => !v)}
+            className={`mb-6 w-full sm:w-auto flex items-center gap-2 px-4 py-2.5 rounded-xl border text-body-md font-semibold transition-all ${
+              quickDeliveryPending
+                ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            <Clock size={16} />
+            Đơn giao chờ xác nhận
+            <span className={`px-2 py-0.5 rounded-full text-tiny font-bold ${quickDeliveryPending ? 'bg-white/25' : 'bg-amber-200 text-amber-900'}`}>
+              {deliveryPendingCount}
+            </span>
+            {quickDeliveryPending && <span className="text-tiny font-normal opacity-90">• Bấm để bỏ lọc</span>}
+          </button>
+        )}
 
         {/* Filter Bar */}
         <div className="bg-gray-0 border border-gray-100 rounded-xl p-5 mb-8 flex flex-wrap items-end gap-4 shadow-sm">

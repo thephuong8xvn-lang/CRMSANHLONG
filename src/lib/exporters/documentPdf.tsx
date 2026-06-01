@@ -45,6 +45,12 @@ export async function generateDocumentPdf(
       fonts: [
         { src: '/fonts/BeVietnamPro-Regular.ttf', fontWeight: 400 },
         { src: '/fonts/BeVietnamPro-SemiBold.ttf', fontWeight: 600 },
+        // react-pdf KHÔNG nghiêng giả lập — phải đăng ký riêng fontStyle 'italic',
+        // nếu không các style italic ('Bằng chữ', '(Ký, ghi rõ họ tên)') sẽ ném
+        // "Could not resolve font". Dùng lại file Regular/SemiBold (chữ đứng) để
+        // không phình asset; hình thức đứng vẫn đúng chuẩn chứng từ.
+        { src: '/fonts/BeVietnamPro-Regular.ttf', fontWeight: 400, fontStyle: 'italic' },
+        { src: '/fonts/BeVietnamPro-SemiBold.ttf', fontWeight: 600, fontStyle: 'italic' },
       ],
     })
     // Tránh ngắt dòng kỳ lạ với từ tiếng Việt dài
