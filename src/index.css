@@ -48,3 +48,26 @@
   flex-direction: column;
 }
 
+/* ──────────────────────────────────────────────────────────────
+ * Quy tắc in toàn cục (trang xem trước /print-preview).
+ * Trước đây KHÔNG có @media print nào → thanh công cụ, footer, banner
+ * (.no-print) bị in đè lên chứng từ. Đây là gốc lỗi "đè/che khuất".
+ * ────────────────────────────────────────────────────────────── */
+@media print {
+  /* Ẩn mọi phần tử không thuộc nội dung chứng từ */
+  .no-print { display: none !important; }
+
+  /* Nền trắng, bỏ chiều cao tối thiểu của khung app để không tạo trang thừa */
+  html, body, #root {
+    background: #fff !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  /* Giữ nguyên màu nền (header bảng xám, badge) khi in ra giấy/PDF */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+

@@ -1023,3 +1023,18 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Bảo mật**: RLS thật (reorder view security_invoker, stock_lots/order_lines scoped); cấu hình màu ghi chỉ admin.
 - **(tiếp) ProductListPage — bỏ sidebar trái**: xóa hẳn aside lọc (Nhóm/Thương hiệu/ĐVT/Trạng thái) → bảng **full-width**. Bộ lọc chuyển thành 3 select (Nhóm SP / Thương hiệu / Trạng thái) + "Xóa lọc" trên **toolbar bảng** (desktop `hidden md:flex`); giữ nút "Lọc" + panel mobile. Quản lý danh mục vẫn ở dropdown header. Chỉ UI, tsc PASS.
 - **Fix migration 20260612**: bảng `system_settings` chưa từng được CREATE (chỉ tham chiếu trong trigger loyalty) → đã thêm `CREATE TABLE IF NOT EXISTS public.system_settings(key PK, value jsonb, updated_at)` + RLS (select active / manage admin) + grant trước seed. Re-run toàn file (idempotent).
+
+### 🖨️ Phiên 2026-06-01 (tiếp) — Trang in: sửa lỗi tràn/đè + Xuất Excel/PDF
+
+**Bối cảnh:** In hóa đơn từ `/print-preview` bị **lỗi 2 trang + nội dung đè/che khuất** (thanh công cụ đen in đè lên chứng từ). Yêu cầu: trang in sạch–gọn 1 trang + thêm xuất Excel & PDF. **Không migration.** (tsc EXIT=0, vite build EXIT=0)
+
+- **Gốc lỗi & cách sửa (4 nguyên nhân):**
+  1. **`.no-print` không có CSS ẩn khi in** (không hề có `@media print` toàn cục) → thanh công cụ/footer/banner in đè. → Thêm khối `@media print` vào `src/index.css`: `.no-print{display:none}`, nền trắng `html/body/#root`, `print-color-adjust:exact` (giữ nền xám header bảng).
+  2. **Lề kép** (`@page margin` + phần tử `w-[210mm] p-[15mm]`) gây tràn ngang/sang trang. → `PrintLayout.tsx` khối `<style>` in: `.print-page` ép `width:100%/max-width:none/padding:0/border-radius:0/overflow:visible`; `.print-layout-container{display:block}`.
+  3. **`transform: scale()`** khung xem trước không reset khi in. → `PrintPreviewPage.tsx` thêm `print:transform-none print:scale-100` cho khung scale, `print:bg-white print:block` + `print:p-0 print:overflow-visible` cho 2 wrapper.
+  4. **Dòng trống lấp đầy** (minRows 5/10) + chữ ký → đẩy hóa đơn 1 SP sang trang 2. → **Bỏ hẳn** vòng `while(filledLines.length<minRows)` + nhánh `isEmpty` trong cả 4 render (invoice/receipt/return/transfer) → chỉ in đúng số dòng thật. Gỡ biến `isLandscape` thừa.
+- **Xuất Excel** `src/lib/exporters/documentXlsx.ts` (MỚI): `generateDocumentXlsx(docType, data, company)` — exceljs **lazy import**, cấu trúc theo `buildLayout()` cho cả 6 loại (header công ty từ `printConfig`, khối meta 2 cột, bảng dòng hàng + tổng + bằng chữ, numFmt `#,##0`, freeze header, fitToWidth). Phiếu thu/chi không bảng → khối key/value.
+- **Xuất PDF** `src/lib/exporters/documentPdf.tsx` (MỚI): `generateDocumentPdf(...)` — `@react-pdf/renderer` **lazy import**, dựng layout primitive cho 6 loại + chữ ký, `pdf().toBlob()` tải về. **Font:** nhúng `public/fonts/BeVietnamPro-{Regular,SemiBold}.ttf` (tải từ Google Fonts) + `Font.register` (woff2 của @fontsource react-pdf không đọc được) để có dấu tiếng Việt.
+- **Toolbar** `PrintPreviewPage.tsx`: thêm 2 nút **Excel**/**PDF** (lazy import exporter, spinner khi đang sinh, disabled khi chưa có dữ liệu), `printConfig` lấy từ `useDisplaySettings()`.
+- **Bảo mật/toàn vẹn:** route chỉ `<ProtectedRoute>` nhưng **ranh giới thật là RLS** trên orders/goods_receipts/… (user không có quyền → `.single()` lỗi → màn lỗi). Export chạy client-side trên `data` đã fetch → cùng ranh giới, không mở rộng phơi nhiễm. VAT vẫn = 0 (P4-3 đã bỏ qua) nên in/excel/pdf nhất quán không hiện VAT.
+- **Bundle:** `pdf` (652KB) + `exceljs` (938KB) là chunk lazy riêng, không vào main; chunk `PrintPreviewPage` ~41KB.

@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import PrintLayout from '../../components/PrintLayout';
-import { 
-  Printer, 
-  ArrowLeft, 
-  Maximize2, 
-  Layers, 
-  RefreshCw, 
+import { useDisplaySettings } from '../../contexts/DisplaySettingsContext';
+import {
+  Printer,
+  ArrowLeft,
+  Maximize2,
+  Layers,
+  RefreshCw,
   AlertCircle,
   FileText,
   FileSpreadsheet
@@ -29,6 +30,40 @@ export default function PrintPreviewPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<null | 'excel' | 'pdf'>(null);
+
+  // Cấu hình header công ty (tên/địa chỉ/MST...) dùng chung cho bản in & file xuất.
+  const { printConfig } = useDisplaySettings();
+
+  // Xuất Excel — thư viện exceljs nạp động trong exporter.
+  const handleExportExcel = async () => {
+    if (!data || exporting) return;
+    setExporting('excel');
+    try {
+      const { generateDocumentXlsx } = await import('../../lib/exporters/documentXlsx');
+      await generateDocumentXlsx(docType, data, printConfig);
+    } catch (err: any) {
+      console.error('Export Excel error:', err);
+      setError(`Không xuất được file Excel: ${err.message}`);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  // Xuất PDF — @react-pdf/renderer + font nạp động trong exporter.
+  const handleExportPdf = async () => {
+    if (!data || exporting) return;
+    setExporting('pdf');
+    try {
+      const { generateDocumentPdf } = await import('../../lib/exporters/documentPdf');
+      await generateDocumentPdf(docType, data, printConfig, { paperSize, orientation });
+    } catch (err: any) {
+      console.error('Export PDF error:', err);
+      setError(`Không xuất được file PDF: ${err.message}`);
+    } finally {
+      setExporting(null);
+    }
+  };
 
   // Sync params if they change
   useEffect(() => {
@@ -422,7 +457,7 @@ export default function PrintPreviewPage() {
 
 
   return (
-    <div className="min-h-screen bg-[#F0F2F5] flex flex-col font-sans">
+    <div className="min-h-screen bg-[#F0F2F5] flex flex-col font-sans print:block print:min-h-0 print:bg-white">
       
       {/* Dynamic Top bar (no-print) */}
       <div className="no-print bg-slate-900 text-slate-100 h-16 px-4 md:px-8 flex items-center justify-between border-b border-slate-800 shadow-md sticky top-0 z-50">
@@ -485,6 +520,32 @@ export default function PrintPreviewPage() {
             </button>
           </div>
 
+          {/* Export Excel — chỉ bật khi đã có dữ liệu thật */}
+          <button
+            onClick={handleExportExcel}
+            disabled={!data || loading || exporting !== null}
+            className="h-9 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-emerald-300 font-bold rounded-lg transition-all border border-slate-700 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            title={!data ? 'Chưa có dữ liệu chứng từ' : 'Xuất file Excel (.xlsx)'}
+          >
+            {exporting === 'excel'
+              ? <RefreshCw size={16} className="animate-spin" />
+              : <FileSpreadsheet size={16} />}
+            <span className="hidden md:inline">Excel</span>
+          </button>
+
+          {/* Export PDF */}
+          <button
+            onClick={handleExportPdf}
+            disabled={!data || loading || exporting !== null}
+            className="h-9 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-rose-300 font-bold rounded-lg transition-all border border-slate-700 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            title={!data ? 'Chưa có dữ liệu chứng từ' : 'Xuất file PDF'}
+          >
+            {exporting === 'pdf'
+              ? <RefreshCw size={16} className="animate-spin" />
+              : <FileText size={16} />}
+            <span className="hidden md:inline">PDF</span>
+          </button>
+
           {/* Print button — chỉ bật khi đã có dữ liệu thật */}
           <button
             onClick={() => window.print()}
@@ -513,7 +574,7 @@ export default function PrintPreviewPage() {
       )}
 
       {/* Main printable sheet backdrop (no-print for surrounding layout, print-layout is printed) */}
-      <div className="flex-1 overflow-auto p-4 md:p-8 flex justify-center items-start">
+      <div className="flex-1 overflow-auto p-4 md:p-8 flex justify-center items-start print:p-0 print:overflow-visible print:block">
         {loading ? (
           <div className="flex flex-col items-center justify-center p-20 gap-3">
             <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
@@ -548,7 +609,7 @@ export default function PrintPreviewPage() {
             </div>
           </div>
         ) : (
-          <div className="transform scale-[0.85] origin-top md:scale-100 transition-all duration-300">
+          <div className="transform scale-[0.85] origin-top md:scale-100 transition-all duration-300 print:transform-none print:scale-100">
             <PrintLayout
               docType={docType}
               paperSize={paperSize}

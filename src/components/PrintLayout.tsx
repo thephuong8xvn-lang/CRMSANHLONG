@@ -88,7 +88,6 @@ export default function PrintLayout({
 
   // Định nghĩa các hằng số in ấn
   const isA5 = paperSize === 'A5';
-  const isLandscape = orientation === 'landscape';
 
   // Chuyển tiền thành chữ
   const getAmountInWords = (amount: number) => {
@@ -157,20 +156,8 @@ export default function PrintLayout({
   // Hóa đơn bán hàng
   const renderInvoice = () => {
     const invData = data as SalesInvoicePrintData;
-    const minRows = isA5 ? 5 : 10;
-    const filledLines = [...invData.lines];
-    while (filledLines.length < minRows) {
-      filledLines.push({
-        productId: `empty-${filledLines.length}`,
-        productCode: '',
-        productName: '',
-        unit: '',
-        quantity: 0,
-        unitPrice: 0,
-        discount: 0,
-        totalAmount: 0
-      });
-    }
+    // Chỉ in đúng số dòng thực tế — không chèn dòng trống để chứng từ gọn 1 trang.
+    const filledLines = invData.lines;
 
     return (
       <div className="text-black font-sans">
@@ -210,24 +197,7 @@ export default function PrintLayout({
               </tr>
             </thead>
             <tbody>
-              {filledLines.map((line, idx) => {
-                const isEmpty = line.productId.startsWith('empty-');
-                if (isEmpty) {
-                  return (
-                    <tr key={line.productId} className="h-6">
-                      <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                    </tr>
-                  );
-                }
-
-                return (
+              {filledLines.map((line, idx) => (
                   <tr key={line.productId} className="page-break-inside-avoid">
                     <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
                     <td className="border border-black px-2 py-1 font-mono">{line.productCode}</td>
@@ -254,8 +224,7 @@ export default function PrintLayout({
                       {formatCurrency(line.totalAmount)}
                     </td>
                   </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
@@ -305,19 +274,7 @@ export default function PrintLayout({
   // Phiếu nhập kho
   const renderReceipt = () => {
     const rcData = data as GoodsReceiptPrintData;
-    const minRows = isA5 ? 5 : 10;
-    const filledLines = [...rcData.lines];
-    while (filledLines.length < minRows) {
-      filledLines.push({
-        productId: `empty-${filledLines.length}`,
-        productCode: '',
-        productName: '',
-        unit: '',
-        quantityReceived: 0,
-        unitPrice: 0,
-        totalAmount: 0
-      });
-    }
+    const filledLines = rcData.lines;
 
     return (
       <div className="text-black font-sans">
@@ -351,24 +308,7 @@ export default function PrintLayout({
               </tr>
             </thead>
             <tbody>
-              {filledLines.map((line, idx) => {
-                const isEmpty = line.productId.startsWith('empty-');
-                if (isEmpty) {
-                  return (
-                    <tr key={line.productId} className="h-6">
-                      <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                    </tr>
-                  );
-                }
-
-                return (
+              {filledLines.map((line, idx) => (
                   <tr key={line.productId} className="page-break-inside-avoid">
                     <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
                     <td className="border border-black px-2 py-1 font-mono">{line.productCode}</td>
@@ -402,8 +342,7 @@ export default function PrintLayout({
                       {formatCurrency(line.totalAmount)}
                     </td>
                   </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
@@ -437,19 +376,7 @@ export default function PrintLayout({
   // Phiếu trả hàng
   const renderReturn = () => {
     const rtData = data as ReturnPrintData;
-    const minRows = isA5 ? 5 : 10;
-    const filledLines = [...rtData.lines];
-    while (filledLines.length < minRows) {
-      filledLines.push({
-        productId: `empty-${filledLines.length}`,
-        productCode: '',
-        productName: '',
-        unit: '',
-        quantityReturned: 0,
-        unitPrice: 0,
-        totalAmount: 0
-      });
-    }
+    const filledLines = rtData.lines;
 
     const partnerTitle = rtData.partnerType === 'customer' ? 'Khách hàng' : 'Nhà cung cấp';
 
@@ -488,23 +415,7 @@ export default function PrintLayout({
               </tr>
             </thead>
             <tbody>
-              {filledLines.map((line, idx) => {
-                const isEmpty = line.productId.startsWith('empty-');
-                if (isEmpty) {
-                  return (
-                    <tr key={line.productId} className="h-6">
-                      <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                    </tr>
-                  );
-                }
-
-                return (
+              {filledLines.map((line, idx) => (
                   <tr key={line.productId} className="page-break-inside-avoid">
                     <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
                     <td className="border border-black px-2 py-1 font-mono">{line.productCode}</td>
@@ -528,8 +439,7 @@ export default function PrintLayout({
                       {formatCurrency(line.totalAmount)}
                     </td>
                   </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
@@ -563,18 +473,7 @@ export default function PrintLayout({
   // Phiếu xuất kho / chuyển kho
   const renderTransfer = () => {
     const tfData = data as StockTransferPrintData;
-    const minRows = isA5 ? 5 : 10;
-    const filledLines = [...tfData.lines];
-    while (filledLines.length < minRows) {
-      filledLines.push({
-        productId: `empty-${filledLines.length}`,
-        productCode: '',
-        productName: '',
-        unit: '',
-        quantityRequested: 0,
-        quantityActual: 0
-      });
-    }
+    const filledLines = tfData.lines;
 
     return (
       <div className="text-black font-sans">
@@ -606,24 +505,7 @@ export default function PrintLayout({
               </tr>
             </thead>
             <tbody>
-              {filledLines.map((line, idx) => {
-                const isEmpty = line.productId.startsWith('empty-');
-                if (isEmpty) {
-                  return (
-                    <tr key={line.productId} className="h-6">
-                      <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                      <td className="border border-black px-2 py-1">&nbsp;</td>
-                    </tr>
-                  );
-                }
-
-                return (
+              {filledLines.map((line, idx) => (
                   <tr key={line.productId} className="page-break-inside-avoid">
                     <td className="border border-black px-2 py-1 text-center">{idx + 1}</td>
                     <td className="border border-black px-2 py-1 font-mono">{line.productCode}</td>
@@ -642,8 +524,7 @@ export default function PrintLayout({
                       {line.expiryDate ? formatDate(line.expiryDate) : '-'}
                     </td>
                   </tr>
-                );
-              })}
+              ))}
             </tbody>
           </table>
         </div>
@@ -776,14 +657,20 @@ export default function PrintLayout({
               background: white !important;
               color: black !important;
             }
+            /* Bỏ chiều rộng mm cố định + padding của phần tử để tránh "lề kép"
+               (lề vật lý đã do @page lo) gây tràn ngang & sang trang thừa. */
+            .print-layout-container { display: block !important; }
             .print-page {
               width: 100% !important;
+              max-width: none !important;
               min-height: 0 !important;
               margin: 0 !important;
               padding: 0 !important;
               border: none !important;
+              border-radius: 0 !important;
               box-shadow: none !important;
               background: transparent !important;
+              overflow: visible !important;
             }
           }
         `
