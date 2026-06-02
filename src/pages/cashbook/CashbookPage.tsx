@@ -12,9 +12,13 @@ import {
   Upload,
   ChevronLeft,
   Wallet,
-  ArrowLeftRight,
   Clock,
-  Printer
+  Printer,
+  Settings,
+  Plus,
+  HandCoins,
+  Truck,
+  UserCog
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
@@ -22,7 +26,7 @@ import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
-import CashbookPaymentForms from './CashbookPaymentForms'
+import SmartSearchSelect, { type SmartSearchOption, removeVietnameseTones } from '../../components/SmartSearchSelect'
 import CashbookReports from './CashbookReports'
 import CashbookOverview from './CashbookOverview'
 
@@ -72,6 +76,8 @@ interface SessionReconciliation {
   outflowGroups: { label: string; amount: number }[]
   totalIn: number
   totalOut: number
+  salesIn: number   // Thu từ bán hàng (THU-DON-HANG) — tách riêng để thẻ tóm tắt hiển thị nguồn gốc
+  otherIn: number   // Thu khác = totalIn − salesIn
   expected: number
   bankIn: number
   bankOut: number
@@ -83,6 +89,35 @@ interface ExpenseCategory {
   name: string
   flow_type: 'inflow' | 'outflow'
   is_active: boolean
+  is_internal?: boolean
+}
+
+// Hạng mục hệ thống dẫn dắt nghiệp vụ riêng trong form Phiếu thu/chi
+type SpecialKind = 'debt' | 'supplier' | 'advance' | null
+function specialKindOf(code?: string): SpecialKind {
+  if (code === 'THU-NO') return 'debt'
+  if (code === 'CHI-NCC') return 'supplier'
+  if (code === 'CHI-TAM-UNG') return 'advance'
+  return null
+}
+
+// Nạp ĐỦ dữ liệu (lặp .range theo lô) — tránh cap 1000 dòng mặc định của PostgREST.
+async function fetchAllRows<T = any>(
+  makeQuery: (from: number, to: number) => any,
+  batch = 1000
+): Promise<T[]> {
+  const all: T[] = []
+  let from = 0
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, error } = await makeQuery(from, from + batch - 1)
+    if (error) throw error
+    const rows = (data || []) as T[]
+    all.push(...rows)
+    if (rows.length < batch) break
+    from += batch
+  }
+  return all
 }
 
 interface Customer {
@@ -152,7 +187,7 @@ export default function CashbookPage() {
   const { formatCurrency } = useDisplaySettings()
 
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'payments' | 'transfers' | 'sessions' | 'reports'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'sessions' | 'cashflow'>('overview')
 
   // Master lists
   const [cashFunds, setCashFunds] = useState<CashFund[]>([])
@@ -199,6 +234,8 @@ export default function CashbookPage() {
   const [formAttachmentUrl, setFormAttachmentUrl] = useState('')
   const [formAttachments, setFormAttachments] = useState<string[]>([])
   const [formDate, setFormDate] = useState(() => new Date().toLocaleDateString('en-CA')) // YYYY-MM-DD theo giờ địa phương
+  const [formAdvanceDueDate, setFormAdvanceDueDate] = useState('') // Hạn hoàn ứng (chỉ hạng mục Tạm ứng)
+  const [counterpartyDebt, setCounterpartyDebt] = useState<number | null>(null) // Công nợ KH/NCC khi chọn (hạng mục dẫn dắt)
 
   // Cashier Session Form State
   const [sessionOpeningBal, setSessionOpeningBal] = useState(0)
@@ -206,16 +243,15 @@ export default function CashbookPage() {
   const [sessionNotes, setSessionNotes] = useState('')
   const [sessionVarianceReason, setSessionVarianceReason] = useState('')
   const [sessionFundId, setSessionFundId] = useState('') // Chọn quỹ mở ca
+  const [sessionNopAmount, setSessionNopAmount] = useState(0) // Nộp quỹ cuối ca (giao tiền về công ty)
   const [reconcile, setReconcile] = useState<SessionReconciliation | null>(null)
   const [reconcileLoading, setReconcileLoading] = useState(false)
 
-  // Internal Transfer Form State
-  const [transferFromType, setTransferFromType] = useState<'cash_fund' | 'bank_account'>('cash_fund')
-  const [transferFromId, setTransferFromId] = useState('')
-  const [transferToType, setTransferToType] = useState<'cash_fund' | 'bank_account'>('bank_account')
-  const [transferToId, setTransferToId] = useState('')
-  const [transferAmount, setTransferAmount] = useState(0)
-  const [transferNotes, setTransferNotes] = useState('')
+  // Quản lý hạng mục thu/chi
+  const [isCatModalOpen, setIsCatModalOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatFlow, setNewCatFlow] = useState<'inflow' | 'outflow'>('outflow')
+  const [savingCat, setSavingCat] = useState(false)
 
   // UI state
   const [loading, setLoading] = useState(true)
@@ -224,10 +260,6 @@ export default function CashbookPage() {
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false)
   const [isFormOpen, setIsFormOpen] = useState(false)
   
-  // Sparkline data
-  const [sparklineTransactions, setSparklineTransactions] = useState<any[]>([])
-  const [sparklineLoading, setSparklineLoading] = useState(true)
-
   // Pending transactions for quick approval on Overview tab
   const [pendingTx, setPendingTx] = useState<CashbookTransaction[]>([])
   const [pendingLoading, setPendingLoading] = useState(true)
@@ -297,7 +329,6 @@ export default function CashbookPage() {
         setCashFunds(funds)
         if (funds.length > 0) {
           setFormAccountId(funds[0].id)
-          setTransferFromId(funds[0].id)
           setSessionFundId(funds[0].id)
         }
       }
@@ -310,9 +341,6 @@ export default function CashbookPage() {
         .eq('is_active', true)
       if (banks) {
         setBankAccounts(banks)
-        if (banks.length > 0) {
-          setTransferToId(banks[0].id)
-        }
       }
 
       // 3. Fetch expense categories
@@ -327,26 +355,26 @@ export default function CashbookPage() {
         if (defaultCat) setFormCategoryId(defaultCat.id)
       }
 
-      // 4. Fetch customers
-      const { data: custs } = await supabase
-        .from('customers')
-        .select('id, farm_name')
-        .eq('is_active', true)
-      if (custs) setCustomers(custs)
+      // 4. Fetch customers — nạp ĐỦ (tránh cap 1000 → nhiều KH không tìm được)
+      const custs = await fetchAllRows<Customer>((from, to) =>
+        supabase.from('customers').select('id, farm_name, name')
+          .eq('is_active', true).order('farm_name', { ascending: true }).order('id').range(from, to)
+      )
+      setCustomers(custs)
 
       // 5. Fetch suppliers
-      const { data: sups } = await supabase
-        .from('suppliers')
-        .select('id, name')
-        .eq('is_active', true)
-      if (sups) setSuppliers(sups)
+      const sups = await fetchAllRows<Supplier>((from, to) =>
+        supabase.from('suppliers').select('id, name')
+          .eq('is_active', true).order('name', { ascending: true }).range(from, to)
+      )
+      setSuppliers(sups)
 
       // 6. Fetch profiles (employees)
-      const { data: emps } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .eq('is_active', true)
-      if (emps) setEmployees(emps)
+      const emps = await fetchAllRows<Profile>((from, to) =>
+        supabase.from('profiles').select('id, full_name')
+          .eq('is_active', true).order('full_name', { ascending: true }).range(from, to)
+      )
+      setEmployees(emps)
 
     } catch (err) {
       console.error('Error loading cashbook metadata:', err)
@@ -393,66 +421,6 @@ export default function CashbookPage() {
       console.error(err)
     }
   }, [cashFunds])
-
-  // Reconstruct balance history for 30 days
-  const computeBalanceHistory = useCallback((currentBalance: number, txs: any[]) => {
-    const points: { date: string; balance: number }[] = []
-    let balance = Number(currentBalance)
-    const sortedTxs = [...txs].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date))
-
-    const txsByDay: Record<string, any[]> = {}
-    sortedTxs.forEach(t => {
-      if (!txsByDay[t.transaction_date]) txsByDay[t.transaction_date] = []
-      txsByDay[t.transaction_date].push(t)
-    })
-
-    for (let i = 0; i < 30; i++) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      const dateStr = d.toLocaleDateString('en-CA')
-      points.push({ date: dateStr, balance })
-
-      const dayTxs = txsByDay[dateStr] || []
-      dayTxs.forEach(t => {
-        const amt = Number(t.amount || 0)
-        if (t.flow_type === 'inflow') {
-          balance -= amt
-        } else if (t.flow_type === 'outflow') {
-          balance += amt
-        }
-      })
-    }
-    return points.reverse()
-  }, [])
-
-  const loadSparklineData = useCallback(async () => {
-    if (cashFunds.length === 0 && bankAccounts.length === 0) return
-    setSparklineLoading(true)
-    try {
-      const fundIds = cashFunds.map(f => f.id)
-      const bankIds = bankAccounts.map(b => b.id)
-      const ids = [...fundIds, ...bankIds]
-      if (ids.length === 0) return
-
-      const thirtyDaysAgo = new Date()
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-      const dateStr = thirtyDaysAgo.toLocaleDateString('en-CA')
-
-      const { data, error } = await supabase
-        .from('cashbook_transactions')
-        .select('cash_fund_id, bank_account_id, flow_type, amount, transaction_date')
-        .eq('status', 'approved')
-        .neq('flow_type', 'internal_transfer')
-        .gte('transaction_date', dateStr)
-
-      if (error) throw error
-      setSparklineTransactions(data || [])
-    } catch (err) {
-      console.error('Error loading sparkline transactions:', err)
-    } finally {
-      setSparklineLoading(false)
-    }
-  }, [cashFunds, bankAccounts])
 
   const fetchPendingTransactions = useCallback(async () => {
     setPendingLoading(true)
@@ -585,17 +553,16 @@ export default function CashbookPage() {
       checkActiveSession()
       loadSessions()
       fetchPendingTransactions()
-      loadSparklineData()
     }
-  }, [cashFunds, bankAccounts, checkActiveSession, loadSessions, fetchPendingTransactions, loadSparklineData])
+  }, [cashFunds, bankAccounts, checkActiveSession, loadSessions, fetchPendingTransactions])
 
   // Reload list when tab/filters change
   useEffect(() => {
     fetchTransactions()
   }, [currentPage, flowFilter, statusFilter, categoryFilter, accountFilter, startDate, endDate, fetchTransactions])
 
-  useRealtimeTable({ table: 'cashbook_transactions', event: 'INSERT', onData: () => { fetchTransactions(); fetchPendingTransactions(); loadSparklineData(); } })
-  useRealtimeTable({ table: 'cashbook_transactions', event: 'UPDATE', onData: () => { fetchTransactions(); fetchPendingTransactions(); loadSparklineData(); } })
+  useRealtimeTable({ table: 'cashbook_transactions', event: 'INSERT', onData: () => { fetchTransactions(); fetchPendingTransactions(); } })
+  useRealtimeTable({ table: 'cashbook_transactions', event: 'UPDATE', onData: () => { fetchTransactions(); fetchPendingTransactions(); } })
 
   // Reset alert messages automatically
   useEffect(() => {
@@ -650,10 +617,170 @@ export default function CashbookPage() {
     setFormAttachments(prev => prev.filter((_, i) => i !== idx))
   }
 
+  // Nạp công nợ KH/NCC khi chọn đối tượng trong hạng mục dẫn dắt (thu nợ / chi NCC)
+  useEffect(() => {
+    const cat = categories.find(c => c.id === formCategoryId)
+    const kind = specialKindOf(cat?.code)
+    let cancelled = false
+    ;(async () => {
+      if (kind === 'debt' && formCustomerId) {
+        const { data } = await supabase.from('customer_summary_view').select('total_debt').eq('id', formCustomerId).maybeSingle()
+        if (!cancelled) setCounterpartyDebt(data ? Number((data as any).total_debt || 0) : 0)
+      } else if (kind === 'supplier' && formSupplierId) {
+        const { data } = await supabase.from('suppliers').select('current_debt_payable').eq('id', formSupplierId).maybeSingle()
+        if (!cancelled) setCounterpartyDebt(data ? Number((data as any).current_debt_payable || 0) : 0)
+      } else if (!cancelled) {
+        setCounterpartyDebt(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [formCategoryId, formCustomerId, formSupplierId, categories])
+
+  // Tải lại danh mục hạng mục (không reset cả form như loadMetadata)
+  const refreshCategories = useCallback(async () => {
+    const { data: cats } = await supabase.from('expense_categories').select('*').eq('is_active', true)
+    if (cats) setCategories(cats)
+  }, [])
+
+  // Tạo hạng mục thu/chi tùy biến (admin/accountant)
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newCatName.trim()) { setAlertMsg({ type: 'error', text: 'Vui lòng nhập tên hạng mục.' }); return }
+    setSavingCat(true)
+    try {
+      const slug = removeVietnameseTones(newCatName).toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20)
+      const prefix = newCatFlow === 'inflow' ? 'THU' : 'CHI'
+      const code = `${prefix}-${slug || 'KHAC'}-${Date.now().toString().slice(-5)}`
+      const { data, error } = await supabase
+        .from('expense_categories')
+        .insert([{ code, name: newCatName.trim(), flow_type: newCatFlow, is_active: true, is_internal: false }])
+        .select()
+        .single()
+      if (error) throw error
+      await refreshCategories()
+      if (data) setFormCategoryId(data.id)
+      setNewCatName('')
+      setAlertMsg({ type: 'success', text: 'Đã thêm hạng mục thu/chi mới.' })
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Thêm hạng mục thất bại: ' + err.message })
+    } finally { setSavingCat(false) }
+  }
+
+  // Ẩn/hiện (tắt) hạng mục — chỉ tắt hạng mục tùy biến, không cho tắt hạng mục hệ thống
+  const handleDeactivateCategory = async (cat: ExpenseCategory) => {
+    if (specialKindOf(cat.code) || cat.code.endsWith('-QUY') || cat.code === 'THU-DON-HANG' || cat.code === 'CHI-HOANTIEN') {
+      setAlertMsg({ type: 'error', text: 'Không thể tắt hạng mục hệ thống.' })
+      return
+    }
+    try {
+      const { error } = await supabase.from('expense_categories').update({ is_active: false }).eq('id', cat.id)
+      if (error) throw error
+      await refreshCategories()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Không thể tắt hạng mục: ' + err.message })
+    }
+  }
+
+  // Reset các trường nhập sau khi lưu phiếu thành công
+  const resetTransactionForm = () => {
+    setFormAmount(0)
+    setFormDescription('')
+    setFormReferenceNo('')
+    setFormAttachments([])
+    setFormDate(new Date().toLocaleDateString('en-CA'))
+    setFormCustomerId(''); setFormSupplierId(''); setFormEmployeeId('')
+    setFormAdvanceDueDate(''); setCounterpartyDebt(null)
+  }
+
+  // ── Nghiệp vụ dẫn dắt bởi hạng mục ──────────────────────────────
+  // THU-NO: thu công nợ KH (RPC settle nợ + sinh phiếu thu sổ quỹ atomic)
+  const submitDebtCollection = async () => {
+    if (!profile?.id) return
+    if (!formCustomerId) { setAlertMsg({ type: 'error', text: 'Vui lòng chọn khách hàng cần thu nợ.' }); return }
+    if (formAmount <= 0) { setAlertMsg({ type: 'error', text: 'Số tiền thu phải lớn hơn 0 ₫.' }); return }
+    const isCash = formAccountType === 'cash_fund'
+    if (isCash && !activeSession) { setAlertMsg({ type: 'error', text: 'Quỹ tiền mặt đang ĐÓNG CA. Vui lòng mở ca trước khi thu tiền mặt!' }); return }
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.rpc('fn_collect_customer_debt', {
+        p_customer_id: formCustomerId,
+        p_amount: formAmount,
+        p_method: isCash ? 'cash' : 'bank_transfer',
+        p_date: formDate,
+        p_reference: formReferenceNo.trim() || null,
+        p_notes: formDescription.trim() || null,
+      })
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã thu công nợ. Sổ quỹ và công nợ khách hàng đã tự cập nhật.' })
+      resetTransactionForm(); fetchTransactions(); loadMetadata()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Thu công nợ thất bại: ' + err.message })
+    } finally { setSubmitting(false) }
+  }
+
+  // CHI-NCC: thanh toán nhà cung cấp (trigger sinh phiếu chi + giảm công nợ NCC)
+  const submitSupplierPayment = async () => {
+    if (!profile?.id) return
+    if (!formSupplierId) { setAlertMsg({ type: 'error', text: 'Vui lòng chọn nhà cung cấp.' }); return }
+    if (formAmount <= 0) { setAlertMsg({ type: 'error', text: 'Số tiền thanh toán phải lớn hơn 0 ₫.' }); return }
+    const isCash = formAccountType === 'cash_fund'
+    if (isCash && !activeSession) { setAlertMsg({ type: 'error', text: 'Quỹ tiền mặt đang ĐÓNG CA. Vui lòng mở ca trước khi chi tiền mặt!' }); return }
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.from('supplier_payments').insert([{
+        supplier_id: formSupplierId,
+        amount: formAmount,
+        payment_method: isCash ? 'cash' : 'bank_transfer',
+        payment_date: formDate,
+        reference_no: formReferenceNo.trim() || null,
+        notes: formDescription.trim() || 'Thanh toán nhà cung cấp',
+        created_by: profile.id,
+      }])
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã ghi nhận thanh toán NCC. Sổ quỹ và công nợ NCC đã tự cập nhật.' })
+      resetTransactionForm(); fetchTransactions(); loadMetadata()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Thanh toán NCC thất bại: ' + err.message })
+    } finally { setSubmitting(false) }
+  }
+
+  // CHI-TAM-UNG: tạm ứng nhân viên (luôn chi tiền mặt quỹ mặc định)
+  const submitEmployeeAdvance = async () => {
+    if (!profile?.id) return
+    if (!formEmployeeId) { setAlertMsg({ type: 'error', text: 'Vui lòng chọn nhân viên.' }); return }
+    if (formAmount <= 0) { setAlertMsg({ type: 'error', text: 'Số tiền tạm ứng phải lớn hơn 0 ₫.' }); return }
+    if (!formDescription.trim()) { setAlertMsg({ type: 'error', text: 'Vui lòng nhập lý do tạm ứng.' }); return }
+    if (!activeSession) { setAlertMsg({ type: 'error', text: 'Tạm ứng chi tiền mặt — vui lòng mở ca trước!' }); return }
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.from('employee_advances').insert([{
+        employee_id: formEmployeeId,
+        amount: formAmount,
+        purpose: formDescription.trim(),
+        advance_date: formDate,
+        due_date: formAdvanceDueDate || null,
+        created_by: profile.id,
+      }])
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã ghi nhận tạm ứng. Phiếu chi tiền mặt đã tự tạo trong sổ quỹ.' })
+      resetTransactionForm(); fetchTransactions(); loadMetadata()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Tạm ứng thất bại: ' + err.message })
+    } finally { setSubmitting(false) }
+  }
+
   // Submit Transaction
   const handleTransactionSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!profile?.id) return
+
+    // Hạng mục hệ thống → định tuyến sang nghiệp vụ chuyên biệt
+    const selCat = categories.find(c => c.id === formCategoryId)
+    const kind = specialKindOf(selCat?.code)
+    if (kind === 'debt') return submitDebtCollection()
+    if (kind === 'supplier') return submitSupplierPayment()
+    if (kind === 'advance') return submitEmployeeAdvance()
+
     if (formAmount <= 0) {
       setAlertMsg({ type: 'error', text: 'Số tiền giao dịch phải lớn hơn 0 ₫' })
       return
@@ -832,12 +959,14 @@ export default function CashbookPage() {
       const outflowMap = new Map<string, number>()
       let totalIn = 0
       let totalOut = 0
+      let salesIn = 0
       ;(txs || []).forEach((t: any) => {
         const amt = Number(t.amount) || 0
         const cat = categories.find(c => c.id === t.expense_category_id)
         const label = cat?.name || 'Khác'
         if (t.flow_type === 'inflow') {
           totalIn += amt
+          if (cat?.code === 'THU-DON-HANG') salesIn += amt
           inflowMap.set(label, (inflowMap.get(label) || 0) + amt)
         } else if (t.flow_type === 'outflow') {
           totalOut += amt
@@ -870,6 +999,8 @@ export default function CashbookPage() {
         outflowGroups: Array.from(outflowMap, ([label, amount]) => ({ label, amount })),
         totalIn,
         totalOut,
+        salesIn,
+        otherIn: totalIn - salesIn,
         expected: opening + totalIn - totalOut,
         bankIn,
         bankOut
@@ -882,11 +1013,22 @@ export default function CashbookPage() {
     }
   }, [categories, bankAccounts])
 
+  // Nạp đối soát liên tục khi có ca đang mở → thẻ "Tiền mặt tại quỹ" hiện breakdown nguồn tiền.
+  useEffect(() => {
+    if (activeSession && categories.length > 0) {
+      loadSessionReconciliation(activeSession)
+    } else {
+      setReconcile(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession?.id, activeSession?.opening_balance, categories.length, cashFunds])
+
   // Mở modal đóng ca kèm đối soát
   const openCloseSessionModal = () => {
     if (!activeSession) return
     setSessionAction('close')
     setSessionActualClose(0)
+    setSessionNopAmount(0)
     setSessionNotes('')
     setSessionVarianceReason('')
     setReconcile(null)
@@ -999,6 +1141,13 @@ export default function CashbookPage() {
         return
       }
 
+      // Nộp quỹ cuối ca: 0 ≤ nộp ≤ tiền mặt đếm thực tế
+      if (sessionNopAmount < 0 || sessionNopAmount > sessionActualClose) {
+        setAlertMsg({ type: 'error', text: 'Số tiền nộp về công ty phải nằm trong khoảng 0 đến tiền mặt đếm được.' })
+        setSubmitting(false)
+        return
+      }
+
       // Close cashier session
       const updateData = {
         status: 'closed',
@@ -1046,9 +1195,31 @@ export default function CashbookPage() {
         if (adjErr) throw adjErr
       }
 
+      // Nộp quỹ cuối ca → phiếu chi nội bộ CHI-NOP-QUY (giảm két về đúng tiền để lại).
+      // KHÔNG gắn session_id (sau đối soát) — chỉ làm đổi số dư quỹ thật.
+      if (sessionNopAmount > 0) {
+        const nopCat = categories.find(c => c.code === 'CHI-NOP-QUY')
+        const { error: nopErr } = await supabase
+          .from('cashbook_transactions')
+          .insert([{
+            flow_type: 'outflow',
+            status: 'approved',
+            cash_fund_id: activeSession.cash_fund_id,
+            amount: sessionNopAmount,
+            transaction_date: new Date().toLocaleDateString('en-CA'),
+            description: `Nộp quỹ cuối ca ${activeSession.code || '#' + activeSession.id.slice(0, 8)} — giao tiền về công ty`,
+            expense_category_id: nopCat ? nopCat.id : null,
+            created_by: profile?.id,
+            approved_by: profile?.id,
+            approved_at: new Date().toISOString()
+          }])
+        if (nopErr) throw nopErr
+      }
+
       setAlertMsg({ type: 'success', text: 'Đóng ca và đối soát ca thành công. Số dư quỹ đã hoàn tất ghi sổ!' })
       setIsSessionModalOpen(false)
       setSessionActualClose(0)
+      setSessionNopAmount(0)
       setSessionVarianceReason('')
       setSessionNotes('')
       
@@ -1065,124 +1236,21 @@ export default function CashbookPage() {
     }
   }
 
-  // Handle Internal Transfer
-  const handleInternalTransferSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!profile?.id) return
-    if (transferAmount <= 0) {
-      setAlertMsg({ type: 'error', text: 'Số tiền chuyển khoản phải lớn hơn 0 ₫' })
-      return
-    }
-    if (transferFromId === transferToId && transferFromType === transferToType) {
-      setAlertMsg({ type: 'error', text: 'Tài khoản nguồn và tài khoản đích không được trùng nhau!' })
-      return
-    }
-
-    // Check cashier session if source is cash
-    if (transferFromType === 'cash_fund') {
-      if (!activeSession) {
-        setAlertMsg({ type: 'error', text: 'Quỹ tiền mặt nguồn hiện đang ĐÓNG CA. Vui lòng mở ca trước khi thực hiện chuyển quỹ!' })
-        return
-      }
-    }
-
-    setSubmitting(true)
-    try {
-      // Chỉ insert 1 phiếu internal_transfers — trigger DB (S2.2)
-      // fn_cashbook_from_internal_transfer tự sinh 2 bút toán đối ứng
-      // (chi ở TK nguồn + thu ở TK đích) và cập nhật số dư cả hai, atomic.
-      const { error: transErr } = await supabase
-        .from('internal_transfers')
-        .insert([{
-          from_fund_id: transferFromType === 'cash_fund' ? transferFromId : null,
-          from_bank_id: transferFromType === 'bank_account' ? transferFromId : null,
-          to_fund_id: transferToType === 'cash_fund' ? transferToId : null,
-          to_bank_id: transferToType === 'bank_account' ? transferToId : null,
-          amount: transferAmount,
-          transfer_date: new Date().toLocaleDateString('en-CA'),
-          notes: transferNotes.trim() || 'Chuyển quỹ nội bộ.',
-          created_by: profile.id,
-          approved_by: profile.id // Auto approved since accountant transfers
-        }])
-
-      if (transErr) throw transErr
-
-      setAlertMsg({ type: 'success', text: 'Chuyển quỹ nội bộ thành công. Cả hai tài khoản đã cập nhật số dư!' })
-      
-      // Reset form
-      setTransferAmount(0)
-      setTransferNotes('')
-      
-      fetchTransactions()
-      loadMetadata()
-      setActiveTab('overview')
-    } catch (err: any) {
-      console.error(err)
-      setAlertMsg({ type: 'error', text: 'Chuyển tiền thất bại: ' + err.message })
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   const totalCashBalance = useMemo(() => cashFunds.reduce((sum, f) => sum + Number(f.balance), 0), [cashFunds])
-  const totalBankBalance = useMemo(() => bankAccounts.reduce((sum, b) => sum + Number(b.balance), 0), [bankAccounts])
 
-  // Sparkline data mapping
-  const sparklines = useMemo(() => {
-    const res: Record<string, { date: string; balance: number }[]> = {}
-    
-    // Process cash funds
-    cashFunds.forEach(fund => {
-      const fundTxs = sparklineTransactions.filter(t => t.cash_fund_id === fund.id)
-      res[fund.id] = computeBalanceHistory(fund.balance, fundTxs)
-    })
-    
-    // Process bank accounts
-    bankAccounts.forEach(bank => {
-      const bankTxs = sparklineTransactions.filter(t => t.bank_account_id === bank.id)
-      res[bank.id] = computeBalanceHistory(bank.balance, bankTxs)
-    })
-    
-    return res
-  }, [cashFunds, bankAccounts, sparklineTransactions, computeBalanceHistory])
+  // Options cho ô tìm kiếm thông minh đối tượng (KH/NCC/NV)
+  const customerOptions = useMemo<SmartSearchOption[]>(
+    () => customers.map(c => ({ value: c.id, label: c.farm_name || c.name || 'Khách hàng' })), [customers])
+  const supplierOptions = useMemo<SmartSearchOption[]>(
+    () => suppliers.map(s => ({ value: s.id, label: s.name })), [suppliers])
+  const employeeOptions = useMemo<SmartSearchOption[]>(
+    () => employees.map(e => ({ value: e.id, label: e.full_name })), [employees])
 
-  // 7-day flow chart data mapping
-  const last7DaysData = useMemo(() => {
-    const dataMap: Record<string, { inflow: number; outflow: number }> = {}
-    
-    // Pre-populate last 7 days
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      const dateStr = d.toLocaleDateString('en-CA')
-      dataMap[dateStr] = { inflow: 0, outflow: 0 }
-    }
-    
-    // Sum up amounts
-    sparklineTransactions.forEach(t => {
-      const dateStr = t.transaction_date
-      if (dataMap[dateStr]) {
-        const amt = Number(t.amount || 0)
-        if (t.flow_type === 'inflow') {
-          dataMap[dateStr].inflow += amt
-        } else if (t.flow_type === 'outflow') {
-          dataMap[dateStr].outflow += amt
-        }
-      }
-    })
-    
-    // Convert to array of DayPoint
-    return Object.entries(dataMap).map(([dateStr, val]) => {
-      const parts = dateStr.split('-')
-      const label = parts.length === 3 ? `${parts[2]}/${parts[1]}` : dateStr
-      return {
-        label,
-        inflow: val.inflow,
-        outflow: val.outflow,
-        net: val.inflow - val.outflow
-      }
-    })
-  }, [sparklineTransactions])
+  // Hạng mục đang chọn + nghiệp vụ dẫn dắt tương ứng (cho form Phiếu thu/chi)
+  const selectedFormCategory = categories.find(c => c.id === formCategoryId)
+  const formKind = specialKindOf(selectedFormCategory?.code)
+  const canManageCategories = ['admin', 'ceo', 'accountant'].includes(userRole.code)
 
   // Guard check at top
   const canView = hasPermission('cashbook.view')
@@ -1245,33 +1313,37 @@ export default function CashbookPage() {
             {([
               ['overview', 'Tổng quan'],
               ['history', 'Phiếu thu / chi'],
-              ['payments', 'Thu nợ / Chi NCC / Tạm ứng'],
-              ['transfers', 'Chuyển quỹ nội bộ'],
               ['sessions', 'Phiên quỹ'],
-              ['reports', 'Báo cáo'],
-            ] as const).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`px-4 py-1.5 rounded-md text-body-md font-semibold transition-all ${
-                  activeTab === key ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+              ['cashflow', 'Lịch sử dòng tiền'],
+            ] as const).map(([key, label]) => {
+              // Tab "Lịch sử dòng tiền" bôi đỏ để nổi bật (phục vụ đóng ca / đối soát tiền mặt)
+              const isCashflow = key === 'cashflow'
+              const activeCls = isCashflow ? 'bg-red-600 text-white shadow-sm' : 'bg-white text-blue-700 shadow-sm'
+              const idleCls = isCashflow ? 'text-red-600 hover:text-red-700 font-bold' : 'text-gray-500 hover:text-gray-700'
+              return (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`px-4 py-1.5 rounded-md text-body-md font-semibold transition-all ${
+                    activeTab === key ? activeCls : idleCls
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* Dashboard Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Cash Fund balance */}
-          <div className="bg-white border border-gray-150 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+        {/* Dashboard Summary Cards — 2 khối: Tiền mặt (breakdown theo ca) + Phiên ca */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Card 1: Tiền mặt tại quỹ chi nhánh — truy nguồn theo ca đang mở */}
+          <div className="lg:col-span-3 bg-white border border-gray-150 rounded-xl p-5 shadow-sm flex flex-col hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Tiền mặt tại quỹ chi nhánh</p>
                 <h2 className="text-[26px] font-bold text-gray-700 tabular-nums">
-                  {formatCurrency(totalCashBalance)}
+                  {formatCurrency(activeSession && reconcile ? reconcile.expected : totalCashBalance)}
                 </h2>
               </div>
               <div className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-0.5">
@@ -1279,38 +1351,31 @@ export default function CashbookPage() {
                 <span className="text-tiny font-bold font-mono">Tiền mặt</span>
               </div>
             </div>
-            
-            <div className="mt-4 border-t border-gray-50 pt-3 flex justify-between items-center text-tiny text-gray-400">
-              <span>{cashFunds.length} Quỹ tiền mặt hoạt động</span>
-              <span className="font-semibold text-gray-500">{branchName}</span>
-            </div>
+
+            {activeSession && reconcile ? (
+              /* Breakdown nguồn tiền trong ca: đầu ca + bán hàng + thu khác − chi = tồn hiện tại */
+              <div className="mt-4 border-t border-gray-50 pt-3 space-y-1.5 text-tiny">
+                <BreakdownRow label="Tồn đầu ca" value={formatCurrency(reconcile.opening)} />
+                <BreakdownRow label="+ Tiền bán hàng" value={formatCurrency(reconcile.salesIn)} tone="emerald" />
+                <BreakdownRow label="+ Thu khác" value={formatCurrency(reconcile.otherIn)} tone="emerald" />
+                <BreakdownRow label="− Chi" value={formatCurrency(reconcile.totalOut)} tone="orange" />
+                <div className="flex justify-between items-center pt-2 mt-1 border-t border-gray-100">
+                  <span className="font-bold text-gray-700">= Tồn quỹ hiện tại</span>
+                  <span className="font-bold text-emerald-600 tabular-nums text-body-md">{formatCurrency(reconcile.expected)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 border-t border-gray-50 pt-3 flex justify-between items-center text-tiny text-gray-400">
+                <span className="flex items-center gap-1 text-amber-600 font-semibold">
+                  <AlertTriangle size={13} /> Mở ca để bắt đầu thu/chi tiền mặt
+                </span>
+                <span className="font-semibold text-gray-500">{branchName}</span>
+              </div>
+            )}
           </div>
 
-          {/* Card 2: Bank balance */}
-          <div className="bg-white border border-gray-150 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Tài khoản Ngân hàng công ty</p>
-                <h2 className="text-[26px] font-bold text-gray-700 tabular-nums">
-                  {formatCurrency(totalBankBalance)}
-                </h2>
-              </div>
-              <div className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-md flex items-center gap-0.5">
-                <TrendingDown size={14} />
-                <span className="text-tiny font-bold font-mono">Ngân hàng</span>
-              </div>
-            </div>
-
-            <div className="mt-4 border-t border-gray-50 pt-3 flex justify-between items-center text-tiny text-gray-400">
-              <span>{bankAccounts.length} Tài khoản đang liên kết</span>
-              <span className="font-semibold text-gray-500 truncate max-w-[150px]">
-                {bankAccounts.map(b => b.bank_name).join(' & ') || 'Chưa liên kết'}
-              </span>
-            </div>
-          </div>
-
-          {/* Card 3: Session cashier card */}
-          <div className="bg-white border border-gray-150 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+          {/* Card 2: Phiên ca thu ngân — hiện rõ tồn đầu ca + tồn hiện tại */}
+          <div className="lg:col-span-2 bg-white border border-gray-150 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1">Trạng thái phiên ca thu ngân</p>
@@ -1334,7 +1399,7 @@ export default function CashbookPage() {
                   </div>
                 )}
               </div>
-              
+
               {activeSession ? (
                 <button
                   onClick={openCloseSessionModal}
@@ -1361,25 +1426,29 @@ export default function CashbookPage() {
               )}
             </div>
 
-            <div className="mt-4 border-t border-gray-50 pt-3 flex justify-between items-center text-tiny text-gray-400">
-              <span>Mã: {activeSession ? (activeSession.code || activeSession.id.slice(0, 8).toUpperCase()) : 'N/A'}</span>
-              {activeSession ? (
-                <span>Tồn quỹ hiện tại: <strong className="text-emerald-600 tabular-nums">{formatCurrency(cashFunds.find(f => f.id === activeSession.cash_fund_id)?.balance ?? activeSession.opening_balance)}</strong></span>
-              ) : (
-                <span>Đầu ca: 0 ₫</span>
-              )}
+            <div className="mt-4 border-t border-gray-50 pt-3 space-y-1 text-tiny text-gray-400">
+              <div className="flex justify-between items-center">
+                <span>Mã ca</span>
+                <span className="font-semibold text-gray-600">{activeSession ? (activeSession.code || activeSession.id.slice(0, 8).toUpperCase()) : 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Tồn đầu ca</span>
+                <span className="font-semibold text-gray-600 tabular-nums">{activeSession ? formatCurrency(activeSession.opening_balance) : '—'}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Tồn quỹ hiện tại</span>
+                <strong className="text-emerald-600 tabular-nums">
+                  {activeSession ? formatCurrency(cashFunds.find(f => f.id === activeSession.cash_fund_id)?.balance ?? activeSession.opening_balance) : '—'}
+                </strong>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Tab 1: Tổng quan */}
+        {/* Tab 1: Tổng quan — chỉ còn Chứng từ chờ duyệt */}
         {activeTab === 'overview' && (
           <CashbookOverview
-            cashFunds={cashFunds}
-            bankAccounts={bankAccounts}
             formatCurrency={formatCurrency}
-            sparklines={sparklines}
-            last7DaysData={last7DaysData}
             pendingTx={pendingTx}
             onApprove={handleApproveTransaction}
             onCancel={handleCancelTransaction}
@@ -1769,7 +1838,15 @@ export default function CashbookPage() {
                 <form onSubmit={handleTransactionSubmit} className="space-y-4">
                   {/* Category Selection */}
                   <div className="space-y-1">
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Hạng mục thu chi</label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Hạng mục thu chi</label>
+                      {canManageCategories && (
+                        <button type="button" onClick={() => { setNewCatFlow(formFlowType); setNewCatName(''); setIsCatModalOpen(true) }}
+                          className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-0.5">
+                          <Settings size={12} /> Quản lý hạng mục
+                        </button>
+                      )}
+                    </div>
                     <select
                       className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
                       value={formCategoryId}
@@ -1779,6 +1856,13 @@ export default function CashbookPage() {
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
+                    {formKind && (
+                      <p className="text-[11px] text-blue-600 font-semibold flex items-center gap-1 mt-0.5">
+                        {formKind === 'debt' && <><HandCoins size={12} /> Thu công nợ khách hàng — sẽ tự giảm công nợ.</>}
+                        {formKind === 'supplier' && <><Truck size={12} /> Thanh toán NCC — sẽ tự giảm công nợ phải trả.</>}
+                        {formKind === 'advance' && <><UserCog size={12} /> Tạm ứng nhân viên — chi tiền mặt từ quỹ.</>}
+                      </p>
+                    )}
                   </div>
 
                   {/* Amount Input */}
@@ -1864,68 +1948,75 @@ export default function CashbookPage() {
                     </select>
                   </div>
 
-                  {/* Counterparty Link */}
-                  <div className="space-y-2">
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Đối tượng liên quan</label>
-                    <div className="grid grid-cols-4 bg-gray-100 p-1 rounded-lg">
-                      {['none', 'customer', 'supplier', 'employee'].map(type => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setFormCounterpartyType(type as any)}
-                          className={`py-1 rounded text-[10px] font-bold transition-all ${
-                            formCounterpartyType === type
-                              ? 'bg-white text-blue-700 shadow-sm'
-                              : 'text-gray-500'
-                          }`}
-                        >
-                          {type === 'none' && 'Không'}
-                          {type === 'customer' && 'Khách'}
-                          {type === 'supplier' && 'NCC'}
-                          {type === 'employee' && 'N.Viên'}
-                        </button>
-                      ))}
+                  {/* Đối tượng — hạng mục dẫn dắt (KH/NCC/NV) HOẶC liên kết tùy chọn */}
+                  {formKind === 'debt' ? (
+                    <div className="space-y-1.5">
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Khách hàng cần thu nợ *</label>
+                      <SmartSearchSelect options={customerOptions} value={formCustomerId} onChange={setFormCustomerId}
+                        placeholder="-- Chọn khách hàng --" searchPlaceholder="Tìm khách hàng..." />
+                      {counterpartyDebt !== null && (
+                        <p className={`text-tiny font-semibold ${counterpartyDebt > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                          Công nợ hiện tại: {formatCurrency(counterpartyDebt)}
+                          {counterpartyDebt > 0 && (
+                            <button type="button" onClick={() => setFormAmount(counterpartyDebt)} className="ml-2 text-blue-600 underline">Thu toàn bộ</button>
+                          )}
+                        </p>
+                      )}
                     </div>
-
-                    {formCounterpartyType === 'customer' && (
-                      <select
-                        className="w-full h-10 px-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
-                        value={formCustomerId}
-                        onChange={e => setFormCustomerId(e.target.value)}
-                      >
-                        <option value="">-- Chọn khách hàng --</option>
-                        {customers.map(c => (
-                          <option key={c.id} value={c.id}>{c.farm_name || c.name}</option>
+                  ) : formKind === 'supplier' ? (
+                    <div className="space-y-1.5">
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Nhà cung cấp *</label>
+                      <SmartSearchSelect options={supplierOptions} value={formSupplierId} onChange={setFormSupplierId}
+                        placeholder="-- Chọn nhà cung cấp --" searchPlaceholder="Tìm nhà cung cấp..." />
+                      {counterpartyDebt !== null && (
+                        <p className={`text-tiny font-semibold ${counterpartyDebt > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                          Công nợ phải trả: {formatCurrency(counterpartyDebt)}
+                          {counterpartyDebt > 0 && (
+                            <button type="button" onClick={() => setFormAmount(counterpartyDebt)} className="ml-2 text-blue-600 underline">Trả toàn bộ</button>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  ) : formKind === 'advance' ? (
+                    <div className="space-y-1.5">
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Nhân viên tạm ứng *</label>
+                      <SmartSearchSelect options={employeeOptions} value={formEmployeeId} onChange={setFormEmployeeId}
+                        placeholder="-- Chọn nhân viên --" searchPlaceholder="Tìm nhân viên..." />
+                      <div className="space-y-1 pt-1">
+                        <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Hạn hoàn ứng</label>
+                        <input type="date" value={formAdvanceDueDate} onChange={e => setFormAdvanceDueDate(e.target.value)}
+                          className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Đối tượng liên quan (tùy chọn)</label>
+                      <div className="grid grid-cols-4 bg-gray-100 p-1 rounded-lg">
+                        {['none', 'customer', 'supplier', 'employee'].map(type => (
+                          <button key={type} type="button" onClick={() => setFormCounterpartyType(type as any)}
+                            className={`py-1 rounded text-[10px] font-bold transition-all ${
+                              formCounterpartyType === type ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'}`}>
+                            {type === 'none' && 'Không'}
+                            {type === 'customer' && 'Khách'}
+                            {type === 'supplier' && 'NCC'}
+                            {type === 'employee' && 'N.Viên'}
+                          </button>
                         ))}
-                      </select>
-                    )}
-
-                    {formCounterpartyType === 'supplier' && (
-                      <select
-                        className="w-full h-10 px-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
-                        value={formSupplierId}
-                        onChange={e => setFormSupplierId(e.target.value)}
-                      >
-                        <option value="">-- Chọn nhà cung cấp --</option>
-                        {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    {formCounterpartyType === 'employee' && (
-                      <select
-                        className="w-full h-10 px-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
-                        value={formEmployeeId}
-                        onChange={e => setFormEmployeeId(e.target.value)}
-                      >
-                        <option value="">-- Chọn nhân viên --</option>
-                        {employees.map(e => (
-                          <option key={e.id} value={e.id}>{e.full_name}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
+                      </div>
+                      {formCounterpartyType === 'customer' && (
+                        <SmartSearchSelect options={customerOptions} value={formCustomerId} onChange={setFormCustomerId}
+                          placeholder="-- Chọn khách hàng --" searchPlaceholder="Tìm khách hàng..." />
+                      )}
+                      {formCounterpartyType === 'supplier' && (
+                        <SmartSearchSelect options={supplierOptions} value={formSupplierId} onChange={setFormSupplierId}
+                          placeholder="-- Chọn nhà cung cấp --" searchPlaceholder="Tìm nhà cung cấp..." />
+                      )}
+                      {formCounterpartyType === 'employee' && (
+                        <SmartSearchSelect options={employeeOptions} value={formEmployeeId} onChange={setFormEmployeeId}
+                          placeholder="-- Chọn nhân viên --" searchPlaceholder="Tìm nhân viên..." />
+                      )}
+                    </div>
+                  )}
 
                   {/* Reference No */}
                   <div className="space-y-1">
@@ -1941,11 +2032,13 @@ export default function CashbookPage() {
 
                   {/* Description */}
                   <div className="space-y-1">
-                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Nội dung giao dịch *</label>
+                    <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">
+                      {formKind === 'advance' ? 'Lý do tạm ứng *' : formKind ? 'Ghi chú' : 'Nội dung giao dịch *'}
+                    </label>
                     <textarea
                       rows={2}
-                      required
-                      placeholder="Nhập chi tiết lý do thu/chi..."
+                      required={!formKind || formKind === 'advance'}
+                      placeholder={formKind === 'advance' ? 'VD: Đi công tác miền Tây 3 ngày...' : 'Nhập chi tiết lý do thu/chi...'}
                       value={formDescription}
                       onChange={e => setFormDescription(e.target.value)}
                       className="w-full p-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none resize-none"
@@ -2032,190 +2125,13 @@ export default function CashbookPage() {
           </div>
         )}
 
-        {/* Tab: Thu nợ / Chi NCC / Tạm ứng */}
-        {activeTab === 'payments' && profile?.id && (
-          <CashbookPaymentForms
-            profileId={profile.id}
-            branchId={userBranchId || null}
-            customers={customers}
-            suppliers={suppliers}
-            employees={employees}
-            formatCurrency={formatCurrency}
-            onSuccess={(msg) => {
-              setAlertMsg({ type: 'success', text: msg })
-              fetchTransactions()
-              loadMetadata()
-            }}
-            onError={(msg) => setAlertMsg({ type: 'error', text: msg })}
-          />
-        )}
-
-        {/* Tab: Báo cáo dòng tiền */}
-        {activeTab === 'reports' && (
+        {/* Tab: Lịch sử dòng tiền */}
+        {activeTab === 'cashflow' && (
           <CashbookReports
             cashFunds={cashFunds}
             bankAccounts={bankAccounts}
-            fundIds={cashFunds.map(f => f.id)}
-            bankIds={bankAccounts.map(b => b.id)}
             formatCurrency={formatCurrency}
           />
-        )}
-
-        {/* Tab 2: Chuyển tiền nội bộ (Internal Transfers) */}
-        {activeTab === 'transfers' && (
-          <div className="bg-white border border-gray-150 rounded-xl p-6 shadow-sm max-w-xl mx-auto flex flex-col space-y-6">
-            <div className="flex items-center gap-2 mb-2 border-b border-gray-50 pb-3">
-              <ArrowLeftRight size={18} className="text-blue-500" />
-              <h3 className="text-body-lg font-bold text-gray-700">Lập phiếu chuyển tiền nội bộ</h3>
-            </div>
-
-            <form onSubmit={handleInternalTransferSubmit} className="space-y-4">
-              
-              {/* Source Account details */}
-              <div className="space-y-2 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <h4 className="text-tiny font-bold text-gray-600 uppercase tracking-wider">Tài khoản nguồn (Chuyển đi)</h4>
-                
-                <div className="grid grid-cols-2 gap-3 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTransferFromType('cash_fund')
-                      if (cashFunds.length > 0) setTransferFromId(cashFunds[0].id)
-                    }}
-                    className={`h-9 rounded-lg border font-semibold text-tiny flex items-center justify-center gap-1.5 transition-all ${
-                      transferFromType === 'cash_fund'
-                        ? 'border-blue-500 bg-white text-blue-700 shadow-sm'
-                        : 'border-gray-200 text-gray-500 bg-transparent'
-                    }`}
-                  >
-                    Tiền mặt
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTransferFromType('bank_account')
-                      if (bankAccounts.length > 0) setTransferFromId(bankAccounts[0].id)
-                    }}
-                    className={`h-9 rounded-lg border font-semibold text-tiny flex items-center justify-center gap-1.5 transition-all ${
-                      transferFromType === 'bank_account'
-                        ? 'border-blue-500 bg-white text-blue-700 shadow-sm'
-                        : 'border-gray-200 text-gray-500 bg-transparent'
-                    }`}
-                  >
-                    Ngân hàng
-                  </button>
-                </div>
-
-                <select
-                  className="w-full h-10 px-3 bg-white border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
-                  value={transferFromId}
-                  onChange={e => setTransferFromId(e.target.value)}
-                >
-                  {transferFromType === 'cash_fund' ? (
-                    cashFunds.map(f => (
-                      <option key={f.id} value={f.id}>{f.name} ({formatCurrency(f.balance)})</option>
-                    ))
-                  ) : (
-                    bankAccounts.map(b => (
-                      <option key={b.id} value={b.id}>{b.bank_name} - {b.account_no} ({formatCurrency(b.balance)})</option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              {/* Destination Account details */}
-              <div className="space-y-2 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <h4 className="text-tiny font-bold text-gray-600 uppercase tracking-wider">Tài khoản nhận (Chuyển đến)</h4>
-                
-                <div className="grid grid-cols-2 gap-3 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTransferToType('cash_fund')
-                      if (cashFunds.length > 0) setTransferToId(cashFunds[0].id)
-                    }}
-                    className={`h-9 rounded-lg border font-semibold text-tiny flex items-center justify-center gap-1.5 transition-all ${
-                      transferToType === 'cash_fund'
-                        ? 'border-blue-500 bg-white text-blue-700 shadow-sm'
-                        : 'border-gray-200 text-gray-500 bg-transparent'
-                    }`}
-                  >
-                    Tiền mặt
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTransferToType('bank_account')
-                      if (bankAccounts.length > 0) setTransferToId(bankAccounts[0].id)
-                    }}
-                    className={`h-9 rounded-lg border font-semibold text-tiny flex items-center justify-center gap-1.5 transition-all ${
-                      transferToType === 'bank_account'
-                        ? 'border-blue-500 bg-white text-blue-700 shadow-sm'
-                        : 'border-gray-200 text-gray-500 bg-transparent'
-                    }`}
-                  >
-                    Ngân hàng
-                  </button>
-                </div>
-
-                <select
-                  className="w-full h-10 px-3 bg-white border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
-                  value={transferToId}
-                  onChange={e => setTransferToId(e.target.value)}
-                >
-                  {transferToType === 'cash_fund' ? (
-                    cashFunds.map(f => (
-                      <option key={f.id} value={f.id}>{f.name} ({formatCurrency(f.balance)})</option>
-                    ))
-                  ) : (
-                    bankAccounts.map(b => (
-                      <option key={b.id} value={b.id}>{b.bank_name} - {b.account_no} ({formatCurrency(b.balance)})</option>
-                    ))
-                  )}
-                </select>
-              </div>
-
-              {/* Amount */}
-              <div className="space-y-1">
-                <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Số tiền chuyển (₫)</label>
-                <div className="relative flex items-center">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0 ₫"
-                    required
-                    value={transferAmount === 0 ? '' : transferAmount}
-                    onChange={e => setTransferAmount(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full h-10 px-3 pr-8 border border-gray-150 rounded-lg text-body-md font-semibold focus:border-blue-500 focus:outline-none text-right tabular-nums"
-                  />
-                  <span className="absolute right-3 text-tiny text-gray-400 font-bold">₫</span>
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-1">
-                <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Ghi chú lý do chuyển</label>
-                <textarea
-                  rows={2}
-                  placeholder="Lý do chuyển quỹ, nội bộ..."
-                  value={transferNotes}
-                  onChange={e => setTransferNotes(e.target.value)}
-                  className="w-full p-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none resize-none"
-                />
-              </div>
-
-              {/* Submit */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-all text-body-md"
-                >
-                  Xác nhận chuyển quỹ
-                </button>
-              </div>
-            </form>
-          </div>
         )}
 
         {/* Tab 3: Phiên quỹ / Ca làm việc (Cashier Sessions) */}
@@ -2734,6 +2650,30 @@ export default function CashbookPage() {
                       />
                     </div>
 
+                    {/* Nộp quỹ cuối ca — giao tiền về công ty (phiếu chi nội bộ) */}
+                    <div className="space-y-1 p-3 bg-orange-50/50 border border-orange-100 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-tiny font-bold text-orange-700 uppercase tracking-wider">Số tiền nộp về công ty (₫)</label>
+                        {sessionActualClose > 0 && (
+                          <button type="button" onClick={() => setSessionNopAmount(sessionActualClose)} className="text-[11px] text-blue-600 underline font-semibold">Nộp toàn bộ</button>
+                        )}
+                      </div>
+                      <div className="relative flex items-center">
+                        <input
+                          type="number" min="0" max={sessionActualClose || undefined} placeholder="0 ₫"
+                          value={sessionNopAmount === 0 ? '' : sessionNopAmount}
+                          onChange={e => setSessionNopAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full h-10 px-3 pr-8 border border-orange-200 rounded-lg text-body-md font-semibold focus:border-orange-400 focus:outline-none text-right tabular-nums"
+                        />
+                        <span className="absolute right-3 text-tiny text-gray-400 font-bold">₫</span>
+                      </div>
+                      <p className="text-[11px] text-orange-700/80 flex justify-between pt-0.5">
+                        <span>Tồn để lại đầu ca sau:</span>
+                        <strong className="tabular-nums">{formatCurrency(Math.max(0, sessionActualClose - sessionNopAmount))}</strong>
+                      </p>
+                      <p className="text-[10px] text-gray-400 italic">Sinh phiếu chi "Nộp quỹ cuối ca" (không tính vào lãi/lỗ) — két còn lại đúng tiền để lại.</p>
+                    </div>
+
                     <div className="space-y-1">
                       <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Ghi chú đóng ca</label>
                       <textarea
@@ -2905,7 +2845,75 @@ export default function CashbookPage() {
           </div>
         )}
 
+        {/* MODAL: QUẢN LÝ HẠNG MỤC THU/CHI */}
+        {isCatModalOpen && (
+          <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+              <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Settings size={18} className="text-blue-500" />
+                  <h3 className="text-body-lg font-bold text-gray-700">Quản lý hạng mục thu/chi</h3>
+                </div>
+                <button onClick={() => setIsCatModalOpen(false)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"><X size={18} /></button>
+              </div>
+
+              <form onSubmit={handleSaveCategory} className="p-5 space-y-3 border-b border-gray-100">
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setNewCatFlow('inflow')}
+                    className={`h-9 rounded-lg border font-semibold text-tiny transition-all ${newCatFlow === 'inflow' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-500'}`}>Hạng mục Thu</button>
+                  <button type="button" onClick={() => setNewCatFlow('outflow')}
+                    className={`h-9 rounded-lg border font-semibold text-tiny transition-all ${newCatFlow === 'outflow' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 text-gray-500'}`}>Hạng mục Chi</button>
+                </div>
+                <div className="flex gap-2">
+                  <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)}
+                    placeholder="VD: Chi phí điện nước, Thu cho thuê kho..."
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none" />
+                  <button type="submit" disabled={savingCat}
+                    className="h-10 px-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-sm active:scale-95 transition-all flex items-center gap-1 shrink-0 disabled:opacity-60">
+                    <Plus size={16} /> Thêm
+                  </button>
+                </div>
+              </form>
+
+              <div className="p-5 overflow-y-auto space-y-1.5">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  Hạng mục {newCatFlow === 'inflow' ? 'Thu' : 'Chi'} hiện có
+                </p>
+                {categories.filter(c => c.flow_type === newCatFlow).map(c => {
+                  const isSystem = !!specialKindOf(c.code) || c.is_internal || c.code === 'THU-DON-HANG' || c.code === 'CHI-HOANTIEN'
+                  return (
+                    <div key={c.id} className="flex items-center justify-between bg-gray-25 border border-gray-100 rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <span className="text-tiny font-semibold text-gray-700 truncate block">{c.name}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">{c.code}{c.is_internal ? ' · nội bộ' : ''}</span>
+                      </div>
+                      {isSystem ? (
+                        <span className="text-[10px] text-gray-400 font-semibold shrink-0">Hệ thống</span>
+                      ) : (
+                        <button onClick={() => handleDeactivateCategory(c)} className="text-red-500 hover:text-red-700 shrink-0" title="Tắt hạng mục">
+                          <X size={15} />
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </Layout>
+  )
+}
+
+// Dòng breakdown nguồn tiền trong thẻ "Tiền mặt tại quỹ chi nhánh"
+function BreakdownRow({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'orange' }) {
+  const valueCls = tone === 'emerald' ? 'text-emerald-600' : tone === 'orange' ? 'text-orange-600' : 'text-gray-600'
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-gray-500">{label}</span>
+      <span className={`font-semibold tabular-nums ${valueCls}`}>{value}</span>
+    </div>
   )
 }

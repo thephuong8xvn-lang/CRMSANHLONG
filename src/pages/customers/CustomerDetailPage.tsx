@@ -37,13 +37,15 @@ import {
   Clock,
   ArrowRight,
   Percent,
-  Zap
+  Zap,
+  Wallet
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { logger } from '../../lib/logger'
 import ExportDebtStatementModal from './ExportDebtStatementModal'
+import CollectDebtModal from './CollectDebtModal'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
@@ -421,6 +423,10 @@ export default function CustomerDetailPage() {
   const [adjustNotes, setAdjustNotes] = useState('')
   const [submittingAdjust, setSubmittingAdjust] = useState(false)
   const [adjustErrorMsg, setAdjustErrorMsg] = useState('')
+
+  // Thu công nợ (Thanh toán)
+  const [isCollectDebtModalOpen, setIsCollectDebtModalOpen] = useState(false)
+  const [collectSuccessMsg, setCollectSuccessMsg] = useState('')
 
   // Load Data function
   const loadCustomerData = async () => {
@@ -1036,6 +1042,12 @@ export default function CustomerDetailPage() {
     return userRoles.some(r => ['admin', 'ceo', 'accountant', 'branch_manager', 'team_lead', 'sales'].includes(r))
   }
 
+  // Thu công nợ (tiền thật vào sổ quỹ) — siết quyền hơn điều chỉnh nợ.
+  const canCollectDebt = () => {
+    if (!currentUserId) return false
+    return userRoles.some(r => ['admin', 'ceo', 'accountant', 'branch_manager'].includes(r))
+  }
+
   const handleAdjustDebt = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!id || !canAdjustDebt()) {
@@ -1527,22 +1539,34 @@ export default function CustomerDetailPage() {
               }`}>
                 {formatVND(totalDebt)}
               </p>
-              {canAdjustDebt() && (
-                <button
-                  onClick={() => {
-                    setAdjustType('increase')
-                    setAdjustAmount('')
-                    setAdjustNotes('')
-                    setAdjustErrorMsg('')
-                    setIsAdjustDebtModalOpen(true)
-                  }}
-                  className="mt-2 h-7 px-2.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-600 font-bold text-[11px] rounded-md border border-blue-100 transition-all flex items-center gap-1"
-                  title="Điều chỉnh công nợ khách hàng"
-                >
-                  <PlusCircle size={12} />
-                  ± Điều chỉnh
-                </button>
-              )}
+              <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                {canCollectDebt() && totalDebt > 0 && (
+                  <button
+                    onClick={() => { setCollectSuccessMsg(''); setIsCollectDebtModalOpen(true) }}
+                    className="h-7 px-2.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-bold text-[11px] rounded-md shadow-sm transition-all flex items-center gap-1"
+                    title="Thu công nợ khách hàng — ghi vào sổ quỹ"
+                  >
+                    <Wallet size={12} />
+                    Thanh toán
+                  </button>
+                )}
+                {canAdjustDebt() && (
+                  <button
+                    onClick={() => {
+                      setAdjustType('increase')
+                      setAdjustAmount('')
+                      setAdjustNotes('')
+                      setAdjustErrorMsg('')
+                      setIsAdjustDebtModalOpen(true)
+                    }}
+                    className="h-7 px-2.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-600 font-bold text-[11px] rounded-md border border-blue-100 transition-all flex items-center gap-1"
+                    title="Điều chỉnh công nợ khách hàng"
+                  >
+                    <PlusCircle size={12} />
+                    ± Điều chỉnh
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -3814,6 +3838,28 @@ export default function CustomerDetailPage() {
           customer={{ id: customer.id, name: customer.farm_name, code: customer.code }}
           onClose={() => setIsExportDebtOpen(false)}
         />
+      )}
+
+      {/* 3.7 THU CÔNG NỢ (THANH TOÁN) */}
+      {isCollectDebtModalOpen && customer && (
+        <CollectDebtModal
+          customer={{ id: customer.id, name: customer.farm_name, code: customer.code }}
+          currentDebt={totalDebt}
+          onClose={() => setIsCollectDebtModalOpen(false)}
+          onSuccess={(msg) => {
+            setIsCollectDebtModalOpen(false)
+            setCollectSuccessMsg(msg)
+            loadCustomerData()
+            setTimeout(() => setCollectSuccessMsg(''), 6000)
+          }}
+        />
+      )}
+
+      {collectSuccessMsg && (
+        <div className="fixed top-5 right-5 z-[80] max-w-sm bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-start gap-2.5 animate-in slide-in-from-top-2 duration-200">
+          <CheckCircle size={18} className="mt-0.5 shrink-0" />
+          <span className="text-tiny font-medium">{collectSuccessMsg}</span>
+        </div>
       )}
 
       {isAdjustDebtModalOpen && (

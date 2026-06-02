@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Receipt,
   Wallet,
@@ -6,14 +7,20 @@ import {
   ExternalLink,
   AlertTriangle,
   FileSpreadsheet,
+  CheckCircle2,
 } from 'lucide-react'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { qk } from '../../lib/queryClient'
 import {
   useCustomerOrders,
   useCustomerDebts,
   type CustomerSummaryRow,
 } from '../../hooks/queries/useCustomers'
 import ExportDebtStatementModal from './ExportDebtStatementModal'
+import CollectDebtModal from './CollectDebtModal'
+
+const COLLECT_ROLES = ['admin', 'ceo', 'accountant', 'branch_manager']
 
 type QuickTab = 'orders' | 'debts'
 
@@ -56,8 +63,12 @@ function Spinner() {
 
 export default function CustomerQuickView({ customer, onClose, onOpenDetail }: CustomerQuickViewProps) {
   const { formatCurrency } = useDisplaySettings()
+  const { userRole } = useAuth()
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<QuickTab>('orders')
   const [showExport, setShowExport] = useState(false)
+  const [showCollect, setShowCollect] = useState(false)
+  const [collectMsg, setCollectMsg] = useState('')
 
   const ordersQuery = useCustomerOrders(customer.id, tab === 'orders')
   const debtsQuery = useCustomerDebts(customer.id, tab === 'debts')
@@ -67,6 +78,7 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
   const unsettled = debts.filter(d => !d.is_settled)
   const outstanding = unsettled.reduce((s, d) => s + Number(d.amount || 0), 0)
   const overdueCount = unsettled.filter(d => d.due_date && d.due_date < todayStr).length
+  const canCollect = !!userRole && COLLECT_ROLES.includes(userRole.code)
 
   const TabButton = ({ id, icon, label, badge }: { id: QuickTab; icon: React.ReactNode; label: string; badge?: number }) => (
     <button
@@ -225,15 +237,34 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
                   </table>
                 </div>
               )}
+              {collectMsg && (
+                <div className="flex items-start gap-2 text-tiny text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+                  <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                  <span>{collectMsg}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-2 pt-1">
-                <button
-                  onClick={() => setShowExport(true)}
-                  className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-tiny font-bold hover:bg-emerald-100 transition-all flex items-center gap-1.5"
-                >
-                  <FileSpreadsheet size={14} />
-                  Xuất file công nợ
-                </button>
-                <p className="text-[10px] text-gray-400 italic">Điều chỉnh / thu công nợ tại trang chi tiết khách hàng.</p>
+                <div className="flex items-center gap-2">
+                  {canCollect && outstanding > 0 && (
+                    <button
+                      onClick={() => { setCollectMsg(''); setShowCollect(true) }}
+                      className="h-8 px-3 bg-emerald-500 text-white rounded-lg text-tiny font-bold hover:bg-emerald-600 active:scale-95 shadow-sm transition-all flex items-center gap-1.5"
+                    >
+                      <Wallet size={14} />
+                      Thanh toán
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowExport(true)}
+                    className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-tiny font-bold hover:bg-emerald-100 transition-all flex items-center gap-1.5"
+                  >
+                    <FileSpreadsheet size={14} />
+                    Xuất file công nợ
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400 italic">
+                  {canCollect ? 'Thu tiền sẽ tự ghi vào sổ quỹ & giảm công nợ.' : 'Điều chỉnh / thu công nợ tại trang chi tiết khách hàng.'}
+                </p>
               </div>
             </div>
           )
@@ -244,6 +275,21 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
         <ExportDebtStatementModal
           customer={{ id: customer.id, name: customer.farm_name, code: customer.code || undefined }}
           onClose={() => setShowExport(false)}
+        />
+      )}
+
+      {showCollect && (
+        <CollectDebtModal
+          customer={{ id: customer.id, name: customer.farm_name, code: customer.code || undefined }}
+          currentDebt={outstanding}
+          onClose={() => setShowCollect(false)}
+          onSuccess={(msg) => {
+            setShowCollect(false)
+            setCollectMsg(msg)
+            queryClient.invalidateQueries({ queryKey: qk.customers.debts(customer.id) })
+            queryClient.invalidateQueries({ queryKey: qk.customers.all })
+            queryClient.invalidateQueries({ queryKey: ['customers', 'kpis'] })
+          }}
         />
       )}
     </div>
