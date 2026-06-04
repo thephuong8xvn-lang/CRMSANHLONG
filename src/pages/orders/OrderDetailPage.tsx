@@ -14,11 +14,14 @@ import {
   X,
   Menu,
   Copy,
-  PlusCircle
+  PlusCircle,
+  Pencil,
+  Ban
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import OrderEditModal from './OrderEditModal'
 
 interface OrderLine {
   id: string
@@ -64,6 +67,7 @@ interface Order {
   customer_id: string
   price_list_id: string | null
   warehouse_id: string | null
+  cancel_reason?: string | null
   customers?: {
     farm_name: string
     code: string
@@ -76,6 +80,23 @@ interface Order {
   warehouses?: {
     name: string
   }
+}
+
+// Badge đếm ngược thời gian còn được sửa đơn bán nhanh (60')
+function EditWindowBadge({ expiresAt }: { expiresAt: string }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000 * 30)
+    return () => clearInterval(t)
+  }, [])
+  const remainMs = new Date(expiresAt).getTime() - now
+  if (remainMs <= 0) return null
+  const mins = Math.ceil(remainMs / 60000)
+  return (
+    <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-bold">
+      còn {mins}'
+    </span>
+  )
 }
 
 export default function OrderDetailPage() {
@@ -99,8 +120,14 @@ export default function OrderDetailPage() {
   // 'record' = ghi thêm thanh toán (đơn đã hoàn tất còn nợ); 'complete_delivery' = thu tiền + hoàn tất đơn giao
   const [payModalMode, setPayModalMode] = useState<'record' | 'complete_delivery'>('record')
 
-  // Sửa giá/CK từng dòng (admin duyệt đơn nháp giao hàng)
-  const [editedLines, setEditedLines] = useState<Record<string, { unit_price: number; discount: number }>>({})
+  // Quyền sửa/hủy đơn (từ RPC fn_order_edit_perms)
+  const [editPerms, setEditPerms] = useState<{
+    can_edit: boolean; can_cancel: boolean; can_edit_qty: boolean;
+    window_expires_at: string | null; reason: string
+  } | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
 
   // FAB overlay menu state
   const [showFabMenu, setShowFabMenu] = useState(false)
@@ -296,6 +323,7 @@ export default function OrderDetailPage() {
           customer_id,
           price_list_id,
           warehouse_id,
+          cancel_reason,
           customers:customers(farm_name, code, value_tier),
           owner:profiles!orders_owner_user_id_fkey(full_name, phone),
           warehouses:warehouses(name)
@@ -305,6 +333,10 @@ export default function OrderDetailPage() {
 
       if (orderErr) throw orderErr
       setOrder(orderData as unknown as Order)
+
+      // Quyền sửa/hủy đơn (server-side enforce; UI chỉ hiển thị)
+      const { data: permData } = await supabase.rpc('fn_order_edit_perms', { p_order_id: id })
+      if (permData) setEditPerms(permData as any)
 
       // 2. Fetch Order Lines (Join with products table because product_snapshot is not a column)
       const { data: linesData, error: linesErr } = await supabase
@@ -355,36 +387,6 @@ export default function OrderDetailPage() {
   useEffect(() => {
     loadOrderDetails()
   }, [id, loadOrderDetails])
-
-  // Handle status update transitions
-  const updateOrderStatus = async (nextStatus: string) => {
-    if (!order) return
-    setSubmitting(true)
-    try {
-      const updateData: any = { status: nextStatus }
-      
-      if (nextStatus === 'confirmed') {
-        updateData.confirmed_by = profile?.id
-      }
-      
-      // Update order status in Supabase. Triggers will execute:
-      // - on 'confirmed': run FEFO allocation and reserve/deduct stock.
-      const { error } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', order.id)
-
-      if (error) throw error
-
-      setAlertMsg({ type: 'success', text: `Đơn hàng đã chuyển sang trạng thái: ${nextStatus}` })
-      loadOrderDetails()
-    } catch (err: any) {
-      console.error(err)
-      setAlertMsg({ type: 'error', text: 'Chuyển trạng thái đơn hàng thất bại: ' + err.message })
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   // Handle add payment transaction
   const handleAddPayment = async () => {
@@ -454,31 +456,29 @@ export default function OrderDetailPage() {
     }
   }
 
-  // Lưu chỉnh sửa giá/CK từng dòng (admin) — trigger recalc tự cập nhật tổng
-  const handleSaveLinePrices = async (): Promise<boolean> => {
-    const entries = Object.entries(editedLines)
-    if (entries.length === 0) return true
-    for (const [lineId, vals] of entries) {
-      const { error } = await supabase
-        .from('order_lines')
-        .update({ unit_price: vals.unit_price, discount: vals.discount })
-        .eq('id', lineId)
-      if (error) {
-        setAlertMsg({ type: 'error', text: 'Lưu giá dòng thất bại: ' + error.message })
-        return false
-      }
+  // Hủy đơn (Admin mọi lúc; NV cùng chi nhánh với đơn giao nháp) — hoàn kho + đảo thu chi
+  const handleCancelOrder = async () => {
+    if (!order) return
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.rpc('fn_cancel_order', { p_order_id: order.id, p_reason: cancelReason || null })
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã hủy đơn. Hàng đã hoàn về kho và thu chi đã được hoàn lại.' })
+      setShowCancelModal(false)
+      setCancelReason('')
+      loadOrderDetails()
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Hủy đơn thất bại: ' + err.message })
+    } finally {
+      setSubmitting(false)
     }
-    setEditedLines({})
-    return true
   }
 
-  // Admin xác nhận đơn giao hàng (lưu giá đã sửa trước) → trừ kho FEFO
+  // Admin xác nhận đơn giao hàng → trừ kho FEFO (sửa giá/SL qua nút "Sửa đơn")
   const handleConfirmOrder = async () => {
     if (!order) return
     setSubmitting(true)
     try {
-      const ok = await handleSaveLinePrices()
-      if (!ok) return
       const { error } = await supabase.rpc('fn_confirm_order', { p_order_id: order.id })
       if (error) throw error
       setAlertMsg({ type: 'success', text: 'Đã xác nhận đơn & trừ kho. Nhân viên có thể bắt đầu giao hàng.' })
@@ -622,7 +622,6 @@ export default function OrderDetailPage() {
 
   const isDelivery = order.sale_channel === 'delivery'
   const canStaffAct = isAdmin || order.owner_user_id === profile?.id
-  const canEditLines = isAdmin && isDelivery && order.status === 'draft'
 
   return (
     <Layout activeMenu="Đơn hàng">
@@ -656,19 +655,37 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
-          {/* Action buttons — đơn giao hàng đi qua RPC phân quyền; đơn bán tại quầy đã hoàn tất sẵn */}
-          <div className="flex items-center gap-3">
+          {/* Action buttons — sửa/hủy đi qua RPC phân quyền (fn_order_edit_perms enforce server-side) */}
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            {/* Sửa đơn — NV cùng chi nhánh (trong cửa sổ) hoặc Admin */}
+            {editPerms?.can_edit && order.status !== 'cancelled' && (
+              <button
+                disabled={submitting}
+                onClick={() => setShowEditModal(true)}
+                className="h-10 px-4 border border-blue-200 text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+              >
+                <Pencil size={15} />
+                Sửa đơn
+                {!isDelivery && editPerms.window_expires_at && (
+                  <EditWindowBadge expiresAt={editPerms.window_expires_at} />
+                )}
+              </button>
+            )}
+
+            {/* Hủy đơn — Admin mọi lúc; NV cùng chi nhánh với đơn giao nháp */}
+            {editPerms?.can_cancel && order.status !== 'cancelled' && (
+              <button
+                disabled={submitting}
+                onClick={() => setShowCancelModal(true)}
+                className="h-10 px-4 border border-red-250 text-red-600 font-semibold rounded-lg hover:bg-red-50/50 transition-colors flex items-center gap-2"
+              >
+                <Ban size={15} />
+                Hủy đơn
+              </button>
+            )}
+
             {isDelivery && order.status === 'draft' && (
               <>
-                {canStaffAct && (
-                  <button
-                    disabled={submitting}
-                    onClick={() => updateOrderStatus('cancelled')}
-                    className="h-10 px-4 border border-red-250 text-red-600 font-semibold rounded-lg hover:bg-red-50/50 transition-colors"
-                  >
-                    Hủy đơn
-                  </button>
-                )}
                 {isAdmin ? (
                   <button
                     disabled={submitting}
@@ -732,7 +749,16 @@ export default function OrderDetailPage() {
         </div>
 
         {/* Stepper progress */}
-        {order.status !== 'cancelled' && renderStepper()}
+        {order.status !== 'cancelled' ? renderStepper() : (
+          <section className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <Ban className="text-red-600 mt-0.5 shrink-0" size={18} />
+            <div>
+              <p className="text-body-md font-bold text-red-700">Đơn hàng đã bị hủy</p>
+              {order.cancel_reason && <p className="text-body-sm text-red-600 mt-0.5">Lý do: {order.cancel_reason}</p>}
+              <p className="text-tiny text-red-500 mt-0.5">Hàng đã hoàn về kho, các khoản thu/chi của đơn đã được hoàn lại.</p>
+            </div>
+          </section>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
           {/* Left panel: Details columns */}
@@ -792,44 +818,23 @@ export default function OrderDetailPage() {
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-body-lg font-bold text-gray-800">Sản phẩm đặt hàng</h3>
                   <div className="flex items-center gap-2">
-                    {canEditLines && <span className="text-tiny bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold">Admin: sửa giá/CK rồi Xác nhận đơn</span>}
                     <span className="text-tiny bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-bold">{lines.length} sản phẩm</span>
                   </div>
                 </div>
 
                 <div className="space-y-3.5 max-h-[260px] overflow-y-auto pr-1">
-                  {lines.map(line => {
-                    const ed = editedLines[line.id]
-                    const up = ed ? ed.unit_price : line.unit_price
-                    const dc = ed ? ed.discount : line.discount
-                    const lineTotal = canEditLines ? (up - dc) * line.quantity : line.line_total
-                    return (
-                      <div key={line.id} className="flex justify-between items-center pb-3 border-b border-gray-50">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-body-md font-bold text-gray-800 leading-tight">{line.product_snapshot?.name || 'Sản phẩm'}</p>
-                          {canEditLines ? (
-                            <div className="flex items-center gap-2 mt-1 text-tiny">
-                              <span className="text-gray-400">{line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} ×</span>
-                              <label className="text-gray-400">Đơn giá</label>
-                              <input type="number" min={0} value={up}
-                                onChange={e => setEditedLines(prev => ({ ...prev, [line.id]: { unit_price: Number(e.target.value), discount: dc } }))}
-                                className="w-24 h-7 px-1.5 border border-gray-200 rounded text-right font-bold focus:outline-none focus:border-blue-500" />
-                              <label className="text-gray-400">CK/đv</label>
-                              <input type="number" min={0} value={dc}
-                                onChange={e => setEditedLines(prev => ({ ...prev, [line.id]: { unit_price: up, discount: Number(e.target.value) } }))}
-                                className="w-20 h-7 px-1.5 border border-gray-200 rounded text-right text-red-500 font-bold focus:outline-none focus:border-blue-500" />
-                            </div>
-                          ) : (
-                            <p className="text-tiny text-gray-400 mt-0.5 font-semibold">
-                              {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} x {line.unit_price.toLocaleString('vi-VN')} ₫
-                              {line.discount > 0 && <span className="text-red-500 ml-1.5">-{(line.discount * line.quantity).toLocaleString('vi-VN')} ₫</span>}
-                            </p>
-                          )}
-                        </div>
-                        <span className="text-body-md font-bold text-gray-800 ml-2 shrink-0">{lineTotal.toLocaleString('vi-VN')} ₫</span>
+                  {lines.map(line => (
+                    <div key={line.id} className="flex justify-between items-center pb-3 border-b border-gray-50">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body-md font-bold text-gray-800 leading-tight">{line.product_snapshot?.name || 'Sản phẩm'}</p>
+                        <p className="text-tiny text-gray-400 mt-0.5 font-semibold">
+                          {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} x {line.unit_price.toLocaleString('vi-VN')} ₫
+                          {line.discount > 0 && <span className="text-red-500 ml-1.5">-{(line.discount * line.quantity).toLocaleString('vi-VN')} ₫</span>}
+                        </p>
                       </div>
-                    )
-                  })}
+                      <span className="text-body-md font-bold text-gray-800 ml-2 shrink-0">{line.line_total.toLocaleString('vi-VN')} ₫</span>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="pt-4 space-y-2 text-tiny mt-4">
@@ -994,11 +999,11 @@ export default function OrderDetailPage() {
                 <span>Sao chép URL</span>
                 <Copy size={16} />
               </button>
-              {order.status !== 'cancelled' && order.status !== 'completed' && (
+              {editPerms?.can_cancel && order.status !== 'cancelled' && (
                 <button
                   onClick={() => {
                     setShowFabMenu(false)
-                    updateOrderStatus('cancelled')
+                    setShowCancelModal(true)
                   }}
                   className="bg-white border border-gray-100 px-4 py-2 rounded-full text-tiny font-bold text-red-500 hover:bg-red-50/50 shadow-lg flex items-center gap-2 transition-all"
                 >
@@ -1269,6 +1274,81 @@ export default function OrderDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal sửa đơn (bán nhanh trong 60' hoặc Admin / đơn giao nháp) */}
+      {showEditModal && (
+        <OrderEditModal
+          order={{
+            id: order.id,
+            sale_channel: order.sale_channel,
+            status: order.status,
+            customer_id: order.customer_id,
+            price_list_id: order.price_list_id,
+            warehouse_id: order.warehouse_id,
+            payment_method: order.payment_method,
+            notes: order.notes,
+            delivery_address: order.delivery_address,
+            grand_total: Number(order.grand_total),
+            paid_amount: Number(order.paid_amount)
+          }}
+          lines={lines.map(l => ({
+            product_id: l.product_id,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            discount: l.discount,
+            product_snapshot: l.product_snapshot
+          }))}
+          canEditQty={editPerms?.can_edit_qty ?? false}
+          onClose={() => setShowEditModal(false)}
+          onSaved={(msg) => {
+            setShowEditModal(false)
+            setAlertMsg({ type: 'success', text: msg })
+            loadOrderDetails()
+          }}
+        />
+      )}
+
+      {/* Modal hủy đơn */}
+      {showCancelModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Ban className="text-red-600" size={18} />
+              </div>
+              <div>
+                <h3 className="text-headline-md font-bold text-gray-800">Hủy đơn hàng?</h3>
+                <p className="text-body-sm text-gray-500 mt-1">
+                  Hàng sẽ được hoàn về kho và các khoản thu/chi của đơn sẽ được hoàn lại. Thao tác không thể tự khôi phục.
+                </p>
+              </div>
+            </div>
+            <label className="block text-tiny font-semibold text-gray-500 mb-1">Lý do hủy (không bắt buộc)</label>
+            <textarea
+              rows={2}
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-body-sm focus:outline-none focus:border-blue-500"
+              placeholder="VD: Khách đổi ý / nhập sai..."
+            />
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <button
+                onClick={() => { setShowCancelModal(false); setCancelReason('') }}
+                className="h-10 px-4 border border-gray-200 text-gray-600 font-semibold rounded-lg hover:bg-gray-50"
+              >
+                Đóng
+              </button>
+              <button
+                disabled={submitting}
+                onClick={handleCancelOrder}
+                className="h-10 px-5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg disabled:opacity-60"
+              >
+                {submitting ? 'Đang hủy...' : 'Xác nhận hủy đơn'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -28,6 +28,7 @@ import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
+import { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
 import { useProductPromotions, evaluateProductPromo, promoShortLabel } from '../../hooks/useProductPromotions'
@@ -694,11 +695,17 @@ export default function POSPage() {
   })
 
   // Filter customers
-  const filteredCustomers = useMemo(() => customers.filter(c => {
-    if (!customerSearchQuery.trim()) return true
-    return c.farm_name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-      c.code.toLowerCase().includes(customerSearchQuery.toLowerCase())
-  }), [customers, customerSearchQuery])
+  const filteredCustomers = useMemo(() => {
+    const q = removeVietnameseTones(customerSearchQuery.trim().toLowerCase())
+    const matched = !q
+      ? customers
+      : customers.filter(c =>
+          removeVietnameseTones(c.farm_name.toLowerCase()).includes(q) ||
+          removeVietnameseTones((c.code || '').toLowerCase()).includes(q)
+        )
+    // Giới hạn 50 dòng hiển thị (tránh render hàng nghìn nút khi danh sách lớn)
+    return matched.slice(0, 50)
+  }, [customers, customerSearchQuery])
 
   // Add to cart helper
   const addToCart = useCallback((product: Product) => {

@@ -1154,3 +1154,49 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **🔴 Lỗ hổng verify (gốc khiến bug lọt):** `tsconfig.json` dùng `"files": []` + project references → `tsc --noEmit` thuần KHÔNG kiểm tra file nào (giả PASS). Lệnh đúng là **`tsc -b --noEmit`**. Đã sửa build script `package.json`: `tsc && vite build` → **`tsc -b && vite build`**.
 - **Dọn 4 lỗi typecheck tiềm ẩn có sẵn** (nay mới lộ): `customerStatement.ts` ×3, `HerdsManagePage.tsx:72`. Toàn dự án `tsc -b` 0 lỗi + `npm run build` PASS.
 - **Toàn vẹn/bảo mật:** không vấn đề. Xác minh remote: `profiles_select_all USING (fn_is_active())`, 3 NV active. Bug thuần frontend. **KHÔNG migration.**
+
+### 🧾 2026-06-04 (tiếp) — Sửa/Hủy đơn POS 2 luồng + toàn vẹn dữ liệu
+
+**Bối cảnh:** Bán nhanh tại quầy & bán giao hàng cần cho phép chỉnh sửa sau khi xuất đơn (sai sót nhập liệu) với phân quyền chặt và giữ toàn vẹn kho/sổ quỹ/công nợ. Cả 2 luồng vốn đã hiện trong /orders. **Có migration. `tsc -b` + `npm run build` PASS.**
+
+- **Migration `20260616000000_pos_order_edit_cancel.sql`** (đã apply remote + reload schema, verify 5 hàm + cột):
+  - Cột `orders.cancel_reason`.
+  - `fn_order_edit_perms(order)` → JSONB `{can_edit,can_cancel,can_edit_qty,window_expires_at,reason}`. Admin/CEO mọi lúc; NV **cùng chi nhánh**: bán nhanh `completed` sửa trong **60'** (không hủy), đơn giao `draft` sửa+hủy.
+  - `fn_reverse_order_effects(order)` nội bộ: hoàn kho về lô gốc (`stock_movements adjustment_increase` ref `order_reverse` + cộng `quantity_on_hand` + xóa allocation), đảo phiếu thu (`cashbook_transactions status='cancelled'` → trigger hoàn số dư quỹ), xóa `order_payments` + `customer_debts` chưa tất toán, reset paid/payment_status. **Guard:** chặn nếu đã có trả hàng / công nợ đã thu.
+  - `fn_pos_apply_lines(order,payload)` nội bộ: dựng lại dòng + header + ghi đè tổng (giữ CK cấp HĐ).
+  - `fn_cancel_order(order,reason)`: quyền theo `can_cancel` (Admin mọi lúc; NV chỉ đơn giao nháp) → reverse + status `cancelled` + cancel_reason.
+  - `fn_pos_edit_order(order,payload)`: quyền theo `can_edit`; **draft** → chỉ apply_lines; **đã trừ kho** → reverse → apply_lines → draft→confirmed→completed (trừ kho FEFO lại; thiếu hàng RAISE rollback) → `fn_pos_settle_payment`. Nguyên tử, `FOR UPDATE`.
+- **Frontend:**
+  - `OrderEditModal.tsx` (mới): cart sửa SL/giá/CK/thêm-xóa dòng, chọn khách + SP qua **SmartSearchSelect** + **fetchAllRows** (đủ SP/KH 1001+), thanh toán/CK HĐ/ghi chú; gọi `fn_pos_edit_order`. Khóa ô SL khi `!can_edit_qty`.
+  - `OrderDetailPage.tsx`: nạp `fn_order_edit_perms`; nút **Sửa đơn** (badge đếm ngược 60' cho bán nhanh) + **Hủy đơn** (modal lý do → `fn_cancel_order`); banner khi đã hủy + lý do; gỡ inline edit cũ & `updateOrderStatus('cancelled')` (đường hủy không hoàn tác). FAB "Hủy đơn" định tuyến qua modal mới.
+  - `OrderListPage.tsx`: chip lọc **Luồng bán** (bán nhanh/giao hàng, desktop+mobile) + chuyển query sang **fetchAllRows** (tie-break `.order('id')`).
+  - `POSPage.tsx`: filter khách hàng nâng lên **không dấu** (`removeVietnameseTones`) + cap 50 kết quả render.
+- **Phân quyền/bảo mật:** mọi sửa/hủy qua RPC `SECURITY DEFINER` tự enforce (UI chỉ tiện ích); NV không hủy được đơn bán nhanh đã hoàn tất; guard chặn lệch sổ khi đã trả hàng/thu nợ.
+- ⚠️ **Biên đã biết:** re-settle gắn cashbook vào ca thu ngân đang mở hiện tại (sửa cùng ngày → đúng); CK cấp HĐ khi sửa mặc định 0 (công cụ chỉnh sai sót).
+
+### 📦 2026-06-04 (tiếp) — Admin sửa/xóa LÔ HÀNG (module Kho) + smart search
+
+**Bối cảnh:** Tiếp mạch admin sửa/hủy có toàn vẹn. Tab Lô hàng vốn read-only → admin (`admin@sanhlongvetco.vn`/CEO) cần sửa & xóa lô; nhân viên giữ quyền cũ. **Có migration. `tsc -b` + `npm run build` PASS.**
+
+- **Migration `20260617000000_admin_edit_lot.sql`** (đã apply remote + reload, verify 2 hàm). Cả 2 `SECURITY DEFINER`, chỉ `fn_is_admin()`:
+  - `fn_admin_edit_lot(lot, payload)`: sửa lot_number/NSX/HSD/giá vốn/trạng thái + số lượng. Đổi SL → ghi `stock_movements adjustment_increase/decrease` (ref `lot_adjustment`) đúng dấu → thẻ kho khớp. Guard: SL mới ≥ quantity_reserved & ≥0; bắt UNIQUE số lô.
+  - `fn_admin_delete_lot(lot, reason)`: soft-delete — chặn nếu `quantity_reserved>0`; ghi `adjustment_decrease -quantity_on_hand` (ref `lot_delete`), set qty=0 + `status='disposed'` + notes=reason. GIỮ lịch sử/FK (không hard-delete).
+- **Frontend:** `LotEditModal.tsx` (mới — form sửa lô, preview bút toán điều chỉnh ±N, chặn SL < giữ chỗ). `InventoryPage.tsx` tab Lô: cột/nút **Sửa + Hủy** (desktop + mobile) chỉ hiện khi `isAdmin`; modal xác nhận hủy + lý do; badge `disposed`="Đã hủy"; reload qua `lotReloadFlag`.
+- **Search/nạp đủ (phạm vi Kho):** tab Cài đặt `<select>` SP → **SmartSearchSelect** (memo `productListOptions`, productList đã `fetchAllRows`). Query tab Lô hàng đổi `.limit(100)` → **`fetchAllRows`** (tie-break `.order('id')`, +`quantity_reserved`) để admin thấy/sửa mọi lô. 2 query lô transfer/return → `fetchAllRows` phòng kho >1000 lô.
+- **Phân quyền/bảo mật:** RPC tự `fn_is_admin()` (NV gọi trực tiếp bị chặn); UI ẩn nút cho NV. Quyền NV (tạo/chuyển/trả) giữ nguyên. Toàn vẹn: mọi đổi SL sinh movement; xóa soft + đảo tồn; chặn dưới phần giữ chỗ.
+- ⚠️ **Ngoài scope (ghi nhận):** goods receipts / purchase returns chưa thêm sửa/xóa admin (user chọn chỉ Lô lần này); các list tab khác (PO/receipts/transfers/returns) vẫn `.limit(100)` — pagination để session sau.
+
+### 📊 2026-06-04 (tiếp) — Trung tâm Báo cáo: Báo cáo lợi nhuận (admin-only)
+
+**Bối cảnh:** Tinh gọn `/reports`. Bỏ 4 báo cáo (Công nợ phải thu, Nhập xuất tồn kho, Hiệu suất nhân viên, ROI khuyến mãi). Thay "Doanh thu theo thời gian" → **Báo cáo lợi nhuận**. Toàn bộ khu báo cáo **chỉ admin** (`userRole.code==='admin'`, CEO cũng bị chặn). **Có migration. `tsc -b` + `npm run build` PASS.**
+
+- **Migration `20260620000000_profit_reports.sql`** (đã apply remote + reload, verify view + 4 hàm + gate `fn_has_role('admin')` ×4):
+  - **View `v_order_line_profit`**: lợi nhuận cấp dòng đơn. `revenue=order_lines.line_total`; `cogs = Σ(allocation.quantity×stock_lots.cost_price) + (quantity−Σalloc)×product_stock_summary_view.retail_cost` (fallback GIA-LE→bảng giá đầu→lô mới nhất→0). Chỉ đơn `status IN (confirmed,shipping,delivered,paid,completed)`. ⚠️ Phát hiện: sale movement KHÔNG ghi `unit_cost` (trigger bỏ trống) → KHÔNG dùng được làm COGS; allocation→lot.cost_price là nguồn đáng tin.
+  - **4 RPC** `SECURITY DEFINER` + check `fn_has_role('admin')` (RAISE nếu không) + `GRANT authenticated`: `fn_profit_summary(from,to)`; `fn_profit_by_customer(from,to,search,sort,limit,offset)`; `fn_profit_by_product(...)` (sort: revenue/profit/profit_ratio/qty/customer_count — dùng chung cho cả 3 tab Top-100); `fn_profit_by_brand(from,to,sort,limit,offset)`.
+- **Frontend:**
+  - `ProfitReportPage.tsx` (mới, route `/reports/profit`): bộ lọc thời gian preset **Hôm nay (mặc định)/Tháng này/Năm nay/Tùy chọn**; 4 KPI (doanh thu/giá vốn/lợi nhuận/biên LN); **6 tab** (theo KH / SP / thương hiệu / Top-100 tỉ lệ LN / Top-100 doanh số / Top-100 nhiều khách mua); **SmartSearchSelect** lọc KH/SP (options nạp `fetchAllRows` → đủ 1001+, value=code/sku truyền `p_search`); **Xuất CSV** mỗi tab (papaparse, BOM UTF-8). Format tiền qua `useDisplaySettings`.
+  - `ReportsHubPage.tsx`: còn **2 card** (Báo cáo lợi nhuận + Phân tích Chân dung KH) + KPI strip (doanh thu/LN/biên theo hôm nay/tháng/năm qua `fn_profit_summary`).
+  - **Xóa hẳn** `RevenueReportPage/DebtReportPage/InventoryReportPage/StaffReportPage.tsx` + import + route.
+  - `App.tsx`: thêm prop **`adminOnly`** cho `ProtectedRoute` (chặn cả CEO → `AccessDenied`); routes `/reports`, `/reports/profit`, `/reports/customer-profile` đều `adminOnly`. `Layout.tsx`: menu "Báo cáo" gắn `adminOnly:true` (ẩn với non-admin, kể cả CEO). `DashboardPage.tsx`: nút "Báo cáo" repoint `/reports/debt`→`/reports`.
+- **Phân quyền/bảo mật:** 2 lớp — UI (route + menu chỉ admin) và DB (RPC tự `fn_has_role('admin')`, REVOKE PUBLIC). RPC SECURITY DEFINER owner superuser → admin thấy mọi chi nhánh (đúng nhu cầu CEO/admin xem toàn cục).
+- ⚠️ **Biên đã biết / data integrity:** doanh thu cấp DÒNG (chưa gồm CK cấp HĐ + phí ship); SP chưa set giá vốn (no allocation + retail_cost=0) → margin 100% (báo cáo phơi bày để admin sửa data, không phải lỗi logic); margin âm = bán dưới giá vốn (data thật).

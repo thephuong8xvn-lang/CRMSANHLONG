@@ -101,7 +101,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
       label: 'Tài chính & Báo cáo',
       items: [
         { label: 'Sổ quỹ', icon: Wallet, path: '/cashbook', perms: ['cashbook.view', 'cashbook.create', 'cashbook.approve'] },
-        { label: 'Báo cáo', icon: BarChart2, path: '/reports', perms: ['reports.sales', 'reports.cashflow', 'reports.inventory', 'reports.debt', 'reports.team_kpi'] }
+        { label: 'Báo cáo', icon: BarChart2, path: '/reports', perms: [], adminOnly: true }
       ]
     },
     {
@@ -115,6 +115,10 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
   // Filter groups based on role (Admin and CEO have full access) and specific module permissions
   const visibleMenuGroups = menuGroups.map(group => {
     const filteredItems = group.items.filter(item => {
+      // Mục chỉ dành cho admin (vd: Báo cáo) — kể cả CEO cũng bị ẩn
+      if ((item as { adminOnly?: boolean }).adminOnly) {
+        return userRole.code === 'admin'
+      }
       if (userRole.code === 'admin' || userRole.code === 'ceo') {
         return true
       }

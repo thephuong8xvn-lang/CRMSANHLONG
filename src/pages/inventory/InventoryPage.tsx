@@ -14,7 +14,9 @@ import {
   CheckCircle2,
   ArrowRightLeft,
   RotateCcw,
-  Trash2
+  Trash2,
+  Pencil,
+  Ban
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { Skeleton } from '../../components/Skeleton'
@@ -22,6 +24,7 @@ import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
+import LotEditModal, { type EditableLot } from './LotEditModal'
 
 
 interface StockLot {
@@ -31,6 +34,7 @@ interface StockLot {
   expiry_date: string | null
   cost_price: number
   quantity_on_hand: number
+  quantity_reserved: number
   status: string
   product: {
     id: string
@@ -102,7 +106,14 @@ interface InventorySetting {
 export default function InventoryPage() {
   const navigate = useNavigate()
   const { profile, userRole } = useAuth()
+  const isAdmin = userRole?.code === 'admin' || userRole?.code === 'ceo'
   const [activeTab, setActiveTab] = useState<'lots' | 'pos' | 'receipts' | 'transfers' | 'purchase_returns' | 'settings'>('lots')
+
+  // Admin sửa/xóa lô hàng
+  const [editingLot, setEditingLot] = useState<EditableLot | null>(null)
+  const [deletingLot, setDeletingLot] = useState<StockLot | null>(null)
+  const [deleteLotReason, setDeleteLotReason] = useState('')
+  const [lotReloadFlag, setLotReloadFlag] = useState(0)
 
   // Shared States
   const [warehouses, setWarehouses] = useState<{ id: string; name: string }[]>([])
@@ -196,6 +207,12 @@ export default function InventoryPage() {
     lines: []
   })
 
+  // Options cho SmartSearchSelect chọn SP ở tab Cài đặt (productList đã fetchAllRows → đủ 1001+)
+  const productListOptions = useMemo(
+    () => productList.map(p => ({ value: p.id, label: p.name, desc: p.sku })),
+    [productList]
+  )
+
   // Memoized options for SmartSearchSelect in Stock Transfer & Supplier Return
   const transferLotOptions = useMemo(() => {
     return lotsForTransfer.map((l: any) => {
@@ -248,20 +265,24 @@ export default function InventoryPage() {
         setLotsForTransfer([])
         return
       }
-      const { data } = await supabase
-        .from('stock_lots')
-        .select(`
-          id,
-          lot_number,
-          quantity_on_hand,
-          quantity_reserved,
-          expiry_date,
-          cost_price,
-          product:products(id, name, sku, unit)
-        `)
-        .eq('warehouse_id', newTransfer.fromWarehouse)
-        .eq('status', 'active')
-        .gt('quantity_on_hand', 0)
+      const data = await fetchAllRows<any>((from, to) =>
+        supabase
+          .from('stock_lots')
+          .select(`
+            id,
+            lot_number,
+            quantity_on_hand,
+            quantity_reserved,
+            expiry_date,
+            cost_price,
+            product:products(id, name, sku, unit)
+          `)
+          .eq('warehouse_id', newTransfer.fromWarehouse)
+          .eq('status', 'active')
+          .gt('quantity_on_hand', 0)
+          .order('expiry_date', { ascending: true }).order('id')
+          .range(from, to)
+      )
 
       if (data) {
         const formatted = data.map((l: any) => ({
@@ -289,20 +310,24 @@ export default function InventoryPage() {
         setLotsForReturn([])
         return
       }
-      const { data } = await supabase
-        .from('stock_lots')
-        .select(`
-          id,
-          lot_number,
-          quantity_on_hand,
-          quantity_reserved,
-          expiry_date,
-          cost_price,
-          product:products(id, name, sku, unit)
-        `)
-        .eq('warehouse_id', newReturn.warehouseId)
-        .eq('status', 'active')
-        .gt('quantity_on_hand', 0)
+      const data = await fetchAllRows<any>((from, to) =>
+        supabase
+          .from('stock_lots')
+          .select(`
+            id,
+            lot_number,
+            quantity_on_hand,
+            quantity_reserved,
+            expiry_date,
+            cost_price,
+            product:products(id, name, sku, unit)
+          `)
+          .eq('warehouse_id', newReturn.warehouseId)
+          .eq('status', 'active')
+          .gt('quantity_on_hand', 0)
+          .order('expiry_date', { ascending: true }).order('id')
+          .range(from, to)
+      )
 
       if (data) {
         const formatted = data.map((l: any) => ({
@@ -783,36 +808,34 @@ export default function InventoryPage() {
       setLoading(true)
       try {
         if (activeTab === 'lots') {
-          // Fetch stock lots
-          let query = supabase
-            .from('stock_lots')
-            .select(`
-              id,
-              lot_number,
-              manufacture_date,
-              expiry_date,
-              cost_price,
-              quantity_on_hand,
-              status,
-              product:products(
+          // Fetch stock lots — nạp ĐỦ (fetchAllRows) để admin tìm/sửa được mọi lô (>100)
+          const restrictBranch = !isAdmin && !!profile?.branch_id
+          const data = await fetchAllRows<any>((from, to) => {
+            let query = supabase
+              .from('stock_lots')
+              .select(`
                 id,
-                sku,
-                name,
-                category:product_categories(name)
-              ),
-              warehouse:warehouses!inner(id, name, branch_id),
-              supplier:suppliers(id, name)
-            `)
-          
-          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
-            query = query.eq('warehouse.branch_id', profile.branch_id)
-          }
-
-          const { data, error } = await query
-            .order('expiry_date', { ascending: true })
-            .limit(100)
-
-          if (error) throw error
+                lot_number,
+                manufacture_date,
+                expiry_date,
+                cost_price,
+                quantity_on_hand,
+                quantity_reserved,
+                status,
+                product:products(
+                  id,
+                  sku,
+                  name,
+                  category:product_categories(name)
+                ),
+                warehouse:warehouses!inner(id, name, branch_id),
+                supplier:suppliers(id, name)
+              `)
+            if (restrictBranch) {
+              query = query.eq('warehouse.branch_id', profile!.branch_id)
+            }
+            return query.order('expiry_date', { ascending: true }).order('id').range(from, to)
+          })
 
           // Fetch inventory_settings để dùng cho filter "Tồn kho thấp"
           const { data: settingsRaw } = await supabase
@@ -833,6 +856,7 @@ export default function InventoryPage() {
             expiry_date: lot.expiry_date,
             cost_price: Number(lot.cost_price),
             quantity_on_hand: lot.quantity_on_hand,
+            quantity_reserved: Number(lot.quantity_reserved || 0),
             status: lot.status,
             product: {
               id: lot.product?.id || '',
@@ -1050,7 +1074,28 @@ export default function InventoryPage() {
       }
     }
     loadTabData()
-  }, [activeTab])
+  }, [activeTab, lotReloadFlag])
+
+  // Admin: xóa (hủy/hoàn tác) lô hàng
+  const handleDeleteLot = async () => {
+    if (!deletingLot) return
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.rpc('fn_admin_delete_lot', {
+        p_lot_id: deletingLot.id,
+        p_reason: deleteLotReason || null
+      })
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: 'Đã hủy lô hàng. Tồn kho đã hoàn tác về 0 và ghi thẻ kho.' })
+      setDeletingLot(null)
+      setDeleteLotReason('')
+      setLotReloadFlag(f => f + 1)
+    } catch (err: any) {
+      setAlertMsg({ type: 'error', text: 'Hủy lô thất bại: ' + (err?.message || '') })
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   // Filtered Stock Lots logic
   const filteredLots = useMemo(() => lots.filter(lot => {
@@ -1422,6 +1467,7 @@ export default function InventoryPage() {
                         <th className="px-6 py-4 text-right">Giá vốn lô (₫)</th>
                         <th className="px-6 py-4 text-center">Tồn kho khả dụng</th>
                         <th className="px-6 py-4 text-center">Trạng thái</th>
+                        {isAdmin && <th className="px-6 py-4 text-center">Thao tác</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
@@ -1469,9 +1515,30 @@ export default function InventoryPage() {
                                   ? 'bg-amber-50 text-amber-700' 
                                   : 'bg-red-50 text-red-750'
                               }`}>
-                                {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : 'Khóa'}
+                                {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : lot.status === 'disposed' ? 'Đã hủy' : 'Khóa'}
                               </span>
                             </td>
+                            {isAdmin && (
+                              <td className="px-6 py-4">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    onClick={() => setEditingLot(lot)}
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Sửa lô"
+                                  >
+                                    <Pencil size={15} />
+                                  </button>
+                                  <button
+                                    onClick={() => { setDeletingLot(lot); setDeleteLotReason('') }}
+                                    disabled={lot.status === 'disposed'}
+                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Hủy lô"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         )
                       })}
@@ -1502,10 +1569,10 @@ export default function InventoryPage() {
                               ? 'bg-amber-50 text-amber-700' 
                               : 'bg-red-50 text-red-750'
                           }`}>
-                            {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : 'Khóa'}
+                            {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : lot.status === 'disposed' ? 'Đã hủy' : 'Khóa'}
                           </span>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
                           <div>
                             <span className="block text-gray-400 font-medium">Kho hàng</span>
@@ -1541,6 +1608,24 @@ export default function InventoryPage() {
                             </span>
                           </div>
                         </div>
+
+                        {isAdmin && (
+                          <div className="flex items-center gap-2 pt-2 border-t border-gray-50">
+                            <button
+                              onClick={() => setEditingLot(lot)}
+                              className="flex-1 h-9 border border-blue-200 text-blue-600 font-semibold rounded-lg text-tiny flex items-center justify-center gap-1.5"
+                            >
+                              <Pencil size={14} /> Sửa
+                            </button>
+                            <button
+                              onClick={() => { setDeletingLot(lot); setDeleteLotReason('') }}
+                              disabled={lot.status === 'disposed'}
+                              className="flex-1 h-9 border border-red-200 text-red-600 font-semibold rounded-lg text-tiny flex items-center justify-center gap-1.5 disabled:opacity-30"
+                            >
+                              <Trash2 size={14} /> Hủy lô
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -2302,17 +2387,14 @@ export default function InventoryPage() {
             <form onSubmit={handleSaveSetting} className="flex-1 overflow-y-auto p-6 space-y-5">
               <div className="space-y-1.5">
                 <label className="block text-body-md font-semibold text-gray-700">Chọn sản phẩm</label>
-                <select
+                <SmartSearchSelect
+                  options={productListOptions}
                   value={newSetting.productId}
-                  onChange={(e) => setNewSetting({ ...newSetting, productId: e.target.value })}
+                  onChange={(val) => setNewSetting({ ...newSetting, productId: val })}
                   disabled={!!editingSettingId}
-                  className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-400"
-                >
-                  <option value="">-- Chọn sản phẩm --</option>
-                  {productList.map(p => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
-                  ))}
-                </select>
+                  placeholder="-- Chọn sản phẩm --"
+                  searchPlaceholder="Tìm theo tên/SKU..."
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -3394,6 +3476,62 @@ export default function InventoryPage() {
                   Đóng
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin: Modal sửa lô hàng */}
+      {editingLot && (
+        <LotEditModal
+          lot={editingLot}
+          onClose={() => setEditingLot(null)}
+          onSaved={(msg) => {
+            setEditingLot(null)
+            setAlertMsg({ type: 'success', text: msg })
+            setLotReloadFlag(f => f + 1)
+          }}
+        />
+      )}
+
+      {/* Admin: Modal xác nhận hủy lô */}
+      {deletingLot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <Ban className="text-red-600" size={18} />
+              </div>
+              <div>
+                <h3 className="text-headline-md font-bold text-gray-800">Hủy lô hàng?</h3>
+                <p className="text-body-sm text-gray-500 mt-1">
+                  Lô <span className="font-mono font-bold">{deletingLot.lot_number}</span> ({deletingLot.product.name}) sẽ được đưa tồn về 0,
+                  ghi bút toán xuất hủy vào thẻ kho và đánh dấu "Đã hủy". Lịch sử vẫn được giữ.
+                </p>
+              </div>
+            </div>
+            <label className="block text-tiny font-semibold text-gray-500 mb-1">Lý do hủy (không bắt buộc)</label>
+            <textarea
+              rows={2}
+              value={deleteLotReason}
+              onChange={e => setDeleteLotReason(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-body-sm focus:outline-none focus:border-blue-500"
+              placeholder="VD: Hỏng, hết hạn, kiểm kê lệch..."
+            />
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <button
+                onClick={() => { setDeletingLot(null); setDeleteLotReason('') }}
+                className="h-10 px-4 border border-gray-200 text-gray-600 font-semibold rounded-lg hover:bg-gray-50"
+              >
+                Đóng
+              </button>
+              <button
+                disabled={submitting}
+                onClick={handleDeleteLot}
+                className="h-10 px-5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg disabled:opacity-60"
+              >
+                {submitting ? 'Đang hủy...' : 'Xác nhận hủy lô'}
+              </button>
             </div>
           </div>
         </div>

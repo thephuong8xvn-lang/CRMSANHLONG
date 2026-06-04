@@ -41,10 +41,7 @@ const MobileOrderPage            = lazy(() => import('./pages/orders/MobileOrder
 const PipelinePage               = lazy(() => import('./pages/pipeline/PipelinePage'))
 const CashbookPage               = lazy(() => import('./pages/cashbook/CashbookPage'))
 const ReportsHubPage             = lazy(() => import('./pages/reports/ReportsHubPage'))
-const RevenueReportPage          = lazy(() => import('./pages/reports/RevenueReportPage'))
-const DebtReportPage             = lazy(() => import('./pages/reports/DebtReportPage'))
-const InventoryReportPage        = lazy(() => import('./pages/reports/InventoryReportPage'))
-const StaffReportPage            = lazy(() => import('./pages/reports/StaffReportPage'))
+const ProfitReportPage           = lazy(() => import('./pages/reports/ProfitReportPage'))
 const CustomerProfileReportPage  = lazy(() => import('./pages/reports/CustomerProfileReportPage'))
 const HerdProjectListPage        = lazy(() => import('./pages/herd-projects/HerdProjectListPage'))
 const HerdProjectFormPage        = lazy(() => import('./pages/herd-projects/HerdProjectFormPage'))
@@ -119,11 +116,16 @@ function AccessDenied() {
 // ─────────────────────────────────────────────────────────────
 // ProtectedRoute: Kiểm tra trạng thái đăng nhập & phân quyền module
 // ─────────────────────────────────────────────────────────────
-function ProtectedRoute({ children, perms = [] }: { children: React.ReactNode; perms?: string[] }) {
+function ProtectedRoute({ children, perms = [], adminOnly = false }: { children: React.ReactNode; perms?: string[]; adminOnly?: boolean }) {
   const { isAuthenticated, loading, userRole, userPermissions } = useAuth()
 
   if (loading) return <FullPageSpinner />
   if (!isAuthenticated) return <Navigate to="/login" replace />
+
+  // Route chỉ dành cho admin (vd: Trung tâm Báo cáo) — kể cả CEO cũng bị chặn
+  if (adminOnly) {
+    return userRole.code === 'admin' ? <>{children}</> : <AccessDenied />
+  }
 
   // Admin và CEO bypass toàn bộ quyền hạn
   if (userRole.code === 'admin' || userRole.code === 'ceo') {
@@ -177,12 +179,9 @@ function AppRoutes() {
       <Route path="/orders/:id" element={<ProtectedRoute perms={['orders.view_own', 'orders.view_team', 'orders.view_all']}><OrderDetailPage /></ProtectedRoute>} />
       <Route path="/pipeline" element={<ProtectedRoute perms={['opportunities.view_all', 'opportunities.create']}><PipelinePage /></ProtectedRoute>} />
       <Route path="/cashbook" element={<ProtectedRoute perms={['cashbook.view', 'cashbook.create', 'cashbook.approve']}><CashbookPage /></ProtectedRoute>} />
-      <Route path="/reports" element={<ProtectedRoute perms={['reports.sales', 'reports.cashflow', 'reports.inventory', 'reports.debt', 'reports.team_kpi']}><ReportsHubPage /></ProtectedRoute>} />
-      <Route path="/reports/revenue" element={<ProtectedRoute perms={['reports.sales']}><RevenueReportPage /></ProtectedRoute>} />
-      <Route path="/reports/debt" element={<ProtectedRoute perms={['reports.debt']}><DebtReportPage /></ProtectedRoute>} />
-      <Route path="/reports/inventory" element={<ProtectedRoute perms={['reports.inventory']}><InventoryReportPage /></ProtectedRoute>} />
-      <Route path="/reports/staff" element={<ProtectedRoute perms={['reports.team_kpi']}><StaffReportPage /></ProtectedRoute>} />
-      <Route path="/reports/customer-profile" element={<ProtectedRoute perms={['reports.sales']}><CustomerProfileReportPage /></ProtectedRoute>} />
+      <Route path="/reports" element={<ProtectedRoute adminOnly><ReportsHubPage /></ProtectedRoute>} />
+      <Route path="/reports/profit" element={<ProtectedRoute adminOnly><ProfitReportPage /></ProtectedRoute>} />
+      <Route path="/reports/customer-profile" element={<ProtectedRoute adminOnly><CustomerProfileReportPage /></ProtectedRoute>} />
       <Route path="/herd-projects" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><HerdProjectListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /herd-projects/:id */}
       <Route path="/herd-projects/new" element={<ProtectedRoute perms={['herd_projects.create']}><HerdProjectFormPage /></ProtectedRoute>} />

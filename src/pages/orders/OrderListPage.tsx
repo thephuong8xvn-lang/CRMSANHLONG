@@ -20,6 +20,7 @@ import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
 import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 
 interface Order {
@@ -53,6 +54,7 @@ export default function OrderListPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [selectedStatus, setSelectedStatus] = useState('')
+  const [selectedChannel, setSelectedChannel] = useState('') // '', 'pos_quick', 'delivery'
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
   const [selectedDateRange, setSelectedDateRange] = useState('all') // 'all', 'today', '7days', '30days'
   const [quickDeliveryPending, setQuickDeliveryPending] = useState(false) // lọc nhanh đơn giao chờ xác nhận
@@ -66,34 +68,33 @@ export default function OrderListPage() {
   const loadOrders = useCallback(async () => {
     setLoading(true)
     try {
-      let query = supabase
-        .from('orders')
-        .select(`
-          id,
-          order_code,
-          created_at,
-          status,
-          sale_channel,
-          payment_status,
-          grand_total,
-          paid_amount,
-          customer_id,
-          branch_id,
-          customers:customers(farm_name),
-          owner:profiles!orders_owner_user_id_fkey(full_name)
-        `)
+      const restrictBranch =
+        userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id
 
-      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
-        query = query.eq('branch_id', profile.branch_id)
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false })
-
-      if (!error && data) {
-        setOrders(data as unknown as Order[])
-      } else {
-        console.error('Error fetching orders:', error)
-      }
+      // fetchAllRows: nạp đủ đơn (>1000) thay vì bị giới hạn 1000 dòng mặc định
+      const data = await fetchAllRows<Order>((from, to) => {
+        let query = supabase
+          .from('orders')
+          .select(`
+            id,
+            order_code,
+            created_at,
+            status,
+            sale_channel,
+            payment_status,
+            grand_total,
+            paid_amount,
+            customer_id,
+            branch_id,
+            customers:customers(farm_name),
+            owner:profiles!orders_owner_user_id_fkey(full_name)
+          `)
+        if (restrictBranch) {
+          query = query.eq('branch_id', profile!.branch_id)
+        }
+        return query.order('created_at', { ascending: false }).order('id').range(from, to)
+      })
+      setOrders(data)
     } catch (err) {
       console.error('Error loading orders:', err)
     } finally {
@@ -118,6 +119,9 @@ export default function OrderListPage() {
     // 2. Status match
     const matchesStatus = !selectedStatus || order.status === selectedStatus
 
+    // Luồng bán
+    const matchesChannel = !selectedChannel || (order.sale_channel || 'pos_quick') === selectedChannel
+
     // 3. Payment status match
     const matchesPaymentStatus = !selectedPaymentStatus || order.payment_status === selectedPaymentStatus
 
@@ -141,7 +145,7 @@ export default function OrderListPage() {
     // 5. Quick view: đơn giao hàng đang chờ Admin xác nhận
     const matchesQuick = !quickDeliveryPending || (order.sale_channel === 'delivery' && order.status === 'draft')
 
-    return matchesSearch && matchesStatus && matchesPaymentStatus && matchesDate && matchesQuick
+    return matchesSearch && matchesStatus && matchesChannel && matchesPaymentStatus && matchesDate && matchesQuick
   })
 
   // Số đơn giao chờ xác nhận (cho badge quick view)
@@ -156,7 +160,7 @@ export default function OrderListPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, selectedStatus, selectedPaymentStatus, selectedDateRange, quickDeliveryPending])
+  }, [debouncedSearch, selectedStatus, selectedChannel, selectedPaymentStatus, selectedDateRange, quickDeliveryPending])
 
   // Helper to format currency
   const formatCurrency = (value: number) => {
@@ -342,7 +346,7 @@ export default function OrderListPage() {
             >
               <Filter size={16} className="text-gray-400" />
               <span>Lọc</span>
-              {(selectedStatus || selectedPaymentStatus || selectedDateRange !== 'all') && (
+              {(selectedStatus || selectedChannel || selectedPaymentStatus || selectedDateRange !== 'all') && (
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
               )}
             </button>
@@ -365,6 +369,21 @@ export default function OrderListPage() {
               <option value="paid">Đã thanh toán</option>
               <option value="completed">Hoàn tất</option>
               <option value="cancelled">Đã hủy</option>
+            </select>
+          </div>
+
+          <div className="hidden md:block w-full sm:w-auto min-w-[160px]">
+            <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+              Luồng bán
+            </label>
+            <select
+              className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-[4px] focus:ring-blue-100 transition-all"
+              value={selectedChannel}
+              onChange={e => setSelectedChannel(e.target.value)}
+            >
+              <option value="">Tất cả luồng</option>
+              <option value="pos_quick">Bán nhanh tại quầy</option>
+              <option value="delivery">Bán giao hàng</option>
             </select>
           </div>
 
@@ -608,6 +627,19 @@ export default function OrderListPage() {
                 </div>
 
                 <div>
+                  <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Luồng bán</label>
+                  <select
+                    className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                    value={selectedChannel}
+                    onChange={e => { setSelectedChannel(e.target.value); setCurrentPage(1) }}
+                  >
+                    <option value="">Tất cả luồng</option>
+                    <option value="pos_quick">Bán nhanh tại quầy</option>
+                    <option value="delivery">Bán giao hàng</option>
+                  </select>
+                </div>
+
+                <div>
                   <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Trạng thái thanh toán</label>
                   <select
                     className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
@@ -639,6 +671,7 @@ export default function OrderListPage() {
                   <button
                     onClick={() => {
                       setSelectedStatus('')
+                      setSelectedChannel('')
                       setSelectedPaymentStatus('')
                       setSelectedDateRange('all')
                       setCurrentPage(1)

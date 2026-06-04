@@ -275,7 +275,7 @@ export default function DashboardPage() {
                     <Clock size={18} className="text-danger-500" /> Công nợ sắp đến hạn (10 ngày)
                   </h3>
                   {hasPermission('reports.debt') && (
-                    <button onClick={() => navigate('/reports/debt')} className="text-blue-500 text-body-md font-semibold hover:underline flex-shrink-0">Báo cáo</button>
+                    <button onClick={() => navigate('/reports')} className="text-blue-500 text-body-md font-semibold hover:underline flex-shrink-0">Báo cáo</button>
                   )}
                 </div>
                 <div className="divide-y divide-gray-100">
