@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
+import { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import { useAuth } from '../../contexts/AuthContext'
 
 interface Supplier {
@@ -74,12 +76,16 @@ export default function PurchaseOrderFormPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch active suppliers
-        const { data: supplierData } = await supabase
-          .from('suppliers')
-          .select('id, code, name, payment_terms')
-          .eq('is_active', true)
-        if (supplierData) setSuppliers(supplierData)
+        // Fetch active suppliers — nạp ĐỦ (tránh cap 1000)
+        const supplierData = await fetchAllRows<Supplier>((from, to) =>
+          supabase
+            .from('suppliers')
+            .select('id, code, name, payment_terms')
+            .eq('is_active', true)
+            .order('name', { ascending: true }).order('id')
+            .range(from, to)
+        )
+        setSuppliers(supplierData)
 
         // Fetch warehouses
         let whQuery = supabase.from('warehouses').select('id, name, branch_id')
@@ -89,11 +95,15 @@ export default function PurchaseOrderFormPage() {
         const { data: warehouseData } = await whQuery
         if (warehouseData) setWarehouses(warehouseData)
 
-        // Fetch products
-        const { data: productData } = await supabase
-          .from('products')
-          .select('id, sku, name, is_lot_managed')
-        if (productData) setProducts(productData)
+        // Fetch products — nạp ĐỦ (tránh cap 1000 → SP 1001+ không tìm thấy)
+        const productData = await fetchAllRows<Product>((from, to) =>
+          supabase
+            .from('products')
+            .select('id, sku, name, is_lot_managed')
+            .order('name', { ascending: true }).order('id')
+            .range(from, to)
+        )
+        setProducts(productData)
       } catch (err) {
         console.error('Error fetching data:', err)
       }
@@ -109,11 +119,14 @@ export default function PurchaseOrderFormPage() {
     }
   }, [alertMsg])
 
-  // Filter products for search dropdown
+  // Filter products for search dropdown — tìm kiếm không dấu (accent-insensitive)
   const filteredProducts = products.filter(p => {
     if (!productSearchTerm.trim()) return false
-    const term = productSearchTerm.toLowerCase()
-    return p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term)
+    const term = removeVietnameseTones(productSearchTerm.toLowerCase())
+    return (
+      removeVietnameseTones(p.name.toLowerCase()).includes(term) ||
+      removeVietnameseTones(p.sku.toLowerCase()).includes(term)
+    )
   })
 
   // Add line item

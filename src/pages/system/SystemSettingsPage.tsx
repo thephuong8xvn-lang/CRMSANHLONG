@@ -481,19 +481,21 @@ export default function SystemSettingsPage() {
     const nextActiveState = !emp.is_active
 
     if (!nextActiveState) {
-      // If we are deactivating, check if they own any customers
+      // If we are deactivating, check if they own any customers.
+      // Dùng count exact (head) thay vì .length của danh sách — tránh cap 1000
+      // khiến NV phụ trách >1000 KH bị đếm thiếu → bỏ sót bàn giao.
       try {
-        const { data: custs, error: custsErr } = await supabase
+        const { count, error: custsErr } = await supabase
           .from('customers')
-          .select('id, farm_name')
+          .select('id', { count: 'exact', head: true })
           .eq('primary_sales_id', emp.id)
 
         if (custsErr) throw custsErr
 
-        if (custs && custs.length > 0) {
+        if (count && count > 0) {
           // Show reassignment wizard modal
           setDeactivatingUser(emp)
-          setCustomerCount(custs.length)
+          setCustomerCount(count)
           setReassignSalesId('')
           setShowReassignModal(true)
           return

@@ -43,6 +43,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { logger } from '../../lib/logger'
 import ExportDebtStatementModal from './ExportDebtStatementModal'
 import CollectDebtModal from './CollectDebtModal'
@@ -831,10 +832,10 @@ export default function CustomerDetailPage() {
         .eq('is_active', true)
       if (plist) setPriceLists(plist)
 
-      const { data: reps } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .eq('is_active', true)
+      const reps = await fetchAllRows<{ id: string; full_name: string }>((from, to) =>
+        supabase.from('profiles').select('id, full_name').eq('is_active', true)
+          .order('full_name', { ascending: true }).order('id').range(from, to)
+      )
       if (reps) setSalesReps(reps)
 
       const { data: classList } = await supabase

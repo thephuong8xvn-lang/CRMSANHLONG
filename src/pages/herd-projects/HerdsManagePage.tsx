@@ -5,6 +5,7 @@ import { ChevronLeft, Plus, Search, Pencil, Trash2, ToggleLeft, ToggleRight, X, 
 import Layout from '../../components/Layout'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { logger } from '../../lib/logger'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
@@ -57,8 +58,11 @@ export default function HerdsManagePage() {
   const customersQuery = useQuery({
     queryKey: ['customers', 'all-for-herds'],
     queryFn: async () => {
-      const { data } = await supabase.from('customers').select('id, farm_name, code').eq('is_active', true).order('farm_name')
-      return data ?? []
+      // Nạp ĐỦ khách hàng (tránh cap 1000 → KH 1001+ không tìm thấy)
+      return await fetchAllRows<{ id: string; farm_name: string; code: string }>((from, to) =>
+        supabase.from('customers').select('id, farm_name, code').eq('is_active', true)
+          .order('farm_name', { ascending: true }).order('id').range(from, to)
+      )
     }, staleTime: 10 * 60_000,
   })
 

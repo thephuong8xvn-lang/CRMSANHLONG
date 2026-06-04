@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 
 // Bổ sung kiểu khai báo cho thư viện Leaflet tải động
@@ -202,16 +203,18 @@ export default function CustomerMapPage() {
     const fetchData = async () => {
       setLoadingData(true)
       try {
-        // Fetch customers
-        const { data: custsData, error: custsErr } = await supabase
-          .from('customers')
-          .select(`
-            *,
-            owner:profiles!owner_user_id(id, full_name, email)
-          `)
-          .eq('is_active', true)
-        
-        if (custsErr) throw custsErr
+        // Fetch customers — nạp ĐỦ (tránh cap 1000 → marker bản đồ thiếu KH 1001+)
+        const custsData = await fetchAllRows<any>((from, to) =>
+          supabase
+            .from('customers')
+            .select(`
+              *,
+              owner:profiles!owner_user_id(id, full_name, email)
+            `)
+            .eq('is_active', true)
+            .order('farm_name', { ascending: true }).order('id')
+            .range(from, to)
+        )
 
         // Fetch all farms
         const { data: farmsData, error: farmsErr } = await supabase
@@ -231,13 +234,11 @@ export default function CustomerMapPage() {
 
         setCustomers(mappedCustomers as unknown as Customer[])
 
-        // Fetch sales team / employees
-        const { data: profilesData, error: profilesErr } = await supabase
-          .from('profiles')
-          .select('id, full_name, email, avatar_url')
-          .eq('is_active', true)
-
-        if (profilesErr) throw profilesErr
+        // Fetch sales team / employees — nạp ĐỦ (tránh cap 1000)
+        const profilesData = await fetchAllRows<any>((from, to) =>
+          supabase.from('profiles').select('id, full_name, email, avatar_url').eq('is_active', true)
+            .order('full_name', { ascending: true }).order('id').range(from, to)
+        )
 
         // Fetch latest location of each employee
         const { data: locsData, error: locsErr } = await supabase

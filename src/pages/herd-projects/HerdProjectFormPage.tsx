@@ -18,6 +18,7 @@ import {
 import Layout from '../../components/Layout'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { logger } from '../../lib/logger'
 
 interface Customer {
@@ -113,13 +114,16 @@ export default function HerdProjectFormPage() {
   useEffect(() => {
     const loadInitialLookups = async () => {
       try {
-        // Fetch active customers
-        const { data: custs } = await supabase
-          .from('customers')
-          .select('id, farm_name, code')
-          .eq('is_active', true)
-          .order('farm_name')
-        if (custs) setCustomers(custs)
+        // Fetch active customers — nạp ĐỦ (tránh cap 1000 → KH 1001+ không tìm thấy)
+        const custs = await fetchAllRows<{ id: string; farm_name: string; code: string }>((from, to) =>
+          supabase
+            .from('customers')
+            .select('id, farm_name, code')
+            .eq('is_active', true)
+            .order('farm_name', { ascending: true }).order('id')
+            .range(from, to)
+        )
+        setCustomers(custs)
 
         // Fetch active project types
         const { data: types } = await supabase
@@ -134,11 +138,11 @@ export default function HerdProjectFormPage() {
         const { data: rg } = await supabase.from('herd_regions').select('id, name').eq('is_active', true).order('name')
         if (rg) setRegions(rg)
 
-        // Fetch vets/profiles
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
+        // Fetch vets/profiles — nạp ĐỦ (tránh cap 1000)
+        const profiles = await fetchAllRows<{ id: string; full_name: string }>((from, to) =>
+          supabase.from('profiles').select('id, full_name').eq('is_active', true)
+            .order('full_name', { ascending: true }).order('id').range(from, to)
+        )
         if (profiles) {
           setVets(profiles)
           // Set default vet as current user if possible

@@ -1098,3 +1098,36 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Nộp quỹ cuối ca** (`handleCloseSession`): modal đóng ca thêm ô "Số tiền nộp về công ty" (0≤nộp≤tiền đếm) → sau bút toán lệch quỹ, sinh **phiếu chi `CHI-NOP-QUY`** (approved, KHÔNG gắn session) → `cash_funds.balance` = tồn để lại; mở ca sau mặc định đầu ca đúng. Giải quyết "19tr đi đâu".
 - **`CashbookReports.tsx`**: join `expense_categories(name,is_internal)`; thêm class **`internal`** (badge tím) + tick "Nội bộ/Nộp quỹ" — loại khỏi Tổng thu/Chi vận hành nhưng **vẫn vào số dư lũy kế**; mỗi dòng hiện tên hạng mục; panel **"Tổng theo hạng mục"** theo kỳ.
 - `tsc --noEmit` + `vite build` PASS. ⚠️ **Phải apply migration `20260615000000` remote.**
+
+### 🐔 2026-06-04 — Herd-Projects: Fix modal vỡ màn hình nhỏ + phân quyền nút + dọn data giả
+
+**Bối cảnh:** Người dùng báo modal "Cập nhật bước" (Lịch trình kỹ thuật thú y) **vỡ/không hiển thị đủ trên màn hình nhỏ**. Rà soát toàn bộ `HerdProjectDetailPage.tsx`. **KHÔNG migration** (frontend-only). `tsc --noEmit` PASS.
+
+- **Gốc lỗi modal:** modal "Cập nhật bước" (và Ghi nhận chi phí / Ghi chú BS / Thêm bước) dùng `overflow-hidden` **thiếu** `max-h`/cuộn. Form dài + overlay `flex items-center` → nội dung tràn đều trên-dưới, **cắt mất header & nút Lưu, không cuộn được**.
+  - **Fix:** chuẩn hóa cả 5 modal theo pattern đúng của modal "Sửa dự án": overlay thêm `overflow-y-auto`; card `flex flex-col max-h-[90vh]`; header `shrink-0`; `<form>` thêm `overflow-y-auto`. Header cố định, thân cuộn được trên mọi cỡ màn hình.
+- **Bịt lỗ phân quyền UI:** cụm nút **Kích hoạt/Tạm ngưng/Tiếp tục/Hủy/Hoàn thành dự án** và **Sinh hóa đơn tự động** trước đây hiện cho **mọi user** (không có quyền bấm → RLS từ chối, alert khó hiểu). Nay gate bằng `canEdit` (`herd_projects.update`). RLS vẫn là ranh giới thật.
+- **Dọn dữ liệu giả** (tab Kết quả dự án — khách hàng nhìn thấy): bỏ default Bento giả `12.5 Tấn/450 Lít/27.5°C` → để trống, hiển thị `—` khi chưa nhập; **bỏ thanh "Dự kiến tối đa 2.5%" + badge "Đạt/Vượt mục tiêu"** (mốc cứng vô căn cứ) → chỉ giữ tỷ lệ hao hụt **thật** (số % + "N/tổng con hao hụt"), đỏ nếu >0 / xanh nếu =0.
+- ✅ **Đã xác minh remote (2026-06-04, qua Supabase Management API):** RPC `fn_upcoming_herd_tasks`, `fn_can_view/edit_herd_project`, constraint `cost_type` gồm `breeding_stock` **đều tồn tại & chạy được** → migration `20260608/09/11` đã apply (thủ công qua SQL Editor, KHÔNG nằm trong bảng `supabase_migrations.schema_migrations` vốn chỉ tới `20260610`). `fn_upcoming_herd_tasks(7)` trả 0 dòng = hiện không có bước pending trong 7 ngày (không phải lỗi). **Toàn bộ phần herd-projects đã đầy đủ trên remote.**
+- ✅ **Cũng đã xác minh tồn tại remote (untracked):** `fn_pos_quick_sale`, `fn_create_delivery_draft`, `fn_confirm_order`, `fn_collect_customer_debt`, view `product_reorder_view`, bảng `system_settings`, cột `expense_categories.is_internal` → các migration `20260612→20260615` đánh dấu "CHƯA APPLY" trong ghi chú cũ **thực ra ĐÃ apply** (cùng kiểu untracked). ⚠️ Lưu ý: bảng tracking lệch (thiếu version 20260611→20260615) → lần `supabase db push` sau có thể cố chạy lại; nếu cần, chèn rows tracking thủ công.
+- ⚠️ **Còn nợ (ngoài scope):** luồng "Sinh hóa đơn tự động" vẫn insert orders trực tiếp (chưa chuyển RPC POS atomic `fn_pos_*`) — ghi nhận để rà soát sau.
+
+### 🔎 2026-06-04 (tiếp) — Herd-Projects: Search thông minh chọn vật tư + fix cap 1000 sản phẩm
+
+**Bối cảnh:** Người dùng báo modal "Cập nhật bước" → "Vật tư sử dụng trong bước": dropdown chọn thuốc/vaccine là `<select>` HTML thuần với >1000 sản phẩm → phải kéo tay, không tìm được. **KHÔNG migration** (frontend-only). `tsc --noEmit` + `vite build` PASS. Chỉ sửa `HerdProjectDetailPage.tsx`.
+
+- **🛡 Phát hiện integrity (nghiêm trọng):** query preload products (`from('products').select(...).eq('is_active',true).order('name')`) **không có `.range()`** → PostgREST cắt **tối đa 1000 dòng**. Catalog >1000 SP nên các SP thứ 1001+ **không hề được nạp** → search cũng vô nghĩa. Đúng bài học POS đã ghi (cap 1000).
+  - **Fix:** thêm helper `fetchAllRows()` (copy pattern POSPage — lặp `.range(from,to)` theo lô 1000 tới khi < batch) + thêm khóa phụ `.order('id')` (phân trang ổn định). Nạp **đủ 100%** sản phẩm active.
+- **Search thông minh:** import **`SmartSearchSelect`** (tìm bỏ dấu tiếng Việt, render tối đa 100 kết quả → chống lag DOM). Memo `productOptions` (label=tên, desc=`ĐVT: <unit>`). Thay **2 `<select>` sản phẩm**: (1) "Thuốc/Vaccine" trong vật tư bước, (2) "Chọn hàng hóa/vật tư" trong modal Ghi nhận chi phí. Dropdown "Chọn lô" giữ `<select>` thuần (mỗi SP ít lô).
+- **UX (user duyệt):** nút "+ Thêm thuốc dùng" nay tạo dòng **để trống** (`product_id: ''`, placeholder "-- Chọn thuốc --") buộc người dùng search chủ động → tránh ghi nhầm SP đầu danh sách (AAA-AA Nutri Lyte). Trước đây auto chọn `allProducts[0]`.
+- **Phân quyền/bảo mật (kiểm tra — không đổi):** modal + nút đã gate `canEdit` (`herd_projects.update`) từ lần trước. `fetchAllRows` chỉ phân trang, KHÔNG bypass RLS — products/stock_lots vẫn qua RLS sẵn có. `SmartSearchSelect` chỉ lọc client-side trên mảng đã được RLS lọc.
+
+### 🌐 2026-06-04 (tiếp) — Khắc phục cap 1000 TOÀN DỰ ÁN + chuẩn hóa Smart Search
+
+**Bối cảnh:** Người dùng báo lỗi còn ở nhiều nơi (không chỉ Herd): mọi preload danh sách lớn lọc client-side không `.range()` đều mất bản ghi 1001+ — Sản phẩm & Khách hàng đã vượt 1000 → search không thấy. **Frontend-only, KHÔNG migration. `tsc --noEmit` + `npm run build` PASS.**
+
+- **Helper dùng chung MỚI** `src/lib/fetchAllRows.ts` (`fetchAllRows<T>(makeQuery, batch=1000)`): lặp `.range()` theo lô + guard 100 vòng. **Refactor xóa 4 bản copy trùng** → POSPage/MobileOrderPage/CashbookPage/HerdProjectDetailPage import từ util chung. Quy tắc: query phải `.order('<col>').order('id')` (tie-break) để phân trang không trùng/sót.
+- **Sản phẩm (vá cap):** PurchaseOrderFormPage, GoodsReceiptFormPage, PriceListPage, ProductPromotionModal (bỏ `.limit(500)`), InventoryPage. 2 typeahead "thêm dòng" PO/GR nâng filter **không dấu** dùng `removeVietnameseTones` (giữ UX add-line thay vì đổi component).
+- **Khách hàng (vá cap):** PipelinePage (fetchAllRows + 2 `<select>` → **SmartSearchSelect** + memo `customerOptions`), HerdsManagePage, HerdProjectFormPage, CustomerMapPage, CustomerProfileReportPage. **SystemSettingsPage — bug toàn vẹn:** đếm KH bàn giao bằng `.length` (cap 1000) → đổi `count:'exact',head:true` (bàn giao thực dùng bulk update server-side nên đủ).
+- **Mở rộng phòng ngừa (suppliers/profiles selector):** PO/GR suppliers; profiles ở Pipeline/HerdForm/HerdDetail/AddCustomerModal/CustomerDetailPage/CustomerMapPage/CustomerSettingsPage.
+- **Phân quyền/bảo mật — KHÔNG đổi:** fetchAllRows chỉ phân trang, mọi query vẫn dưới RLS hiện hành; không nới quyền.
+- ⚠️ **Ngoài scope (ghi nhận):** catalog >10k về sau nên chuyển server-side async search; các báo cáo aggregate trên orders/order_lines (RevenueReport/InventoryReport) chưa rà cap — kiểm tra nếu 2 bảng này vượt 1000.

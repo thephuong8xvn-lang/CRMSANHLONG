@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ChevronLeft,
@@ -21,6 +21,7 @@ import {
   ChevronDown
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import SmartSearchSelect, { type SmartSearchOption } from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import HerdMembersSection from './HerdMembersSection'
@@ -235,6 +236,12 @@ export default function HerdProjectDetailPage() {
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [availableLots, setAvailableLots] = useState<Record<string, StockLot[]>>({}) // productId -> lots
 
+  // Options cho SmartSearchSelect (tìm kiếm bỏ dấu, render tối đa 100 kết quả)
+  const productOptions = useMemo<SmartSearchOption[]>(
+    () => allProducts.map(p => ({ value: p.id, label: p.name, desc: p.unit ? `ĐVT: ${p.unit}` : undefined })),
+    [allProducts]
+  )
+
   // Outcome Modal State
   const [outcomeModalOpen, setOutcomeModalOpen] = useState(false)
   const [outDied, setOutDied] = useState<number>(0)
@@ -249,10 +256,10 @@ export default function HerdProjectDetailPage() {
   const [outVetNotes, setOutVetNotes] = useState('')
   const [outLessons, setOutLessons] = useState('')
   const [outFollowup, setOutFollowup] = useState('')
-  // Bento states (Tab 1 stats override)
-  const [outBentoFood, setOutBentoFood] = useState('12.5 Tấn')
-  const [outBentoWater, setOutBentoWater] = useState('450 Lít')
-  const [outBentoTemp, setOutBentoTemp] = useState('27.5 °C')
+  // Bento states (Tab 1 stats override) — để trống, chỉ hiện khi BSTY nhập số thật
+  const [outBentoFood, setOutBentoFood] = useState('')
+  const [outBentoWater, setOutBentoWater] = useState('')
+  const [outBentoTemp, setOutBentoTemp] = useState('')
 
   // Edit Vet Note Modal State
   const [vetNoteModalOpen, setVetNoteModalOpen] = useState(false)
@@ -373,9 +380,9 @@ export default function HerdProjectDetailPage() {
           setOutVetNotes(parsedNotes.vetNotes || '')
           setOutLessons(parsedNotes.lessons || '')
           setOutFollowup(parsedNotes.recommended_followup || '')
-          setOutBentoFood(parsedNotes.bentoFood || '12.5 Tấn')
-          setOutBentoWater(parsedNotes.bentoWater || '450 Lít')
-          setOutBentoTemp(parsedNotes.bentoTemp || '27.5 °C')
+          setOutBentoFood(parsedNotes.bentoFood || '')
+          setOutBentoWater(parsedNotes.bentoWater || '')
+          setOutBentoTemp(parsedNotes.bentoTemp || '')
           setEditVetNotesText(parsedNotes.vetNotes || '')
         } catch {
           // fallback
@@ -402,20 +409,24 @@ export default function HerdProjectDetailPage() {
         setLinkedOrder(null)
       }
 
-      // Preload active products for Step Modal
-      const { data: productsData } = await supabase
-        .from('products')
-        .select('id, name, unit')
-        .eq('is_active', true)
-        .order('name')
+      // Preload active products for Step Modal.
+      // Dùng fetchAllRows để nạp ĐỦ catalog (>1000 SP) — tránh bị PostgREST cắt ở 1000 dòng.
+      const productsData = await fetchAllRows<Product>((from, to) =>
+        supabase
+          .from('products')
+          .select('id, name, unit')
+          .eq('is_active', true)
+          .order('name')
+          .order('id') // khóa phụ → phân trang ổn định
+          .range(from, to)
+      )
       if (productsData) setAllProducts(productsData)
 
-      // Preload active profiles/vets
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .eq('is_active', true)
-        .order('full_name')
+      // Preload active profiles/vets — nạp ĐỦ (tránh cap 1000)
+      const profilesData = await fetchAllRows<Profile>((from, to) =>
+        supabase.from('profiles').select('id, full_name').eq('is_active', true)
+          .order('full_name', { ascending: true }).order('id').range(from, to)
+      )
       if (profilesData) setVets(profilesData as Profile[])
 
       // Preload loại kế hoạch + khu vực (cho modal sửa dự án)
@@ -678,22 +689,19 @@ export default function HerdProjectDetailPage() {
     }
   }
 
-  // Add Product to Step Used List
+  // Add Product to Step Used List — để trống, buộc người dùng search chọn (tránh ghi nhầm SP đầu danh sách)
   const handleAddProductUsed = () => {
-    if (allProducts.length === 0) return
-    const defaultProd = allProducts[0]
     setStepProductsUsed(prev => [
       ...prev,
       {
-        product_id: defaultProd.id,
-        product_name: defaultProd.name,
+        product_id: '',
+        product_name: '',
         lot_id: '',
         lot_number: '',
         quantity: 1,
-        unit: defaultProd.unit
+        unit: ''
       }
     ])
-    loadLotsForProduct(defaultProd.id)
   }
 
   // Remove Product from Step Used List
@@ -1208,7 +1216,7 @@ export default function HerdProjectDetailPage() {
                 Xóa dự án
               </button>
             )}
-            {project.status !== 'completed' && project.status !== 'cancelled' && (
+            {canEdit && project.status !== 'completed' && project.status !== 'cancelled' && (
               <>
               {project.status === 'draft' && (
                 <button
@@ -1558,51 +1566,33 @@ export default function HerdProjectDetailPage() {
                         )}
                       </div>
 
-                      {/* Mortality Calculator (Progress Bars) */}
-                      <div className="bg-gray-25 border border-gray-100 rounded-xl p-5 shadow-inner space-y-4">
-                        <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider text-center">Tỷ lệ hao hụt (Mortality)</p>
-                        
-                        <div className="space-y-3">
-                          {/* Expected mortality */}
-                          <div>
-                            <div className="flex justify-between text-tiny font-semibold mb-1">
-                              <span className="text-gray-400">Dự kiến tối đa</span>
-                              <span className="text-gray-600">2.5%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                              <div className="bg-gray-400 h-full w-[25%]"></div>
-                            </div>
-                          </div>
+                      {/* Mortality Calculator (số liệu thật) */}
+                      <div className="bg-gray-25 border border-gray-100 rounded-xl p-5 shadow-inner flex flex-col justify-center">
+                        <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider text-center mb-3">Tỷ lệ hao hụt (Mortality)</p>
 
-                          {/* Actual mortality */}
-                          <div>
-                            <div className="flex justify-between text-tiny font-semibold mb-1">
-                              <span className="text-blue-500 font-bold">Thực tế ghi nhận</span>
-                              <span className="text-blue-600 font-bold">{outcome ? `${getMortalityRate()}%` : '---'}</span>
+                        {outcome ? (
+                          <div className="space-y-2.5">
+                            <div className="text-center">
+                              <p className={`text-h1 font-bold tabular-nums ${getMortalityRate() > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                {getMortalityRate()}%
+                              </p>
+                              <p className="text-[11px] text-gray-400 mt-0.5">
+                                {outcome.head_died.toLocaleString('vi-VN')} / {project.head_count.toLocaleString('vi-VN')} con hao hụt
+                              </p>
                             </div>
-                            <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden ring-1 ring-blue-100">
+                            <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden ring-1 ring-gray-100">
                               <div
-                                className={`h-full transition-all duration-500 ${getMortalityRate() > 2.5 ? 'bg-rose-500' : 'bg-blue-500'}`}
-                                style={{ width: outcome ? `${Math.min(100, getMortalityRate() * 10)}%` : '0%' }}
+                                className={`h-full transition-all duration-500 ${getMortalityRate() > 0 ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${Math.min(100, getMortalityRate())}%` }}
                               ></div>
                             </div>
                           </div>
-
-                          {outcome && (
-                            <div className="text-center pt-1">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                getMortalityRate() <= 2.5
-                                  ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                  : 'bg-rose-100 text-rose-700 border border-rose-200'
-                              }`}>
-                                {getMortalityRate() <= 2.5
-                                  ? `-${(2.5 - getMortalityRate()).toFixed(2)}% (Đạt mục tiêu)`
-                                  : `+${(getMortalityRate() - 2.5).toFixed(2)}% (Vượt mức dự kiến)`
-                                }
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                        ) : (
+                          <div className="text-center py-3 text-gray-400 text-body-md">
+                            <Clock className="mx-auto text-gray-300 mb-1" size={28} />
+                            <span>Chưa ghi nhận số liệu hao hụt.</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1639,15 +1629,15 @@ export default function HerdProjectDetailPage() {
                     <div className="grid grid-cols-3 gap-4 mt-2">
                       <div className="bg-gray-25 border border-gray-100 p-3.5 rounded-xl text-center shadow-sm">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Thức ăn tiêu thụ</p>
-                        <p className="text-body-lg font-bold text-blue-700 mt-1">{outBentoFood}</p>
+                        <p className="text-body-lg font-bold text-blue-700 mt-1">{outBentoFood || '—'}</p>
                       </div>
                       <div className="bg-gray-25 border border-gray-100 p-3.5 rounded-xl text-center shadow-sm">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Lượng nước tiêu thụ</p>
-                        <p className="text-body-lg font-bold text-blue-700 mt-1">{outBentoWater}</p>
+                        <p className="text-body-lg font-bold text-blue-700 mt-1">{outBentoWater || '—'}</p>
                       </div>
                       <div className="bg-gray-25 border border-gray-100 p-3.5 rounded-xl text-center shadow-sm">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nhiệt độ TB chuồng</p>
-                        <p className="text-body-lg font-bold text-blue-700 mt-1">{outBentoTemp}</p>
+                        <p className="text-body-lg font-bold text-blue-700 mt-1">{outBentoTemp || '—'}</p>
                       </div>
                     </div>
 
@@ -1704,7 +1694,7 @@ export default function HerdProjectDetailPage() {
                       <h3 className="font-bold text-body-lg text-gray-700">Chi tiết bảng kê chi phí</h3>
                       
                       <div className="flex gap-2">
-                        {project.status === 'completed' && !linkedOrder && (
+                        {canEdit && project.status === 'completed' && !linkedOrder && (
                           <button
                             onClick={handleAutoGenerateOrder}
                             className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-tiny px-3.5 h-9 rounded-lg shadow-sm transition-all flex items-center gap-1.5"
@@ -1919,14 +1909,14 @@ export default function HerdProjectDetailPage() {
           MODAL: THỰC HIỆN BƯỚC / CẬP NHẬT TIẾN ĐỘ STEP
           ───────────────────────────────────────────────────────────── */}
       {stepModalOpen && activeStep && (
-        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-0 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-in fade-in duration-200">
-            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-gray-0 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-in fade-in duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center shrink-0">
               <h3 className="font-bold text-body-lg text-gray-700">Cập nhật bước: {activeStep.step_name}</h3>
               <button onClick={() => setStepModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
             </div>
-            
-            <form onSubmit={handleSaveStepUpdate} className="p-6 space-y-4">
+
+            <form onSubmit={handleSaveStepUpdate} className="p-6 space-y-4 overflow-y-auto">
               {/* Tên bước + Ngày kế hoạch (sửa được trực tiếp) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1 md:col-span-2">
@@ -2098,18 +2088,17 @@ export default function HerdProjectDetailPage() {
                     <div className="space-y-3 max-h-40 overflow-y-auto pr-1">
                       {stepProductsUsed.map((item, idx) => (
                         <div key={idx} className="flex gap-2 items-end bg-gray-25 p-3 rounded-lg border border-gray-150 relative group">
-                          {/* Product select */}
-                          <div className="flex-1 space-y-1">
+                          {/* Product select — tìm kiếm thông minh */}
+                          <div className="flex-1 space-y-1 min-w-0">
                             <label className="text-[10px] font-bold text-gray-400 uppercase">Thuốc / Vaccine</label>
-                            <select
+                            <SmartSearchSelect
+                              options={productOptions}
                               value={item.product_id}
-                              onChange={e => handleUpdateProductUsed(idx, 'product_id', e.target.value)}
-                              className="w-full h-9 px-2 bg-gray-0 border border-gray-200 rounded text-tiny"
-                            >
-                              {allProducts.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                              ))}
-                            </select>
+                              onChange={val => handleUpdateProductUsed(idx, 'product_id', val)}
+                              placeholder="-- Chọn thuốc --"
+                              searchPlaceholder="Tìm thuốc / vaccine..."
+                              required
+                            />
                           </div>
 
                           {/* Lot select */}
@@ -2183,14 +2172,14 @@ export default function HerdProjectDetailPage() {
           MODAL: HOÀN THÀNH DỰ ÁN & ĐÁNH GIÁ KẾT QUẢ OUTCOME
           ───────────────────────────────────────────────────────────── */}
       {outcomeModalOpen && (
-        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-0 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-gray-0 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center shrink-0">
               <h3 className="font-bold text-body-lg text-gray-700">Đánh giá &amp; Hoàn thành dự án</h3>
               <button onClick={() => setOutcomeModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
             </div>
-            
-            <form onSubmit={handleSaveOutcome} className="p-6 space-y-4">
+
+            <form onSubmit={handleSaveOutcome} className="p-6 space-y-4 overflow-y-auto">
               
               <div className="grid grid-cols-2 gap-4">
                 {/* Died count */}
@@ -2397,13 +2386,13 @@ export default function HerdProjectDetailPage() {
           MODAL: EDIT VET NOTES FAST
           ───────────────────────────────────────────────────────────── */}
       {vetNoteModalOpen && (
-        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-0 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in fade-in duration-200">
-            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-gray-0 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in fade-in duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center shrink-0">
               <h3 className="font-bold text-body-lg text-gray-700">Chỉnh sửa ghi chú Bác sĩ</h3>
               <button onClick={() => setVetNoteModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
             </div>
-            <form onSubmit={handleSaveVetNotesFast} className="p-6 space-y-4">
+            <form onSubmit={handleSaveVetNotesFast} className="p-6 space-y-4 overflow-y-auto">
               <div className="space-y-1.5">
                 <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Ghi chú kỹ thuật</label>
                 <textarea
@@ -2438,14 +2427,14 @@ export default function HerdProjectDetailPage() {
           MODAL: THÊM CHI PHÍ THỦ CÔNG
           ───────────────────────────────────────────────────────────── */}
       {costModalOpen && (
-        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-0 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-gray-0 w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center shrink-0">
               <h3 className="font-bold text-body-lg text-gray-700">Ghi nhận chi phí phát sinh</h3>
               <button onClick={() => setCostModalOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
             </div>
-            
-            <form onSubmit={handleSaveManualCost} className="p-6 space-y-4">
+
+            <form onSubmit={handleSaveManualCost} className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 {/* Incurred Date */}
                 <div className="space-y-1">
@@ -2484,17 +2473,14 @@ export default function HerdProjectDetailPage() {
               {(costType === 'product' || costType === 'medicine') && (
                 <div className="space-y-1">
                   <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Chọn hàng hóa / vật tư</label>
-                  <select
+                  <SmartSearchSelect
+                    options={productOptions}
                     value={costProductId}
-                    onChange={e => setCostProductId(e.target.value)}
-                    className="w-full h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                    onChange={setCostProductId}
+                    placeholder="-- Chọn sản phẩm --"
+                    searchPlaceholder="Tìm hàng hóa / vật tư..."
                     required
-                  >
-                    <option value="">-- Chọn sản phẩm --</option>
-                    {allProducts.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               )}
 
@@ -2572,13 +2558,13 @@ export default function HerdProjectDetailPage() {
           MODAL: THÊM BƯỚC LỊCH TRÌNH
           ───────────────────────────────────────────────────────────── */}
       {addStepOpen && (
-        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-0 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-gray-0 w-full max-w-md rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center shrink-0">
               <h3 className="font-bold text-body-lg text-gray-700">Thêm bước lịch trình</h3>
               <button onClick={() => setAddStepOpen(false)} className="text-gray-400 hover:text-gray-600 font-bold text-body-lg">✕</button>
             </div>
-            <form onSubmit={handleAddStep} className="p-6 space-y-4">
+            <form onSubmit={handleAddStep} className="p-6 space-y-4 overflow-y-auto">
               <div className="space-y-1">
                 <label className="text-tiny font-bold text-gray-400 uppercase tracking-wider block">Tên bước <span className="text-rose-500">*</span></label>
                 <input
@@ -2626,7 +2612,7 @@ export default function HerdProjectDetailPage() {
           MODAL: SỬA DỰ ÁN (giới hạn trường an toàn)
           ───────────────────────────────────────────────────────────── */}
       {editProjOpen && (
-        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-gray-750/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-gray-0 w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 bg-gray-25 border-b border-gray-100 flex justify-between items-center">
               <h3 className="font-bold text-body-lg text-gray-700">Sửa dự án</h3>

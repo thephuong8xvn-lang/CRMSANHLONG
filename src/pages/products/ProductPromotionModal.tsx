@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import SmartSearchSelect, { type SmartSearchOption } from '../../components/SmartSearchSelect'
 import type { ProductPromotion } from '../../hooks/useProductPromotions'
@@ -52,10 +53,13 @@ export default function ProductPromotionModal({ productId, productName, promo, o
       supabase.from('branches').select('id, name').eq('is_active', true).order('name')
         .then(({ data }: { data: Branch[] | null }) => { if (data) setBranches(data) })
     }
-    supabase.from('products').select('id, name, sku').eq('is_active', true).order('name').limit(500)
-      .then(({ data }: { data: { id: string; name: string; sku: string }[] | null }) => {
-        if (data) setProductOptions(data.map(p => ({ value: p.id, label: p.name, desc: p.sku })))
-      })
+    // Nạp ĐỦ sản phẩm (tránh cap 1000) để search được mọi SP làm quà tặng.
+    fetchAllRows<{ id: string; name: string; sku: string }>((from, to) =>
+      supabase.from('products').select('id, name, sku').eq('is_active', true)
+        .order('name', { ascending: true }).order('id').range(from, to)
+    )
+      .then(data => setProductOptions(data.map(p => ({ value: p.id, label: p.name, desc: p.sku }))))
+      .catch(err => console.error('Error loading products for promotion:', err))
   }, [isAdmin])
 
   const toggleBranch = (id: string) => {

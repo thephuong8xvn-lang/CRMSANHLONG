@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { X, Phone, User, MapPin, ShieldAlert } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 
 interface AddCustomerModalProps {
@@ -88,12 +89,12 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
           if (ccData.length > 0) setCustomerType(ccData[0].code)
         }
 
-        // Fetch active sales reps (profiles)
-        const { data: reps, error: repsErr } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
-        if (!repsErr && reps) {
+        // Fetch active sales reps (profiles) — nạp ĐỦ (tránh cap 1000)
+        const reps = await fetchAllRows<{ id: string; full_name: string }>((from, to) =>
+          supabase.from('profiles').select('id, full_name').eq('is_active', true)
+            .order('full_name', { ascending: true }).order('id').range(from, to)
+        )
+        if (reps) {
           setSalesReps(reps)
           // Fetch current user to default owner
           const { data: { user } } = await supabase.auth.getUser()

@@ -20,6 +20,7 @@ import Layout from '../../components/Layout'
 import { Skeleton } from '../../components/Skeleton'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 
 
@@ -326,10 +327,10 @@ export default function InventoryPage() {
   useEffect(() => {
     const fetchSuppliers = async () => {
       if (activeTab !== 'purchase_returns' && !showReturnModal) return
-      const { data } = await supabase
-        .from('suppliers')
-        .select('id, name')
-        .eq('is_active', true)
+      const data = await fetchAllRows<{ id: string; name: string }>((from, to) =>
+        supabase.from('suppliers').select('id, name').eq('is_active', true)
+          .order('name', { ascending: true }).order('id').range(from, to)
+      )
       if (data) setSuppliers(data)
     }
     fetchSuppliers()
@@ -975,9 +976,12 @@ export default function InventoryPage() {
 
           setInvSettings(formattedSettings)
 
-          // Fetch products for list creation
-          const { data: prodData } = await supabase.from('products').select('id, name, sku')
-          if (prodData) setProductList(prodData)
+          // Fetch products for list creation — nạp ĐỦ (tránh cap 1000)
+          const prodData = await fetchAllRows<{ id: string; name: string; sku: string }>((from, to) =>
+            supabase.from('products').select('id, name, sku')
+              .order('name', { ascending: true }).order('id').range(from, to)
+          )
+          setProductList(prodData)
         } else if (activeTab === 'transfers') {
           let query = supabase
             .from('stock_transfers')

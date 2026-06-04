@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 
 interface Profile {
   id: string
@@ -136,12 +137,11 @@ export default function CustomerSettingsPage() {
         .order('name')
       if (brData) setBranches(brData)
 
-      // 4. Fetch profiles (active only for assignment)
-      const { data: profData } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, job_title, is_active')
-        .eq('is_active', true)
-        .order('full_name')
+      // 4. Fetch profiles (active only for assignment) — nạp ĐỦ (tránh cap 1000)
+      const profData = await fetchAllRows<any>((from, to) =>
+        supabase.from('profiles').select('id, email, full_name, job_title, is_active')
+          .eq('is_active', true).order('full_name', { ascending: true }).order('id').range(from, to)
+      )
       if (profData) setProfiles(profData)
 
       // 5. Fetch teams

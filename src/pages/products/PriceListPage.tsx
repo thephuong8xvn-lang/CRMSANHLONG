@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 interface PriceList {
@@ -139,28 +140,31 @@ export default function PriceListPage() {
     if (!selectedList) return
     setLoadingProducts(true)
     try {
-      const { data: prodData, error: prodErr } = await supabase
-        .from('products')
-        .select(`
-          id,
-          sku,
-          name,
-          unit,
-          category_id,
-          product_categories(id, code, name),
-          price_list_items(
+      // Nạp ĐỦ sản phẩm (tránh cap 1000 → bảng giá thiếu SP 1001+)
+      const prodData = await fetchAllRows((from, to) =>
+        supabase
+          .from('products')
+          .select(`
             id,
-            price_list_id,
-            product_id,
-            variant_id,
-            cost_price,
-            selling_price,
-            min_quantity
-          )
-        `)
-        .order('sku', { ascending: true })
+            sku,
+            name,
+            unit,
+            category_id,
+            product_categories(id, code, name),
+            price_list_items(
+              id,
+              price_list_id,
+              product_id,
+              variant_id,
+              cost_price,
+              selling_price,
+              min_quantity
+            )
+          `)
+          .order('sku', { ascending: true }).order('id')
+          .range(from, to)
+      )
 
-      if (prodErr) throw prodErr
       if (prodData) {
         // Filter price list items for the active price list
         const filteredProds = (prodData as unknown as Product[]).map(p => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
   Search,
@@ -21,6 +21,8 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
+import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { Link } from 'react-router-dom'
@@ -95,6 +97,10 @@ export default function PipelinePage() {
   const [stages, setStages] = useState<Stage[]>([])
   const [opportunities, setOpportunities] = useState<Opportunity[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
+  const customerOptions = useMemo(
+    () => customers.map(c => ({ value: c.id, label: c.farm_name, desc: c.code })),
+    [customers],
+  )
   const [salesReps, setSalesReps] = useState<Owner[]>([])
   const [lostReasons, setLostReasons] = useState<LostReason[]>([])
 
@@ -151,19 +157,27 @@ export default function PipelinePage() {
         if (def) setSelectedPipelineId(def.id)
       }
 
-      // 2. Fetch Customers
-      const { data: custData } = await supabase
-        .from('customers')
-        .select('id, code, farm_name')
-        .eq('is_active', true)
-      if (custData) setCustomers(custData)
+      // 2. Fetch Customers — nạp ĐỦ (tránh cap 1000 → KH 1001+ không tìm thấy)
+      const custData = await fetchAllRows<Customer>((from, to) =>
+        supabase
+          .from('customers')
+          .select('id, code, farm_name')
+          .eq('is_active', true)
+          .order('farm_name', { ascending: true }).order('id')
+          .range(from, to)
+      )
+      setCustomers(custData)
 
-      // 3. Fetch Sales Reps (Profiles)
-      const { data: repsData } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .eq('is_active', true)
-      if (repsData) setSalesReps(repsData)
+      // 3. Fetch Sales Reps (Profiles) — nạp ĐỦ
+      const repsData = await fetchAllRows<any>((from, to) =>
+        supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .eq('is_active', true)
+          .order('full_name', { ascending: true }).order('id')
+          .range(from, to)
+      )
+      setSalesReps(repsData)
 
       // 4. Fetch Lost Reasons
       const { data: lostData } = await supabase
@@ -1182,17 +1196,14 @@ export default function PipelinePage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Khách hàng *</label>
-                    <select
+                    <SmartSearchSelect
                       required
                       value={addCustomerId}
-                      onChange={e => setAddCustomerId(e.target.value)}
-                      className="w-full h-10 px-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
-                    >
-                      <option value="">-- Chọn trang trại --</option>
-                      {customers.map(c => (
-                        <option key={c.id} value={c.id}>{c.farm_name}</option>
-                      ))}
-                    </select>
+                      onChange={setAddCustomerId}
+                      options={customerOptions}
+                      placeholder="-- Chọn trang trại --"
+                      searchPlaceholder="Tìm theo tên / mã KH..."
+                    />
                   </div>
 
                   <div className="space-y-1">
@@ -1304,16 +1315,14 @@ export default function PipelinePage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider">Khách hàng</label>
-                    <select
+                    <SmartSearchSelect
                       required
                       value={editingOpp.customer_id}
-                      onChange={e => setEditingOpp({ ...editingOpp, customer_id: e.target.value })}
-                      className="w-full h-10 px-3 border border-gray-150 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
-                    >
-                      {customers.map(c => (
-                        <option key={c.id} value={c.id}>{c.farm_name}</option>
-                      ))}
-                    </select>
+                      onChange={val => setEditingOpp({ ...editingOpp, customer_id: val })}
+                      options={customerOptions}
+                      placeholder="-- Chọn trang trại --"
+                      searchPlaceholder="Tìm theo tên / mã KH..."
+                    />
                   </div>
 
                   <div className="space-y-1">

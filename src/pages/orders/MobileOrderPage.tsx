@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 
 interface Customer {
@@ -47,24 +48,6 @@ interface CartItem {
   quantity: number
   unitPrice: number
   discountPercent: number
-}
-
-// Nạp ĐẦY ĐỦ mọi dòng, vượt giới hạn mặc định 1000 dòng của PostgREST.
-async function fetchAllRows<T = any>(
-  makeQuery: (from: number, to: number) => PromiseLike<{ data: any; error: any }>,
-  batch = 1000,
-): Promise<T[]> {
-  const all: T[] = []
-  let from = 0
-  for (let guard = 0; guard < 100; guard++) {
-    const { data, error } = await makeQuery(from, from + batch - 1)
-    if (error) throw error
-    if (!data || data.length === 0) break
-    all.push(...(data as T[]))
-    if (data.length < batch) break
-    from += batch
-  }
-  return all
 }
 
 export default function MobileOrderPage() {

@@ -27,6 +27,7 @@ import {
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
 import { useProductPromotions, evaluateProductPromo, promoShortLabel } from '../../hooks/useProductPromotions'
@@ -153,26 +154,6 @@ const formatNumberString = (val: number | string) => {
 const parseNumberString = (val: string) => {
   const cleaned = val.replace(/\D/g, '')
   return cleaned ? parseInt(cleaned, 10) : 0
-}
-
-// Nạp ĐẦY ĐỦ mọi dòng, vượt giới hạn mặc định 1000 dòng của PostgREST.
-// makeQuery phải có .order() ổn định để phân trang chính xác; gọi .range() theo lô.
-async function fetchAllRows<T = any>(
-  makeQuery: (from: number, to: number) => PromiseLike<{ data: any; error: any }>,
-  batch = 1000,
-): Promise<T[]> {
-  const all: T[] = []
-  let from = 0
-  // Giới hạn vòng lặp an toàn (tối đa 100k dòng) để tránh lặp vô hạn nếu lỗi.
-  for (let guard = 0; guard < 100; guard++) {
-    const { data, error } = await makeQuery(from, from + batch - 1)
-    if (error) throw error
-    if (!data || data.length === 0) break
-    all.push(...(data as T[]))
-    if (data.length < batch) break
-    from += batch
-  }
-  return all
 }
 
 export default function POSPage() {

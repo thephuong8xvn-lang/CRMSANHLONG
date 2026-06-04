@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 interface SalesRep {
@@ -98,18 +99,19 @@ export default function CustomerProfileReportPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      // 1. Fetch all customers with their relations
-      const { data: customersData, error: custError } = await supabase
-        .from('customers')
-        .select(`
-          *,
-          owner:profiles!owner_user_id(id, full_name, email),
-          orders(*),
-          customer_debts(*)
-        `)
-      if (custError) throw custError
-
-      const customers = customersData || []
+      // 1. Fetch all customers with their relations — nạp ĐỦ (tránh cap 1000 → báo cáo thiếu KH 1001+)
+      const customers = await fetchAllRows<any>((from, to) =>
+        supabase
+          .from('customers')
+          .select(`
+            *,
+            owner:profiles!owner_user_id(id, full_name, email),
+            orders(*),
+            customer_debts(*)
+          `)
+          .order('farm_name', { ascending: true }).order('id')
+          .range(from, to)
+      )
 
       // 2. Fetch all active herds to get total herd headcount
       const { data: herdsData } = await supabase

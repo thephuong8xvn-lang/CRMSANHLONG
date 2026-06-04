@@ -20,8 +20,9 @@ import {
   Store
 } from 'lucide-react'
 import Layout from '../../components/Layout'
-import SmartSearchSelect from '../../components/SmartSearchSelect'
+import SmartSearchSelect, { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 
 interface Supplier {
@@ -148,13 +149,16 @@ export default function GoodsReceiptFormPage() {
           }
         }
 
-        // 2. Fetch active suppliers
-        const { data: supData } = await supabase
-          .from('suppliers')
-          .select('id, name')
-          .eq('is_active', true)
-          .order('name')
-        if (supData) setSuppliers(supData)
+        // 2. Fetch active suppliers — nạp ĐỦ (tránh cap 1000)
+        const supData = await fetchAllRows<Supplier>((from, to) =>
+          supabase
+            .from('suppliers')
+            .select('id, name')
+            .eq('is_active', true)
+            .order('name', { ascending: true }).order('id')
+            .range(from, to)
+        )
+        setSuppliers(supData)
 
         // 3. Fetch POs in 'sent' or 'partially_received' statuses
         let poQuery = supabase
@@ -192,28 +196,29 @@ export default function GoodsReceiptFormPage() {
         }))
         setPendingPOs(formattedPOs)
 
-        // 4. Fetch all active products
-        const { data: prodData } = await supabase
-          .from('products')
-          .select(`
-            id, 
-            sku, 
-            name, 
-            is_lot_managed,
-            category:product_categories(name)
-          `)
-          .eq('is_active', true)
-          .order('name')
-        
-        if (prodData) {
-          setAllProducts(prodData.map((p: any) => ({
-            id: p.id,
-            sku: p.sku,
-            name: p.name,
-            is_lot_managed: !!p.is_lot_managed,
-            categoryName: p.category?.name || 'Dược phẩm'
-          })))
-        }
+        // 4. Fetch all active products — nạp ĐỦ (tránh cap 1000 → SP 1001+ không tìm thấy)
+        const prodData = await fetchAllRows<any>((from, to) =>
+          supabase
+            .from('products')
+            .select(`
+              id,
+              sku,
+              name,
+              is_lot_managed,
+              category:product_categories(name)
+            `)
+            .eq('is_active', true)
+            .order('name', { ascending: true }).order('id')
+            .range(from, to)
+        )
+
+        setAllProducts(prodData.map((p: any) => ({
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          is_lot_managed: !!p.is_lot_managed,
+          categoryName: p.category?.name || 'Dược phẩm'
+        })))
 
       } catch (err) {
         console.error('Error fetching initial data:', err)
@@ -448,8 +453,11 @@ export default function GoodsReceiptFormPage() {
   const filteredProducts = productsListFiltered()
   function productsListFiltered() {
     if (!productSearchTerm.trim()) return []
-    const term = productSearchTerm.toLowerCase()
-    return allProducts.filter(p => p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term))
+    const term = removeVietnameseTones(productSearchTerm.toLowerCase())
+    return allProducts.filter(p =>
+      removeVietnameseTones(p.name.toLowerCase()).includes(term) ||
+      removeVietnameseTones(p.sku.toLowerCase()).includes(term)
+    )
   }
 
   const handleAddProductDirect = (prod: typeof allProducts[0]) => {

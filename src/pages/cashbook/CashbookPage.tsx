@@ -24,6 +24,7 @@ import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
 import { Skeleton } from '../../components/Skeleton'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import SmartSearchSelect, { type SmartSearchOption, removeVietnameseTones } from '../../components/SmartSearchSelect'
@@ -99,25 +100,6 @@ function specialKindOf(code?: string): SpecialKind {
   if (code === 'CHI-NCC') return 'supplier'
   if (code === 'CHI-TAM-UNG') return 'advance'
   return null
-}
-
-// Nạp ĐỦ dữ liệu (lặp .range theo lô) — tránh cap 1000 dòng mặc định của PostgREST.
-async function fetchAllRows<T = any>(
-  makeQuery: (from: number, to: number) => any,
-  batch = 1000
-): Promise<T[]> {
-  const all: T[] = []
-  let from = 0
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const { data, error } = await makeQuery(from, from + batch - 1)
-    if (error) throw error
-    const rows = (data || []) as T[]
-    all.push(...rows)
-    if (rows.length < batch) break
-    from += batch
-  }
-  return all
 }
 
 interface Customer {
