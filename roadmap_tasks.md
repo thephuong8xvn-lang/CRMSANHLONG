@@ -1131,3 +1131,12 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Mở rộng phòng ngừa (suppliers/profiles selector):** PO/GR suppliers; profiles ở Pipeline/HerdForm/HerdDetail/AddCustomerModal/CustomerDetailPage/CustomerMapPage/CustomerSettingsPage.
 - **Phân quyền/bảo mật — KHÔNG đổi:** fetchAllRows chỉ phân trang, mọi query vẫn dưới RLS hiện hành; không nới quyền.
 - ⚠️ **Ngoài scope (ghi nhận):** catalog >10k về sau nên chuyển server-side async search; các báo cáo aggregate trên orders/order_lines (RevenueReport/InventoryReport) chưa rà cap — kiểm tra nếu 2 bảng này vượt 1000.
+
+### 🐞 2026-06-04 (tiếp) — Fix regression dropdown "Người được giao" + sửa quy trình typecheck
+
+**Triệu chứng (user báo):** Modal "Cập nhật bước" (Herd) — dropdown "Người được giao thực hiện" không nạp nhân viên.
+
+- **Gốc rễ:** đợt cap-1000 gỡ định nghĩa `fetchAllRows` cục bộ khỏi `HerdProjectDetailPage.tsx` để dùng util chung nhưng **quên `import { fetchAllRows }`** → runtime `ReferenceError` ở dòng 414 (preload products) → `fetchDetail` abort → vets/types/regions/costs rỗng. **Fix:** thêm import.
+- **🔴 Lỗ hổng verify (gốc khiến bug lọt):** `tsconfig.json` dùng `"files": []` + project references → `tsc --noEmit` thuần KHÔNG kiểm tra file nào (giả PASS). Lệnh đúng là **`tsc -b --noEmit`**. Đã sửa build script `package.json`: `tsc && vite build` → **`tsc -b && vite build`**.
+- **Dọn 4 lỗi typecheck tiềm ẩn có sẵn** (nay mới lộ): `customerStatement.ts` ×3, `HerdsManagePage.tsx:72`. Toàn dự án `tsc -b` 0 lỗi + `npm run build` PASS.
+- **Toàn vẹn/bảo mật:** không vấn đề. Xác minh remote: `profiles_select_all USING (fn_is_active())`, 3 NV active. Bug thuần frontend. **KHÔNG migration.**

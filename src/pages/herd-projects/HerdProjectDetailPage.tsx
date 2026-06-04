@@ -23,6 +23,7 @@ import {
 import Layout from '../../components/Layout'
 import SmartSearchSelect, { type SmartSearchOption } from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import HerdMembersSection from './HerdMembersSection'
 

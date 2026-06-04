@@ -231,7 +231,7 @@ export async function fetchCustomerStatement(
     .eq('customer_id', customerId)
   if (ordErr) { logger.error('[statement] orders error:', ordErr.message); throw ordErr }
 
-  const orderIds = (orders ?? []).map(o => o.id)
+  const orderIds = (orders ?? []).map((o: { id: string }) => o.id)
 
   // Thanh toán / trả hàng / thu nợ / điều chỉnh nợ
   const [opRes, retRes, dpRes, debtRes] = await Promise.all([
@@ -247,8 +247,8 @@ export async function fetchCustomerStatement(
 
   // Chi tiết dòng hàng cho các đơn NẰM TRONG kỳ
   const inPeriodOrderIds = (orders ?? [])
-    .filter(o => { const t = new Date(o.created_at).getTime(); return t >= fromMs && t <= toMs })
-    .map(o => o.id)
+    .filter((o: { id: string; created_at: string }) => { const t = new Date(o.created_at).getTime(); return t >= fromMs && t <= toMs })
+    .map((o: { id: string }) => o.id)
 
   const linesByOrder = new Map<string, StatementLineItem[]>()
   if (inPeriodOrderIds.length) {

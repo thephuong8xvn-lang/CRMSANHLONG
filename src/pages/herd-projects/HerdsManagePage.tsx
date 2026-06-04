@@ -69,7 +69,7 @@ export default function HerdsManagePage() {
   // Load farms when customer selected in modal
   useEffect(() => {
     if (!form.customer_id) { setFarms([]); return }
-    supabase.from('farms').select('id, name').eq('customer_id', form.customer_id).then(({ data }) => setFarms(data ?? []))
+    supabase.from('farms').select('id, name').eq('customer_id', form.customer_id).then(({ data }: { data: { id: string; name: string }[] | null }) => setFarms(data ?? []))
   }, [form.customer_id])
 
   const rows = useMemo(() => {
