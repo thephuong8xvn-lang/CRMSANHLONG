@@ -29,3 +29,9 @@ dist-ssr
 .env.production
 .env.development
 
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Supabase temp files
+supabase/.temp/

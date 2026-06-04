@@ -9,6 +9,8 @@ export interface ProductPromotion {
   buy_qty: number | null
   get_qty: number | null
   get_product_id: string | null
+  /** Giá mỗi đơn vị quà tặng (buy_x_get_y). 0 = tặng miễn phí; >0 = giá ưu đãi. */
+  get_price: number
   discount_value: number
   min_qty: number
   branch_ids: string[]
@@ -27,6 +29,8 @@ export interface ProductPromoEvaluation {
   remaining: number
   /** Với buy_x_get_y: tổng số lượng quà được tặng */
   giftQty: number
+  /** Giá mỗi đơn vị quà (0 = miễn phí, >0 = giá ưu đãi) */
+  giftPrice: number
   /** SP tặng (mặc định là chính SP đang mua) */
   giftProductId: string
   /** Với percent/fixed_amount: số tiền giảm trên cả dòng (theo unitPrice * quantity) */
@@ -81,6 +85,7 @@ export function evaluateProductPromo(
       eligible,
       remaining,
       giftQty,
+      giftPrice: promo.get_price ?? 0,
       giftProductId,
       discountAmount: 0,
       discountPercent: 0,
@@ -107,6 +112,7 @@ export function evaluateProductPromo(
     eligible,
     remaining: eligible ? 0 : promo.min_qty - qtyInCart,
     giftQty: 0,
+    giftPrice: 0,
     giftProductId,
     discountAmount,
     discountPercent,
@@ -130,6 +136,7 @@ export function useProductPromotions(branchId?: string | null) {
       .select('*')
       .eq('is_active', true)
       .order('priority', { ascending: false })
+      .order('id')
       .then(({ data }: { data: ProductPromotion[] | null }) => {
         if (cancelled) return
         setPromotions(data ?? [])

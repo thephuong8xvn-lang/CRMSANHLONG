@@ -5,6 +5,8 @@ export interface CartRow {
   unitPrice: number
   discountPercent: number
   isPriceOverridden: boolean
+  /** Dòng quà tặng từ KM (mua X tặng Y). Phân biệt với sản phẩm giá-0 thật. */
+  isGift?: boolean
 }
 
 export function cartAddProduct(

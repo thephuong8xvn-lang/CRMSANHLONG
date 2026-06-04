@@ -271,6 +271,12 @@ export default function ProductQuickView({ row, branchId, onClose, onOpenDetail 
                         <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-rose-50 text-rose-600">{promoShortLabel(p)}</span>
                         {!p.is_active && <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Tắt</span>}
                       </div>
+                      {p.promo_type === 'buy_x_get_y' && (
+                        <p className="text-[10px] text-emerald-700 mt-0.5">
+                          🎁 Tặng {p.get_qty} {p.get_product_id && p.get_product_id !== p.product_id ? 'SP khác' : 'chính SP này'}
+                          {' · '}{p.get_price > 0 ? `giá ưu đãi ${p.get_price.toLocaleString('vi-VN')}₫` : 'miễn phí'}
+                        </p>
+                      )}
                       <p className="text-[11px] text-gray-500 mt-0.5">
                         {p.branch_ids.length === 0 ? 'Toàn hệ thống' : `${p.branch_ids.length} chi nhánh`}
                         {p.valid_to && ` · Đến ${new Date(p.valid_to).toLocaleDateString('vi-VN')}`}

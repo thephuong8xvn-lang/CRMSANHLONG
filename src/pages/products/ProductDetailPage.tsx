@@ -138,6 +138,7 @@ export default function ProductDetailPage() {
 
   // Khuyến mãi theo sản phẩm
   const [productPromos, setProductPromos] = useState<ProductPromotion[]>([])
+  const [giftNames, setGiftNames] = useState<Record<string, string>>({}) // id SP quà → tên
   const [showPromoModal, setShowPromoModal] = useState(false)
   const [editingPromo, setEditingPromo] = useState<ProductPromotion | undefined>()
 
@@ -148,7 +149,17 @@ export default function ProductDetailPage() {
       .select('*')
       .eq('product_id', id)
       .order('priority', { ascending: false })
-    setProductPromos((data as ProductPromotion[]) ?? [])
+    const promos = (data as ProductPromotion[]) ?? []
+    setProductPromos(promos)
+
+    // Phân giải tên SP quà tặng (B) khi khác sản phẩm hiện tại
+    const giftIds = [...new Set(promos.map(p => p.get_product_id).filter((x): x is string => !!x && x !== id))]
+    if (giftIds.length > 0) {
+      const { data: gifts } = await supabase.from('products').select('id, name').in('id', giftIds)
+      setGiftNames(Object.fromEntries((gifts ?? []).map((g: { id: string; name: string }) => [g.id, g.name])))
+    } else {
+      setGiftNames({})
+    }
   }
 
   useEffect(() => { loadProductPromos() }, [id])
@@ -1114,6 +1125,17 @@ export default function ProductDetailPage() {
                                 </span>
                                 {!p.is_active && <span className="text-[11px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Tắt</span>}
                               </div>
+                              {p.promo_type === 'buy_x_get_y' && (
+                                <p className="text-[11px] text-emerald-700 mb-0.5">
+                                  🎁 Tặng {p.get_qty} {p.get_product_id && p.get_product_id !== p.product_id
+                                    ? (giftNames[p.get_product_id] ?? 'SP khác')
+                                    : 'chính sản phẩm này'}
+                                  {' · '}
+                                  {p.get_price > 0
+                                    ? `giá ưu đãi ${p.get_price.toLocaleString('vi-VN')}₫`
+                                    : 'miễn phí'}
+                                </p>
+                              )}
                               <p className="text-xs text-gray-500">
                                 {p.branch_ids.length === 0 ? 'Toàn hệ thống' : `${p.branch_ids.length} chi nhánh`}
                                 {p.valid_to && ` · Đến ${new Date(p.valid_to).toLocaleDateString('vi-VN')}`}

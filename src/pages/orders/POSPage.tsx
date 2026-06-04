@@ -79,6 +79,7 @@ interface CartItem {
   unitPrice: number
   discountPercent: number // manual discount in percent
   isPriceOverridden?: boolean
+  isGift?: boolean // dòng quà tặng từ KM (mua X tặng Y) — không phải SP giá-0 thật
 }
 
 interface PriceList {
@@ -774,21 +775,23 @@ export default function POSPage() {
   const addPromoLine = useCallback((product: Product) => {
     setCart(prev => [
       ...prev,
-      { id: crypto.randomUUID(), product, quantity: 1, unitPrice: 0, discountPercent: 0, isPriceOverridden: true }
+      { id: crypto.randomUUID(), product, quantity: 1, unitPrice: 0, discountPercent: 0, isPriceOverridden: true, isGift: true }
     ])
   }, [])
 
-  // Áp dụng quà tặng theo gợi ý KM sản phẩm (mua X tặng Y) — thêm/cập nhật dòng 0đ đúng số lượng
-  const applyProductGift = useCallback((giftProduct: Product, giftQty: number) => {
+  // Áp dụng quà tặng theo gợi ý KM sản phẩm (mua X tặng Y) — thêm/cập nhật dòng quà đúng SL & giá quà
+  const applyProductGift = useCallback((giftProduct: Product, giftQty: number, giftPrice = 0) => {
     if (giftQty <= 0) return
+    const price = Math.max(0, giftPrice)
     setCart(prev => {
-      const existing = prev.find(c => c.product.id === giftProduct.id && c.unitPrice === 0)
+      // Khớp dòng quà cũ của cùng SP (theo cờ isGift) để cập nhật thay vì thêm trùng
+      const existing = prev.find(c => c.product.id === giftProduct.id && c.isGift)
       if (existing) {
-        return prev.map(c => c.id === existing.id ? { ...c, quantity: giftQty } : c)
+        return prev.map(c => c.id === existing.id ? { ...c, quantity: giftQty, unitPrice: price } : c)
       }
       return [
         ...prev,
-        { id: crypto.randomUUID(), product: giftProduct, quantity: giftQty, unitPrice: 0, discountPercent: 0, isPriceOverridden: true }
+        { id: crypto.randomUUID(), product: giftProduct, quantity: giftQty, unitPrice: price, discountPercent: 0, isPriceOverridden: true, isGift: true }
       ]
     })
   }, [])
@@ -1330,7 +1333,9 @@ export default function POSPage() {
                 </thead>
                 <tbody>
                   {cart.map((item, idx) => {
-                    const rowPromo = item.unitPrice > 0 ? getTopPromo(item.product.id) : null
+                    // Gợi ý KM cho dòng SP thường (không gợi ý trên chính dòng quà tặng).
+                    // KM mua-X-tặng-Y không phụ thuộc đơn giá nên hiện cả khi đơn giá = 0.
+                    const rowPromo = !item.isGift ? getTopPromo(item.product.id) : null
                     const promoEval = rowPromo ? evaluateProductPromo(rowPromo, item.quantity, item.unitPrice) : null
                     const giftProduct = promoEval
                       ? (products.find(p => p.id === promoEval.giftProductId) ?? item.product)
@@ -1354,7 +1359,7 @@ export default function POSPage() {
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-gray-800 line-clamp-2 leading-snug">{item.product.name}</span>
-                          {item.unitPrice === 0 && (
+                          {(item.isGift || item.unitPrice === 0) && (
                             <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded border border-emerald-100 uppercase scale-90">KM</span>
                           )}
                         </div>
@@ -1431,6 +1436,9 @@ export default function POSPage() {
                               {promoEval.promo.promo_type === 'buy_x_get_y'
                                 ? (promoEval.eligible
                                     ? ` — đủ điều kiện tặng ${promoEval.giftQty} ${giftProduct?.name ?? ''}`
+                                      + (promoEval.giftPrice > 0
+                                          ? ` (giá ưu đãi ${promoEval.giftPrice.toLocaleString('vi-VN')}₫)`
+                                          : ' (miễn phí)')
                                     : ` — mua thêm ${promoEval.remaining} để nhận quà`)
                                 : (promoEval.eligible
                                     ? ` — giảm ${promoEval.discountPercent}% cho dòng này`
@@ -1438,7 +1446,7 @@ export default function POSPage() {
                             </span>
                             {promoEval.eligible && promoEval.promo.promo_type === 'buy_x_get_y' && giftProduct && (
                               <button
-                                onClick={() => applyProductGift(giftProduct, promoEval.giftQty)}
+                                onClick={() => applyProductGift(giftProduct, promoEval.giftQty, promoEval.giftPrice)}
                                 className="px-2.5 py-1 text-[11px] font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded shadow-sm active:scale-95 transition-all"
                               >
                                 🎁 Tặng {promoEval.giftQty}

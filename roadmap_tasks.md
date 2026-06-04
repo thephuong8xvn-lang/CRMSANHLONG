@@ -912,6 +912,20 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 
 ---
 
+### 🎁 Phiên 2026-06-04 — KM theo sản phẩm: sửa hiển thị POS + giá quà tặng
+
+**Đã làm (verify: tsc -b EXIT=0; migration đã apply remote + reload schema + verify cột):**
+- **Sửa bug (hình 1)**: POS không hiện chú thích KM cho SP có KM "Mua X tặng Y" khi **đơn giá = 0**. Nguyên nhân: guard `item.unitPrice > 0` ở `POSPage.tsx` (cart.map dòng ~1336). Đổi sang guard theo cờ `isGift` (không theo giá) → KM mua-tặng hiện cả khi giá 0; KM percent/fixed giá 0 vẫn tự ẩn (evaluate trả null). Lưu ý vận hành: đơn giá 0 là do **bảng giá thiếu giá bán** cho SP đó — cần kiểm tra "Giá lẻ (Hộ chăn nuôi)".
+- **Cờ `isGift?`** thêm vào `CartRow` (`src/lib/cartUtils.ts`) + `CartItem` (POSPage); `addPromoLine`/`applyProductGift` set `isGift:true` để tách dòng quà khỏi SP giá-0 thật.
+- **Giá quà tặng (đa dạng hình thức KM)**: cột mới `product_promotions.get_price NUMERIC(15,2) DEFAULT 0` (0=miễn phí, >0=giá ưu đãi/đơn vị). Migration `20260610000000_product_promo_gift_price.sql` + 2 CHECK NOT VALID (get_price≥0; percent∈[0,100]). **Apply remote qua Management API** (project gdotgcrtivjdpkcchrro), NOTIFY reload schema, verify cột tồn tại.
+- `useProductPromotions.ts`: `get_price` trong type, `giftPrice` trong `ProductPromoEvaluation`, `.order('id')` tie-break. POS `applyProductGift(giftProduct, giftQty, giftPrice)` set `unitPrice=giftPrice`; nhãn dòng quà hiện "(giá ưu đãi …₫)" / "(miễn phí)".
+- **Modal `ProductPromotionModal.tsx`** làm rõ A→B: chip "Mua sản phẩm (A) {name}", nhãn "Số lượng mua (X)/tặng (Y)", checkbox "Tặng SP khác (B)", radio Miễn phí/Giá ưu đãi + input get_price, **live summary** đọc trực tiếp config (phát hiện ngay khi tên KM nhập tay lệch cấu hình), validation percent≤100 + bắt chọn SP tặng B + get_price>0 khi chọn giá ưu đãi.
+- Danh sách KM (`ProductDetailPage` + `ProductQuickView`) hiện dòng "🎁 Tặng {qty} {tên B/chính SP} · giá quà". ProductDetailPage fetch tên SP quà qua `products.in(giftIds)`.
+- **Rà soát 1001+ (sales+KM)**: POSPage, MobileOrderPage, ProductPromotionModal đã `fetchAllRows` ✓ (không rớt SP 1001+). Các picker khác (PriceList/PO/GoodsReceipt/Inventory/Cashbook/Herd/CustomerMap) chưa fetchAllRows → để session sau.
+- **Phân quyền/bảo mật**: RLS `product_promotions` giữ nguyên (admin/ceo toàn quyền; NV `promotions.manage` khóa 1 chi nhánh). Nút Thêm/Sửa/Xóa KM đã gate `canManagePromos`. Không nới quyền.
+
+---
+
 ### 📄 Phiên 2026-05-31 (tiếp) — Xuất file công nợ (sao kê .xlsx giống KiotViet)
 
 **Đã làm (verify: tsc EXIT=0, build ✓):**

@@ -39,6 +39,8 @@ export default function ProductPromotionModal({ productId, productName, promo, o
     get_qty: String(promo?.get_qty ?? 2),
     giftOther: Boolean(promo?.get_product_id && promo.get_product_id !== productId),
     get_product_id: promo?.get_product_id ?? '',
+    giftPaid: Boolean(promo?.get_price && promo.get_price > 0), // true = quà có giá ưu đãi, false = miễn phí
+    get_price: String(promo?.get_price ?? ''),
     discount_value: String(promo?.discount_value ?? ''),
     min_qty: String(promo?.min_qty ?? 1),
     priority: String(promo?.priority ?? 0),
@@ -75,8 +77,11 @@ export default function ProductPromotionModal({ productId, productName, promo, o
 
     if (form.promo_type === 'buy_x_get_y') {
       if (Number(form.buy_qty) <= 0 || Number(form.get_qty) <= 0) { setError('Số lượng mua/tặng phải > 0'); return }
-    } else if (Number(form.discount_value) <= 0) {
-      setError('Nhập giá trị giảm > 0'); return
+      if (form.giftOther && !form.get_product_id) { setError('Hãy chọn sản phẩm tặng (B)'); return }
+      if (form.giftPaid && Number(form.get_price) <= 0) { setError('Nhập giá ưu đãi cho quà tặng > 0'); return }
+    } else {
+      if (Number(form.discount_value) <= 0) { setError('Nhập giá trị giảm > 0'); return }
+      if (form.promo_type === 'percent' && Number(form.discount_value) > 100) { setError('Giảm % không thể vượt quá 100'); return }
     }
 
     // Nhân viên: khóa cứng chi nhánh của họ
@@ -92,6 +97,7 @@ export default function ProductPromotionModal({ productId, productName, promo, o
       get_qty: form.promo_type === 'buy_x_get_y' ? Number(form.get_qty) : null,
       get_product_id: form.promo_type === 'buy_x_get_y' && form.giftOther && form.get_product_id
         ? form.get_product_id : null,
+      get_price: form.promo_type === 'buy_x_get_y' && form.giftPaid ? Number(form.get_price) || 0 : 0,
       discount_value: form.promo_type === 'buy_x_get_y' ? 0 : Number(form.discount_value),
       min_qty: form.promo_type === 'buy_x_get_y' ? 1 : Math.max(1, Number(form.min_qty)),
       branch_ids,
@@ -143,31 +149,75 @@ export default function ProductPromotionModal({ productId, productName, promo, o
 
           {form.promo_type === 'buy_x_get_y' ? (
             <>
+              {/* Sản phẩm A — sản phẩm đang gán KM (điều kiện mua) */}
+              <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-sm">
+                <span className="text-gray-600">Mua sản phẩm </span>
+                <span className="font-semibold text-blue-800">(A) {productName}</span>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-sm font-medium text-gray-700">
-                  Mua (số lượng)
+                  Số lượng mua (X)
                   <input type="number" min="1" className={inputCls}
                     value={form.buy_qty} onChange={e => setForm(f => ({ ...f, buy_qty: e.target.value }))} />
                 </label>
                 <label className="block text-sm font-medium text-gray-700">
-                  Tặng (số lượng)
+                  Số lượng tặng (Y)
                   <input type="number" min="1" className={inputCls}
                     value={form.get_qty} onChange={e => setForm(f => ({ ...f, get_qty: e.target.value }))} />
                 </label>
               </div>
+
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={form.giftOther}
                   onChange={e => setForm(f => ({ ...f, giftOther: e.target.checked }))} />
-                Tặng sản phẩm khác (mặc định tặng chính sản phẩm này)
+                Tặng sản phẩm khác (B) — bỏ chọn = tặng chính sản phẩm A
               </label>
               {form.giftOther && (
                 <div className="text-sm font-medium text-gray-700">
-                  Sản phẩm tặng
+                  Sản phẩm tặng (B)
                   <SmartSearchSelect options={productOptions} value={form.get_product_id}
                     onChange={v => setForm(f => ({ ...f, get_product_id: v }))}
                     placeholder="-- Chọn sản phẩm tặng --" />
                 </div>
               )}
+
+              {/* Giá quà tặng: miễn phí hoặc giá ưu đãi */}
+              <div className="text-sm font-medium text-gray-700">
+                Giá quà tặng
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <label className="flex items-center gap-1.5 font-normal">
+                    <input type="radio" name="giftPaid" checked={!form.giftPaid}
+                      onChange={() => setForm(f => ({ ...f, giftPaid: false }))} />
+                    Miễn phí (0₫)
+                  </label>
+                  <label className="flex items-center gap-1.5 font-normal">
+                    <input type="radio" name="giftPaid" checked={form.giftPaid}
+                      onChange={() => setForm(f => ({ ...f, giftPaid: true }))} />
+                    Giá ưu đãi
+                  </label>
+                  {form.giftPaid && (
+                    <div className="flex items-center gap-1">
+                      <input type="number" min="0" className="w-28 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        placeholder="VD: 6000"
+                        value={form.get_price} onChange={e => setForm(f => ({ ...f, get_price: e.target.value }))} />
+                      <span className="text-gray-500">₫/đơn vị</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tóm tắt sống — đọc trực tiếp từ cấu hình để phát hiện tên KM lệch */}
+              <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[13px] text-amber-900">
+                🎁 Mua <b>{form.buy_qty || '?'}</b> {productName} → tặng <b>{form.get_qty || '?'}</b>{' '}
+                {form.giftOther
+                  ? (productOptions.find(o => o.value === form.get_product_id)?.label ?? '(chọn SP tặng B)')
+                  : productName}
+                {' · '}
+                {form.giftPaid && Number(form.get_price) > 0
+                  ? `giá ưu đãi ${Number(form.get_price).toLocaleString('vi-VN')}₫`
+                  : 'miễn phí'}
+              </div>
             </>
           ) : (
             <div className="grid grid-cols-2 gap-3">
