@@ -898,7 +898,7 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 ### 🛠️ Phiên 2026-05-31 (tiếp) — Sửa audit Products + Customers
 
 **Đã sửa (verify: tsc EXIT=0, build ✓):**
-- **Products #2 (lệch Thẻ kho) — QUAN TRỌNG**: tạo RPC `public.fn_add_manual_lot(uuid,uuid,text,date,date,numeric,numeric)` (`SECURITY INVOKER`, atomic: ghi `stock_lots` + `stock_movements` type `adjustment_increase`, ref_type `manual_lot`, performed_by=auth.uid()). Migration `supabase/migrations/20260607000000_fn_add_manual_lot.sql`. **ĐÃ APPLY remote** qua Management API (project gdotgcrtivjdpkcchrro) + reload schema cache. `ProductDetailPage.handleAddLotSubmit` giờ gọi RPC, có **fallback 2 bước** (insert lot → movement, rollback lô nếu movement lỗi) khi RPC chưa có. → Nhập kho thủ công nay luôn có dòng trong Thẻ kho.
+- **Products #2 (lệch Thẻ kho) — QUAN TRỌNG** ⚠️ **[ĐÃ THU HỒI 2026-06-05 — xem phiên "Gỡ Nhập kho thủ công" bên dưới]**: tạo RPC `public.fn_add_manual_lot(uuid,uuid,text,date,date,numeric,numeric)` (`SECURITY INVOKER`, atomic: ghi `stock_lots` + `stock_movements` type `adjustment_increase`, ref_type `manual_lot`, performed_by=auth.uid()). Migration `supabase/migrations/20260607000000_fn_add_manual_lot.sql`. **ĐÃ APPLY remote** qua Management API (project gdotgcrtivjdpkcchrro) + reload schema cache. `ProductDetailPage.handleAddLotSubmit` giờ gọi RPC, có **fallback 2 bước** (insert lot → movement, rollback lô nếu movement lỗi) khi RPC chưa có. → Nhập kho thủ công nay luôn có dòng trong Thẻ kho.
 - **Products #1 (gate quyền)**: nút "Sửa chi tiết" ẩn nếu không `admin|products.manage`; nút "Nhập kho/Thêm lô hàng" + "Thêm lô hàng đầu tiên" ẩn nếu không `admin|inventory.receive` (khớp RLS warehouse_keeper).
 - **Products #3**: thay `JSON.stringify(attributes)` ở bảng variant bằng chip key:value.
 - **Customers #1 (gate quyền)**: nút "Thiết lập" (→ /customers/settings cần users.manage) ẩn nếu không `admin|users.manage`.
@@ -923,6 +923,18 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - Danh sách KM (`ProductDetailPage` + `ProductQuickView`) hiện dòng "🎁 Tặng {qty} {tên B/chính SP} · giá quà". ProductDetailPage fetch tên SP quà qua `products.in(giftIds)`.
 - **Rà soát 1001+ (sales+KM)**: POSPage, MobileOrderPage, ProductPromotionModal đã `fetchAllRows` ✓ (không rớt SP 1001+). Các picker khác (PriceList/PO/GoodsReceipt/Inventory/Cashbook/Herd/CustomerMap) chưa fetchAllRows → để session sau.
 - **Phân quyền/bảo mật**: RLS `product_promotions` giữ nguyên (admin/ceo toàn quyền; NV `promotions.manage` khóa 1 chi nhánh). Nút Thêm/Sửa/Xóa KM đã gate `canManagePromos`. Không nới quyền.
+
+---
+
+### 🗑️ Phiên 2026-06-05 — Gỡ HOÀN TOÀN "Nhập kho / Thêm lô hàng" thủ công ở trang sản phẩm
+
+**Bối cảnh & lý do (toàn vẹn dữ liệu):** Trang chi tiết sản phẩm có nút "Nhập kho / Thêm lô hàng" cho phép tạo `stock_lots` thủ công, **bỏ qua luồng Phiếu nhập kho chuẩn** (NCC/PO/chứng từ). Đây là cổng ghi tồn kho không truy vết được nguồn gốc → quyết định gỡ bỏ hoàn toàn. Đường tăng tồn kho duy nhất từ nay là Phiếu nhập NCC ([GoodsReceiptFormPage.tsx](file:///E:/CRMSANHLONG/src/pages/goods-receipts/GoodsReceiptFormPage.tsx)).
+
+**Đã làm (verify: `tsc --noEmit` PASS 0 lỗi):**
+- **Frontend `ProductDetailPage.tsx`**: gỡ nút header "Nhập kho / Thêm lô hàng", nút "Thêm lô hàng đầu tiên" (state kho trống — thay bằng dòng hướng dẫn "Tồn kho được ghi nhận qua Phiếu nhập kho"), toàn bộ modal nhập lô + `handleAddLotSubmit` (gồm fallback insert 2 bước), state lô (`isAddingLot`, `newLotNumber`, `newWarehouseId`, `newMfgDate`, `newExpDate`, `newQty`, `newCostPrice`, `lotError`), gate `canReceiveStock`, state + block fetch `warehouses` (chỉ phục vụ dropdown modal), và các import/biến thừa (`Check`, `Calendar`, `FileText`, `settings`).
+- **Database (toàn diện)**: Migration `20260618000000_drop_fn_add_manual_lot.sql` → `DROP FUNCTION public.fn_add_manual_lot(...)`. **ĐÃ APPLY remote** qua Management API (project gdotgcrtivjdpkcchrro) + verify hàm biến mất khỏi `pg_proc` + NOTIFY reload schema cache.
+- **Toàn vẹn dữ liệu**: chỉ gỡ entry-point; `stock_lots`/`stock_movements` đã tạo trước đây qua tính năng này **giữ nguyên** (dữ liệu tồn kho hợp lệ).
+- **Phân quyền/bảo mật**: RLS `stock_lots`/`stock_movements` (warehouse_keeper) + permission `inventory.receive` **giữ nguyên** (vẫn dùng cho GoodsReceipt) — chỉ gỡ 1 cổng ghi ở UI, không nới/siết quyền khác.
 
 ---
 

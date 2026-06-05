@@ -9,7 +9,7 @@ metadata:
 
 **Thư mục**: `E:\CRMSANHLONG`  
 **Stack**: React 18 + TypeScript + Vite + Supabase + TanStack Query + Tailwind CSS  
-**Ngày cập nhật**: 2026-05-26
+**Ngày cập nhật**: 2026-06-05
 
 ---
 
@@ -143,6 +143,13 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - **Gốc lỗi:** query nạp `products`/`customers` trong POSPage & MobileOrderPage không `.order()`/`.limit()` → dính **giới hạn 1000 dòng mặc định PostgREST**. Thực tế 1002 SP / 1907 KH active → rớt SP mới + ~907 KH khỏi POS. Mọi tìm kiếm/grid/gợi ý lọc client-side trên mảng bị cắt.
 - **Fix (Cách A):** helper `fetchAllRows()` lặp `.range()` theo lô 1000 + `.order('name'/'farm_name').order('id')`, áp cho products+customers ở cả 2 trang. Xác minh DB thật: nạp đủ 1002 SP (3 SKU đều found) + 1907 KH. tsc+build PASS.
 - **Bài học:** mọi chỗ preload danh sách lớn rồi lọc client-side đều có nguy cơ cap 1000 — cần `fetchAllRows` hoặc search server-side. Catalog lớn về sau nên chuyển search server-side (`ilike`+limit).
+
+## 2026-06-05 — Gỡ HOÀN TOÀN "Nhập kho / Thêm lô hàng" thủ công (ProductDetailPage)
+
+- **Lý do (toàn vẹn dữ liệu):** nút này tạo `stock_lots` thủ công, bỏ qua Phiếu nhập NCC (không NCC/PO/chứng từ). Đã gỡ bỏ hoàn toàn; đường tăng tồn kho duy nhất nay là `GoodsReceiptFormPage`.
+- **Frontend `ProductDetailPage.tsx`**: gỡ 2 nút (header + "Thêm lô hàng đầu tiên"), modal nhập lô, `handleAddLotSubmit`, state lô, gate `canReceiveStock`, state+fetch `warehouses`, import thừa (`Check`/`Calendar`/`FileText`/`settings`).
+- **DB (toàn diện):** Migration `20260618000000_drop_fn_add_manual_lot.sql` `DROP FUNCTION fn_add_manual_lot(...)` — **ĐÃ APPLY remote** + verify + reload schema. RPC này từng tạo ở phiên 2026-05-31 (Products #2), nay thu hồi.
+- **Dữ liệu cũ giữ nguyên**; RLS `stock_lots`/`stock_movements` + perm `inventory.receive` không đổi (vẫn dùng cho GoodsReceipt). `tsc --noEmit` PASS.
 
 ---
 

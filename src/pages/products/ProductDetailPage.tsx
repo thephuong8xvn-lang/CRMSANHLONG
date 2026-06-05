@@ -9,13 +9,10 @@ import {
   Activity,
   AlertCircle,
   ShieldAlert,
-  Check,
-  Calendar,
   Warehouse,
   Info,
   Play,
   Printer,
-  FileText,
   Bookmark,
   Tag,
   Pencil,
@@ -120,18 +117,16 @@ interface StockMovement {
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { settings, formatCurrency } = useDisplaySettings()
+  const { formatCurrency } = useDisplaySettings()
   const { profile, userRole, hasPermission } = useAuth()
   const canManagePromos = userRole.code === 'admin' || userRole.code === 'ceo' || hasPermission('promotions.manage')
-  // Gate khớp RLS: products_manage cần admin|products.manage; ghi kho thủ công cần admin|warehouse_keeper(inventory.receive)
+  // Gate khớp RLS: products_manage cần admin|products.manage
   const canManageProduct = userRole.code === 'admin' || hasPermission('products.manage')
-  const canReceiveStock = userRole.code === 'admin' || hasPermission('inventory.receive')
 
   // State
   const [product, setProduct] = useState<Product | null>(null)
   const [variants, setVariants] = useState<ProductVariant[]>([])
   const [lots, setLots] = useState<StockLot[]>([])
-  const [warehouses, setWarehouses] = useState<WarehouseData[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'instructions' | 'inventory' | 'ledger' | 'promotions'>('instructions')
   const [movements, setMovements] = useState<StockMovement[]>([])
@@ -196,16 +191,6 @@ export default function ProductDetailPage() {
   // Edit Modal & Pricing State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [priceListItems, setPriceListItems] = useState<any[]>([])
-
-  // Quick Lot Adder State
-  const [isAddingLot, setIsAddingLot] = useState(false)
-  const [newLotNumber, setNewLotNumber] = useState('')
-  const [newWarehouseId, setNewWarehouseId] = useState('')
-  const [newMfgDate, setNewMfgDate] = useState('')
-  const [newExpDate, setNewExpDate] = useState('')
-  const [newQty, setNewQty] = useState<number>(100)
-  const [newCostPrice, setNewCostPrice] = useState<number>(0)
-  const [lotError, setLotError] = useState('')
 
   // FEFO Simulator State
   const [simulateQty, setSimulateQty] = useState<number>(50)
@@ -289,26 +274,7 @@ export default function ProductDetailPage() {
         setLots(lotData as unknown as StockLot[])
       }
 
-      // 4. Fetch warehouses for lot dropdown
-      let whQuery = supabase
-        .from('warehouses')
-        .select('id, code, name, branch_id')
-        .eq('is_active', true)
-
-      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
-        whQuery = whQuery.eq('branch_id', profile.branch_id)
-      }
-
-      const { data: whData } = await whQuery
-
-      if (whData) {
-        setWarehouses(whData as unknown as WarehouseData[])
-        if (whData.length > 0) {
-          setNewWarehouseId(whData[0].id)
-        }
-      }
-
-      // 5. Fetch price list items with details
+      // 4. Fetch price list items with details
       const { data: pliData } = await supabase
         .from('price_list_items')
         .select(`
@@ -322,7 +288,7 @@ export default function ProductDetailPage() {
         setPriceListItems(pliData)
       }
 
-      // 6. Fetch stock movements (Thẻ kho)
+      // 5. Fetch stock movements (Thẻ kho)
       let moveQuery = supabase
         .from('stock_movements')
         .select(`
@@ -409,92 +375,6 @@ export default function ProductDetailPage() {
 
   // Currency formatting is retrieved from useDisplaySettings() context
 
-  // Handle Quick Add Lot
-  const handleAddLotSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!id || !newLotNumber.trim() || !newWarehouseId) {
-      setLotError('Vui lòng nhập Mã lô và chọn kho hàng.')
-      return
-    }
-
-    setLotError('')
-    const lotNumber = newLotNumber.trim().toUpperCase()
-    try {
-      // Ưu tiên RPC nguyên tử: ghi ĐỒNG THỜI stock_lots + stock_movements (Thẻ kho)
-      const { error: rpcError } = await supabase.rpc('fn_add_manual_lot', {
-        p_product_id: id,
-        p_warehouse_id: newWarehouseId,
-        p_lot_number: lotNumber,
-        p_manufacture_date: newMfgDate || null,
-        p_expiry_date: newExpDate || null,
-        p_quantity: newQty,
-        p_cost_price: newCostPrice,
-      })
-
-      if (rpcError) {
-        const missingFn = rpcError.code === 'PGRST202' || /Could not find the function/i.test(rpcError.message || '')
-        if (rpcError.code === '23505') {
-          throw new Error('Lô hàng này đã tồn tại trong kho này (Trùng số lô + kho).')
-        } else if (missingFn) {
-          // Fallback khi RPC chưa apply ở remote: insert lô rồi ghi Thẻ kho;
-          // nếu ghi movement lỗi thì xóa lô vừa tạo để không tăng tồn mà thiếu sổ.
-          const { data: lotData, error: lotErr } = await supabase
-            .from('stock_lots')
-            .insert({
-              product_id: id,
-              warehouse_id: newWarehouseId,
-              lot_number: lotNumber,
-              manufacture_date: newMfgDate || null,
-              expiry_date: newExpDate || null,
-              quantity_on_hand: newQty,
-              quantity_reserved: 0,
-              cost_price: newCostPrice,
-              status: 'active',
-            })
-            .select('id')
-            .single()
-          if (lotErr) {
-            if (lotErr.code === '23505') throw new Error('Lô hàng này đã tồn tại trong kho này (Trùng số lô + kho).')
-            throw lotErr
-          }
-          const { error: movErr } = await supabase
-            .from('stock_movements')
-            .insert({
-              lot_id: lotData.id,
-              product_id: id,
-              warehouse_id: newWarehouseId,
-              movement_type: 'adjustment_increase',
-              quantity: newQty,
-              reference_type: 'manual_lot',
-              unit_cost: newCostPrice,
-              performed_by: profile?.id ?? null,
-              notes: 'Nhập kho thủ công (thêm lô hàng từ trang sản phẩm)',
-            })
-          if (movErr) {
-            await supabase.from('stock_lots').delete().eq('id', lotData.id)
-            throw movErr
-          }
-        } else {
-          throw rpcError
-        }
-      }
-
-      // Reset lot fields
-      setNewLotNumber('')
-      setNewMfgDate('')
-      setNewExpDate('')
-      setNewQty(100)
-      setNewCostPrice(0)
-      setIsAddingLot(false)
-
-      // Reload
-      loadProductData()
-    } catch (err: any) {
-      logger.error('[ProductDetailPage] add lot error:', err?.message ?? err)
-      setLotError(err.message || 'Lỗi xảy ra khi thêm lô hàng.')
-    }
-  }
-
   if (loading) {
     return (
       <Layout activeMenu="Sản phẩm">
@@ -568,15 +448,6 @@ export default function ProductDetailPage() {
               <Printer size={16} className="text-gray-400" />
               In nhãn sản phẩm
             </button>
-            {canReceiveStock && (
-              <button
-                onClick={() => setIsAddingLot(true)}
-                className="h-10 px-4 bg-blue-50 text-blue-500 border border-blue-100 rounded-lg font-semibold text-body-md hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-2 shadow-sm"
-              >
-                <Plus size={16} />
-                Nhập kho / Thêm lô hàng
-              </button>
-            )}
           </div>
         </div>
 
@@ -855,16 +726,7 @@ export default function ProductDetailPage() {
                         <div className="p-8 border border-dashed border-gray-200 rounded-xl text-center flex flex-col items-center justify-center">
                           <Warehouse className="text-gray-300 mb-2" size={32} />
                           <p className="text-body-md font-semibold text-gray-500 mb-1">Kho trống / Chưa có lô hàng</p>
-                          <p className="text-tiny text-gray-400 max-w-sm mb-4">Vui lòng nhập kho để theo dõi hạn sử dụng sản phẩm.</p>
-                          {canReceiveStock && (
-                            <button
-                              onClick={() => setIsAddingLot(true)}
-                              className="h-9 px-4 bg-blue-50 text-blue-600 border border-blue-150 rounded-lg text-tiny font-bold hover:bg-blue-100 transition-all flex items-center gap-1.5"
-                            >
-                              <Plus size={14} />
-                              Thêm lô hàng đầu tiên
-                            </button>
-                          )}
+                          <p className="text-tiny text-gray-400 max-w-sm">Tồn kho được ghi nhận qua Phiếu nhập kho (Nhập hàng NCC).</p>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1178,134 +1040,6 @@ export default function ProductDetailPage() {
           onClose={() => setShowPromoModal(false)}
           onSaved={loadProductPromos}
         />
-      )}
-
-      {/* Quick Lot Adder Modal/Drawer */}
-      {isAddingLot && (
-        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-0 w-full max-w-lg rounded-2xl shadow-2xl p-6 overflow-y-auto max-h-[90vh] space-y-5 animate-in zoom-in-95 duration-200">
-            
-            {/* Header */}
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="font-bold text-body-lg text-gray-800">Thêm lô hàng mới (Nhập kho)</h3>
-                <p className="text-tiny text-gray-400">Thiết lập số lô, hạn dùng và giá vốn ban đầu cho kho hàng</p>
-              </div>
-              <button
-                onClick={() => {
-                  setLotError('')
-                  setIsAddingLot(false)
-                }}
-                className="text-gray-400 hover:bg-gray-50 p-1.5 rounded-full"
-              >
-                <Plus size={20} className="rotate-45" />
-              </button>
-            </div>
-
-            {/* Error Message */}
-            {lotError && (
-              <div className="p-3.5 bg-red-50 border border-red-100 rounded-lg text-red-600 text-body-md flex items-start gap-2">
-                <ShieldAlert size={18} className="flex-shrink-0 mt-0.5" />
-                <span>{lotError}</span>
-              </div>
-            )}
-
-            {/* Form */}
-            <form onSubmit={handleAddLotSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Số Lô <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="VD: LOT-2026-001"
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 font-semibold uppercase"
-                    value={newLotNumber}
-                    onChange={e => setNewLotNumber(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Kho chứa <span className="text-red-500">*</span></label>
-                  <select
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0"
-                    value={newWarehouseId}
-                    onChange={e => setNewWarehouseId(e.target.value)}
-                  >
-                    {warehouses.map(wh => (
-                      <option key={wh.id} value={wh.id}>
-                        {wh.name} ({wh.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Ngày sản xuất</label>
-                  <input
-                    type="date"
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3"
-                    value={newMfgDate}
-                    onChange={e => setNewMfgDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Hạn sử dụng <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    required
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 font-semibold"
-                    value={newExpDate}
-                    onChange={e => setNewExpDate(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Số lượng nhập</label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3"
-                    value={newQty}
-                    onChange={e => setNewQty(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Giá vốn nhập ({settings.currency_symbol})</label>
-                  <input
-                    type="number"
-                    min={0}
-                    className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3"
-                    value={newCostPrice || ''}
-                    onChange={e => setNewCostPrice(Number(e.target.value))}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-
-              {/* Actions Footer */}
-              <div className="border-t border-gray-100 pt-4 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingLot(false)}
-                  className="h-10 px-5 border border-gray-200 rounded-lg text-body-md font-semibold text-gray-600 hover:bg-gray-50 transition-all"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="h-10 px-6 bg-blue-500 text-gray-0 rounded-lg text-body-md font-bold hover:bg-blue-600 transition-all flex items-center gap-1.5"
-                >
-                  <Check size={16} />
-                  Nhập kho
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
 
       <EditProductModal

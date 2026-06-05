@@ -35,3 +35,8 @@ dist-ssr
 
 # Supabase temp files
 supabase/.temp/
+
+# Vite temp files
+*.timestamp-*.mjs
+vite.config.ts.timestamp-*
+
