@@ -4,7 +4,7 @@ import Papa from 'papaparse'
 import {
   ChevronRight, ChevronLeft, TrendingUp, TrendingDown, Wallet,
   Coins, Percent, Download, Calendar, Users, Package, Tag,
-  Award, BarChart3, UserCheck
+  Award, BarChart3, UserCheck, AlertTriangle
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -427,6 +427,9 @@ export default function ProfitReportPage() {
                 </td></tr>
               ) : rows.map((r, i) => {
                 const margin = (r as CustomerRow).margin
+                // Có doanh thu nhưng giá vốn = 0 → SP chưa có nguồn giá vốn (chưa nhập kho/chưa set giá vốn ở bảng giá).
+                // Biên LN 100% ở đây KHÔNG phải lãi thật → cảnh báo để khỏi hiểu nhầm.
+                const noCost = num(r.cogs) === 0 && num(r.revenue) > 0
                 return (
                   <tr key={i} className="hover:bg-gray-25 transition-colors text-body-md">
                     <td className="px-5 py-3 text-gray-400 tabular-nums">{i + 1}</td>
@@ -465,15 +468,26 @@ export default function ProfitReportPage() {
                     )}
 
                     <td className="px-5 py-3 text-right tabular-nums text-gray-700">{formatCurrency(r.revenue)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-gray-500">{formatCurrency(r.cogs)}</td>
-                    <td className={`px-5 py-3 text-right tabular-nums font-bold ${r.profit >= 0 ? 'text-[#143C69]' : 'text-red-600'}`}>
+                    <td className="px-5 py-3 text-right tabular-nums">
+                      {noCost
+                        ? <span className="text-amber-600 font-semibold text-tiny">Chưa có giá vốn</span>
+                        : <span className="text-gray-500">{formatCurrency(r.cogs)}</span>}
+                    </td>
+                    <td className={`px-5 py-3 text-right tabular-nums font-bold ${noCost ? 'text-amber-600' : r.profit >= 0 ? 'text-[#143C69]' : 'text-red-600'}`}>
                       {formatCurrency(r.profit)}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold tabular-nums ${marginClass(margin)}`}>
-                        {margin >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                        {Number(margin).toLocaleString('vi-VN')}%
-                      </span>
+                      {noCost ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold bg-amber-50 text-amber-700" title="Sản phẩm chưa có giá vốn (chưa nhập kho hoặc chưa khai giá vốn ở bảng giá) — biên lợi nhuận chưa phản ánh đúng">
+                          <AlertTriangle size={11} />
+                          Thiếu giá vốn
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold tabular-nums ${marginClass(margin)}`}>
+                          {margin >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                          {Number(margin).toLocaleString('vi-VN')}%
+                        </span>
+                      )}
                     </td>
                   </tr>
                 )
@@ -486,6 +500,7 @@ export default function ProfitReportPage() {
         <p className="text-tiny text-gray-400 leading-relaxed">
           * Doanh thu tính ở cấp dòng đơn (đơn giá − chiết khấu)×số lượng, chưa gồm chiết khấu cấp hóa đơn & phí vận chuyển.
           Giá vốn lấy theo lô hàng đã phân bổ (FEFO); sản phẩm/không quản lô lấy giá vốn tham chiếu. Chỉ tính đơn đã xác nhận trở lên.
+          {' '}Dòng <span className="text-amber-700 font-semibold">Thiếu giá vốn</span> là sản phẩm đã bán nhưng chưa từng nhập kho (không có lô) và chưa khai giá vốn ở bảng giá → biên 100% là do thiếu dữ liệu, không phải lãi thật. Hãy nhập kho có giá hoặc khai giá vốn cho các sản phẩm này.
         </p>
       </div>
     </Layout>

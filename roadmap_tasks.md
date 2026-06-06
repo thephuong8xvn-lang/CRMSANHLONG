@@ -1246,3 +1246,13 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
   3. `InventoryPage` tab Phiếu nhập: query thêm cột `status`, thêm cột "Trạng thái" (badge Hoàn tất/Chưa chốt) ở bảng desktop + card mobile → nhìn thấy được trạng thái.
 - **`tsc -b` + `npm run build` PASS.**
 - ⚠️ **Quyết định thiết kế (đã chọn auto-complete, có thể đổi):** hiện chốt TỰ ĐỘNG khi tạo (giống lịch sử), KHÔNG có bước admin duyệt riêng. Nếu muốn quy trình "thủ kho tạo draft → admin bấm Xác nhận → completed" thì cần: (a) form lưu 'draft', (b) thêm nút "Xác nhận" (admin) ở list, (c) chuyển trigger ghi tồn từ AFTER INSERT line sang khi status→completed (thay đổi lớn, ảnh hưởng 37 phiếu cũ). Chưa làm — chờ user xác nhận nếu cần gate thực sự.
+
+### 🔎 2026-06-06 (tiếp) — Báo cáo lợi nhuận: giá vốn = 0 (KHÔNG phải bug — thiếu dữ liệu)
+
+**Bối cảnh:** User báo "đã nhập kho có giá nhập nhưng báo cáo giá vốn = 0" (nhiều SP biên 100%). Kiểm tra DB:
+- View `v_order_line_profit` TÍNH ĐÚNG: `cogs = Σ(allocation.qty × lot.cost_price) + (qty chưa phân bổ × pss.retail_cost)`. `product_stock_summary_view.retail_cost` fallback: GIA-LE.cost → bảng giá đầu.cost → **lô mới nhất có cost>0** → 0.
+- Bằng chứng: SP có lô/giá vẫn ra COGS đúng (Donoban 1.14M, Hipra 1.30M, Amox 536k, Peniciline 1.59M, Oxytocin 41k). SP biên 100% trong ảnh (Supersol/Fostosal/FlorMax/Gluco/Vicox/Cloprostenol) đều **0 lô + 0 dòng nhập kho + 0 giá vốn bảng giá** → KHÔNG có nguồn giá vốn → COGS=0 đúng.
+- Tổng hôm nay: 50 dòng có COGS đúng (DT 57M) vs **70 dòng COGS=0 (DT 44.7M)** — toàn SP bán mà chưa từng nhập kho. 26 SP distinct, tất cả lots=0.
+- **Nguyên nhân thật:** đây là KẼ HỞ DỮ LIỆU — các SP đó được bán (qua đơn/POS) nhưng chưa bao giờ nhập kho có giá, cũng chưa khai cost_price ở bảng giá. Tab "Top 100 tỉ lệ LN" sort margin DESC nên các SP 0-cost (100%) nổi lên đầu → gây hiểu nhầm cả báo cáo sai.
+- **Sửa (minh bạch hóa, KHÔNG bịa số):** `ProfitReportPage.tsx` — dòng có `revenue>0 && cogs=0` hiển thị badge amber **"Thiếu giá vốn"** + ô giá vốn "Chưa có giá vốn" + lợi nhuận màu amber, thay vì badge xanh 100% gây hiểu nhầm. Footnote giải thích. `tsc -b`+build PASS.
+- **Hành động cho user (nghiệp vụ):** nhập kho có giá cho các SP đó HOẶC khai cost_price ở bảng giá GIA-LE → COGS sẽ tự đúng (view đã fallback về lô mới nhất / bảng giá). Không cần sửa code thêm.
