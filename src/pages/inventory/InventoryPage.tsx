@@ -74,6 +74,7 @@ interface GoodsReceipt {
   receipt_code: string
   receipt_date: string
   total_amount: number
+  status: string
   notes: string | null
   supplier: {
     name: string
@@ -927,6 +928,7 @@ export default function InventoryPage() {
               receipt_code,
               receipt_date,
               total_amount,
+              status,
               notes,
               supplier:suppliers(name),
               warehouse:warehouses!inner(name, branch_id),
@@ -947,6 +949,7 @@ export default function InventoryPage() {
             id: gr.id,
             receipt_code: gr.receipt_code,
             receipt_date: gr.receipt_date,
+            status: gr.status,
             total_amount: Number(gr.total_amount),
             notes: gr.notes,
             supplier: {
@@ -1837,6 +1840,7 @@ export default function InventoryPage() {
                         <th className="px-6 py-4">Kho nhận</th>
                         <th className="px-6 py-4 text-center">Ngày nhận</th>
                         <th className="px-6 py-4">Người nhận</th>
+                        <th className="px-6 py-4 text-center">Trạng thái</th>
                         <th className="px-6 py-4 text-right">Tổng giá trị</th>
                         <th className="px-6 py-4">Ghi chú</th>
                         <th className="px-6 py-4 w-20 text-center">Hành động</th>
@@ -1853,6 +1857,13 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-6 py-4 font-medium text-gray-700">
                             {gr.profile?.full_name || 'Hệ thống'}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase ${
+                              gr.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {gr.status === 'completed' ? 'Hoàn tất' : gr.status === 'draft' ? 'Chưa chốt' : gr.status}
+                            </span>
                           </td>
                           <td className="px-6 py-4 text-right font-bold text-gray-750">
                             {gr.total_amount.toLocaleString('vi-VN')} ₫
@@ -1888,6 +1899,11 @@ export default function InventoryPage() {
                         <div>
                           <span className="font-mono font-bold text-blue-500 block">{gr.receipt_code}</span>
                           <p className="font-semibold text-gray-800 text-tiny mt-1">{gr.supplier.name}</p>
+                          <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
+                            gr.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {gr.status === 'completed' ? 'Hoàn tất' : gr.status === 'draft' ? 'Chưa chốt' : gr.status}
+                          </span>
                         </div>
                         <button
                           onClick={async () => {

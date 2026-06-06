@@ -576,6 +576,11 @@ export default function GoodsReceiptFormPage() {
           receipt_date: receiptDate,
           total_amount: totalWithVat,
           received_by: receivedById,
+          // Phiếu nhập kho được chốt ngay khi tạo (tồn kho đã ghi qua trigger).
+          // Trước đây luồng inline ở InventoryPage set 'completed' → khi chuyển sang
+          // trang này bị bỏ sót, phiếu mới kẹt ở 'draft'. Khôi phục để phiếu hiển thị "Hoàn tất".
+          status: 'completed',
+          completed_by: receivedById,
           notes: receiptMode === 'po' 
             ? `Nhập kho từ PO: ${selectedPO!.po_code}. [Lựa chọn thuế: ${vatLabel}]. ${notes}` 
             : `Nhập kho trực tiếp không cần PO. [Lựa chọn thuế: ${vatLabel}]. ${notes}`

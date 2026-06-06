@@ -1233,3 +1233,16 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Migration `20260621000000_branch_scope_receipts_select.sql`** (đã apply remote + reload, verify pg_policies): DROP 2 policy FOR ALL, tách thành INSERT/UPDATE/DELETE riêng với ĐÚNG điều kiện role cũ (admin OR warehouse_keeper) → **hành vi GHI giữ nguyên 100%**, nhưng SELECT giờ CHỈ do `*_select_warehouse` (đã lọc chi nhánh) + `*_own_draft` (creator xem draft của mình) quyết định. `stock_movements` không đụng (đã đúng).
 - **Kết quả:** warehouse_keeper chỉ còn đọc được phiếu nhập + thẻ kho của chi nhánh mình; admin/ceo/accountant vẫn xem toàn bộ; branch_manager xem chi nhánh mình. Cô lập chi nhánh giờ enforce ở DB (RLS), không chỉ ở client.
 - **Bài học:** policy **FOR ALL** vô tình cấp luôn quyền SELECT — nếu muốn giới hạn ĐỌC theo điều kiện khác (chi nhánh), KHÔNG để chung FOR ALL; phải tách INSERT/UPDATE/DELETE riêng để SELECT do policy SELECT (hẹp hơn) kiểm soát.
+
+### 🐛 2026-06-06 (tiếp) — Phiếu nhập kho kẹt 'draft' (regression "xác nhận/hoàn tất đơn nhập hàng")
+
+**Bối cảnh:** User hỏi "tính năng admin xác nhận đơn nhập hàng đã hoạt động chưa". Điều tra DB: 34 phiếu (28/05→05/06) status `completed` + `completed_by` đủ; **3 phiếu tạo hôm nay 06/06 kẹt `draft`, `completed_by` NULL**. `verified_by` chưa từng dùng (0).
+
+- **Nguyên nhân (regression):** Luồng tạo phiếu nhập trước đây là modal inline trong `InventoryPage` (commit `1e7aecc` set `status:'completed'`). Khi chuyển sang trang riêng `GoodsReceiptFormPage`, insert **bỏ sót** `status`/`completed_by` → phiếu mới mặc định `'draft'` (default cột) và không bao giờ được chốt. Không có UI confirm nào set lại.
+- **Lưu ý toàn vẹn:** trigger `fn_create_stock_lot_on_receipt` chạy AFTER INSERT trên `goods_receipt_lines` **không phụ thuộc status** → tồn kho VẪN được ghi ngay cả khi phiếu 'draft'. Nên 'draft' chỉ là nhãn workflow (không phải gate tồn kho); tồn kho không bị lệch.
+- **Fix:**
+  1. `GoodsReceiptFormPage` insert thêm `status:'completed'` + `completed_by: receivedById` (khôi phục hành vi cũ — phiếu chốt ngay khi tạo, vì tồn đã ghi qua trigger).
+  2. Backfill 3 phiếu draft → completed (`completed_by=COALESCE(completed_by,received_by)`); verify 37/37 completed + có completed_by.
+  3. `InventoryPage` tab Phiếu nhập: query thêm cột `status`, thêm cột "Trạng thái" (badge Hoàn tất/Chưa chốt) ở bảng desktop + card mobile → nhìn thấy được trạng thái.
+- **`tsc -b` + `npm run build` PASS.**
+- ⚠️ **Quyết định thiết kế (đã chọn auto-complete, có thể đổi):** hiện chốt TỰ ĐỘNG khi tạo (giống lịch sử), KHÔNG có bước admin duyệt riêng. Nếu muốn quy trình "thủ kho tạo draft → admin bấm Xác nhận → completed" thì cần: (a) form lưu 'draft', (b) thêm nút "Xác nhận" (admin) ở list, (c) chuyển trigger ghi tồn từ AFTER INSERT line sang khi status→completed (thay đổi lớn, ảnh hưởng 37 phiếu cũ). Chưa làm — chờ user xác nhận nếu cần gate thực sự.
