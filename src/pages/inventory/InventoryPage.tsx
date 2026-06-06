@@ -119,6 +119,7 @@ export default function InventoryPage() {
   const [warehouses, setWarehouses] = useState<{ id: string; name: string }[]>([])
   const [allWarehouses, setAllWarehouses] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   
@@ -806,6 +807,7 @@ export default function InventoryPage() {
   useEffect(() => {
     const loadTabData = async () => {
       setLoading(true)
+      setFetchError(null)
       try {
         if (activeTab === 'lots') {
           // Fetch stock lots — nạp ĐỦ (fetchAllRows) để admin tìm/sửa được mọi lô (>100)
@@ -928,7 +930,7 @@ export default function InventoryPage() {
               notes,
               supplier:suppliers(name),
               warehouse:warehouses!inner(name, branch_id),
-              profile:profiles(full_name)
+              profile:profiles!goods_receipts_received_by_fkey(full_name)
             `)
 
           if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
@@ -1069,6 +1071,7 @@ export default function InventoryPage() {
         }
       } catch (err: any) {
         console.error('Error fetching inventory tab data:', err)
+        setFetchError(err?.message || 'Đã xảy ra lỗi khi tải dữ liệu. Vui lòng thử lại.')
       } finally {
         setLoading(false)
       }
@@ -1369,6 +1372,17 @@ export default function InventoryPage() {
               <span>Định mức an toàn</span>
             </button>
           </div>
+
+          {/* Lỗi tải dữ liệu — không nuốt lỗi im lặng */}
+          {fetchError && !loading && (
+            <div className="mx-6 mt-4 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <div className="text-body-md">
+                <p className="font-semibold">Không tải được dữ liệu</p>
+                <p className="text-tiny text-red-600">{fetchError}</p>
+              </div>
+            </div>
+          )}
 
           {/* TAB CONTENT: STOCK LOTS */}
           {activeTab === 'lots' && (

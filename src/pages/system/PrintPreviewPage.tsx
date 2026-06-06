@@ -217,7 +217,7 @@ export default function PrintPreviewPage() {
             purchase_orders:purchase_orders(po_code),
             suppliers:suppliers(name, phone, address),
             warehouses:warehouses(name),
-            profiles:profiles(full_name)
+            profiles:profiles!goods_receipts_received_by_fkey(full_name)
           `)
           .eq('id', id)
           .single();
@@ -277,7 +277,7 @@ export default function PrintPreviewPage() {
             refund_method,
             created_at,
             orders:orders(order_code, customers(farm_name, address, customer_contacts(phone, is_primary)), warehouses(name)),
-            profiles:profiles(full_name)
+            profiles:profiles!sales_returns_created_by_fkey(full_name)
           `)
           .eq('id', id)
           .single();
@@ -338,7 +338,7 @@ export default function PrintPreviewPage() {
             notes,
             from_wh:warehouses!stock_transfers_from_warehouse_fkey(name),
             to_wh:warehouses!stock_transfers_to_warehouse_fkey(name),
-            profiles:profiles(full_name)
+            profiles:profiles!stock_transfers_created_by_fkey(full_name)
           `)
           .eq('id', id)
           .single();
