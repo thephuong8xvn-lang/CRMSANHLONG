@@ -1295,3 +1295,26 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Công nợ NCC — ĐÃ sửa (user chọn "ghi nợ khi Hoàn thành").** Migration `20260623000000_supplier_debt_on_completion.sql` (đã apply remote): `fn_supplier_debt_on_receipt` viết lại theo mô hình "đóng góp công nợ = total_amount CHỈ khi status='completed'", điều chỉnh theo chênh lệch ở insert/update/đổi-NCC/sửa-total/delete → huỷ phiếu tự hoàn nợ, nháp/verified không tính nợ. Đối soát 1 lần: `current_debt_payable -= Σ(total_amount phiếu không-completed)` (chỉ sửa sai sót trigger cũ, giữ nguyên thanh toán & số dư đầu kỳ). Verify: MAVIN 4.833.210 → 2.779.460 = đúng tổng phiếu completed (loại nợ ảo 2.053.750 của phiếu huỷ GR-532466).
 - **Nghiệm thu thực tế (user tự thao tác trong lúc fix):** GR-879217/752693/837193 → bấm Hoàn thành → có lô + thẻ kho (kho sinh qua RPC ✓); GR-532466 → Huỷ. Kết quả: 37 completed (đều có kho), 1 cancelled, 0 phiếu completed-thiếu-kho. Frontend do user tự commit & deploy.
 - **Bài học:** khi DB và frontend cùng đụng 1 luồng nhưng deploy lệch pha (DB đã có luồng duyệt, frontend còn auto-complete) → bug ngầm. State machine quan trọng (status phiếu) PHẢI khoá ở tầng DB (trigger/RPC), KHÔNG dựa vào client tự giác — vì anon key public, RLS thiếu ràng buộc = bypass được.
+
+### 🐛🔒 2026-06-07 (tiếp) — Bán âm tồn kho (gốc rễ phía BÁN) + hardening trạng thái đơn
+
+**Bối cảnh:** User báo lỗi lớn (đã sửa 2 lần chưa khỏi): SP `Jorenku-Triple-Iron` tồn=0, không lô, phiếu nhập chưa duyệt (đúng) — NHƯNG vẫn lên được đơn bán. 2 lần trước chỉ vá phía **phiếu nhập** (duyệt), chưa đụng phía **bán**.
+
+- **Gốc rễ (xác minh DB thật):** trigger trừ kho `fn_auto_stock_on_order_confirm` chỉ chạy phân bổ FEFO + chặn thiếu hàng khi `is_lot_managed AND warehouse_id NOT NULL`. Cột `is_lot_managed` mặc định `false` → **1007/1029 SP bỏ qua HOÀN TOÀN kiểm tra & trừ kho** khi bán. Đo được: 28 đơn confirmed+ có dòng KHÔNG phân bổ lô; 80/91 SP từng bán là loại không quản lý lô.
+- **Lỗ hổng song song:** `MobileOrderPage` dùng insert thủ công — không set `warehouse_id`, tự `UPDATE status='confirmed'` (bỏ duyệt Admin đơn giao), tự chèn `order_payments`/`customer_debts` (bỏ kiểm hạn mức server), tự sinh `order_code` random.
+- **Quyết định user:** đích = **chặn cứng toàn bộ**; lộ trình = **soft trước (cảnh báo+log), cứng sau** (công tắc, không deploy lại); **sửa luôn MobileOrderPage**; giữ guard + RPC nhỏ cho herd.
+- **Migration `20260624000000_universal_stock_control.sql` (ĐÃ apply remote, verify OK):**
+  - `system_settings.stock_control_mode` (`soft`|`hard`, mặc định **soft**) + helper `fn_stock_control_mode()`.
+  - Bảng `stock_oversell_log` (nhật ký bán thiếu/âm — đồng thời là worklist SP cần nhập kho trước khi bật hard). RLS đọc cho admin/`inventory.view`.
+  - `fn_allocate_lots_fefo`: **bỏ RAISE nội bộ** (chỉ phân bổ phần khả dụng).
+  - **Viết lại `fn_auto_stock_on_order_confirm`:** áp cho MỌI SP; warehouse NULL/thiếu tồn → hard RAISE rollback / soft ghi log + chỉ trừ phần khả dụng. KHÔNG backfill 28 đơn cũ.
+- **Migration `20260624000001_orders_status_guard.sql` (ĐÃ apply remote, verify OK):**
+  - Guard `fn_guard_order_status` (giống guard phiếu nhập): INSERT ép `draft`; UPDATE đổi status trực tiếp → RAISE trừ khi cờ phiên `app.order_rpc='on'`.
+  - Set cờ ở mọi RPC đổi trạng thái: `fn_pos_quick_sale/confirm_order/advance_delivery/complete_delivery_payment/cancel_order/pos_edit_order`. Thêm **`fn_confirm_generated_order`** (xác nhận đơn sinh tự động, giữ nguyên tổng gồm phí dịch vụ) cho herd.
+- **Frontend (cần COMMIT + DEPLOY):**
+  - `MobileOrderPage`: submit → `fn_create_delivery_draft` (nháp giao hàng, set warehouse chi nhánh); bỏ insert thủ công/confirm/payment/debt; hiển thị tồn + cảnh báo "thiếu N"; banner giải thích luồng nháp.
+  - `POSPage`: cảnh báo dòng giỏ vượt tồn ("⚠ Tồn X — thiếu Y"); lỗi RPC hard-mode surface qua toast (đã có).
+  - `HerdProjectDetailPage`: confirm đơn sinh tự động qua `fn_confirm_generated_order`.
+  - `SystemSettingsPage` (tab Kho): toggle **Cảnh báo (soft) / Chặn cứng (hard)** ghi `system_settings` (chỉ admin) — lật khi dữ liệu kho đã sạch.
+- **Nghiệm thu remote (transaction + ROLLBACK trên đơn DH-2026-00030, 4 dòng):** soft → đơn qua, `allocs=2` (SP có lô trừ kho), `logged=2` (SP thiếu ghi log); hard → RAISE "Không đủ tồn kho... cần 1.000, còn 0.000"; guard chặn UPDATE status trực tiếp; mode persist=soft. `tsc -b`+`vite build` PASS.
+- **Việc còn cho user:** chạy ở **soft** một thời gian, nhập kho bù theo `stock_oversell_log`; khi sạch → lật **hard** ở tab Kho. (Tuỳ chọn tương lai: công cụ nhập tồn đầu kỳ hàng loạt.)

@@ -1370,6 +1370,13 @@ export default function POSPage() {
                             <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded border border-emerald-100 uppercase scale-90">KM</span>
                           )}
                         </div>
+                        {(() => {
+                          const reqTotal = cart.filter(c => c.product.id === item.product.id).reduce((s, c) => s + c.quantity, 0)
+                          const avail = productStock[item.product.id] || 0
+                          return reqTotal > avail ? (
+                            <span className="text-[10px] font-bold text-amber-600">⚠ Tồn {avail.toLocaleString('vi-VN')} — thiếu {(reqTotal - avail).toLocaleString('vi-VN')}</span>
+                          ) : null
+                        })()}
                       </td>
                       <td className="py-3 px-2 text-center">
                         <span className="px-2 py-0.5 bg-blue-600 text-white rounded text-[11px] font-bold uppercase tracking-wide shadow-sm">

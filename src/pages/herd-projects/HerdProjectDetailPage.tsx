@@ -1024,15 +1024,11 @@ export default function HerdProjectDetailPage() {
           throw linesErr
         }
 
-        // Confirm the order to trigger FEFO allocation
-        const { error: confirmErr } = await supabase
-          .from('orders')
-          .update({
-            status: 'confirmed',
-            confirmed_at: new Date().toISOString(),
-            confirmed_by: currentUser?.id
-          })
-          .eq('id', newOrder.id)
+        // Confirm the order to trigger FEFO allocation (qua RPC — trạng thái đơn
+        // chỉ được đổi qua RPC có kiểm quyền; giữ nguyên tổng tiền gồm phí dịch vụ).
+        const { error: confirmErr } = await supabase.rpc('fn_confirm_generated_order', {
+          p_order_id: newOrder.id
+        })
 
         if (confirmErr) {
           await supabase.from('order_lines').delete().eq('order_id', newOrder.id)

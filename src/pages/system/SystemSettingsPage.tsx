@@ -164,6 +164,8 @@ export default function SystemSettingsPage() {
   const [priceLists, setPriceLists] = useState<{ id: string; name: string; code: string }[]>([])
   const [cashFunds, setCashFunds] = useState<CashFund[]>([])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [stockMode, setStockMode] = useState<'soft' | 'hard'>('soft')
+  const [savingStockMode, setSavingStockMode] = useState(false)
 
   // Loading states
   const [loading, setLoading] = useState(true)
@@ -339,6 +341,38 @@ export default function SystemSettingsPage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  // Nạp chế độ kiểm soát tồn kho (system_settings.stock_control_mode)
+  useEffect(() => {
+    const loadStockMode = async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'stock_control_mode')
+        .maybeSingle()
+      const mode = (data?.value as any)?.mode
+      if (mode === 'hard' || mode === 'soft') setStockMode(mode)
+    }
+    loadStockMode()
+  }, [])
+
+  const saveStockMode = async (mode: 'soft' | 'hard') => {
+    setSavingStockMode(true)
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({ key: 'stock_control_mode', value: { mode }, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+      if (error) throw error
+      setStockMode(mode)
+      showToast('success', mode === 'hard'
+        ? 'Đã bật CHẶN CỨNG: thiếu tồn sẽ không cho bán.'
+        : 'Đã chuyển CẢNH BÁO (soft): thiếu tồn vẫn cho bán nhưng ghi nhật ký.')
+    } catch (err: any) {
+      showToast('error', 'Lưu chế độ kiểm soát tồn thất bại: ' + (err.message || ''))
+    } finally {
+      setSavingStockMode(false)
+    }
+  }
 
   // Auto-clear alert
   const showToast = (type: 'success' | 'error', text: string) => {
@@ -1309,6 +1343,41 @@ export default function SystemSettingsPage() {
               {/* TAB 3: WAREHOUSES */}
               {activeTab === 'warehouses' && (
                 <div className="p-6 space-y-6">
+                  {/* Chế độ kiểm soát tồn kho khi bán */}
+                  <div className="rounded-xl border border-gray-150 bg-gray-25/50 p-5 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-gray-800 text-body-lg">Kiểm soát tồn kho khi bán</h4>
+                        <p className="text-tiny text-gray-500 mt-0.5">
+                          Áp dụng cho mọi sản phẩm. Chuyển sang <b>Chặn cứng</b> sau khi dữ liệu tồn kho đã đầy đủ.
+                        </p>
+                      </div>
+                      <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                        <button
+                          type="button"
+                          disabled={savingStockMode}
+                          onClick={() => saveStockMode('soft')}
+                          className={`px-4 py-2 text-tiny font-bold transition-colors ${stockMode === 'soft' ? 'bg-amber-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Cảnh báo (soft)
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingStockMode}
+                          onClick={() => saveStockMode('hard')}
+                          className={`px-4 py-2 text-tiny font-bold border-l border-gray-200 transition-colors ${stockMode === 'hard' ? 'bg-red-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Chặn cứng (hard)
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-tiny text-gray-500">
+                      {stockMode === 'hard'
+                        ? '🔒 Chặn cứng: đơn có sản phẩm thiếu tồn sẽ bị từ chối khi xác nhận.'
+                        : '⚠️ Cảnh báo: thiếu tồn vẫn cho bán, hệ thống ghi nhật ký bán âm để theo dõi & nhập kho bù.'}
+                    </p>
+                  </div>
+
                   {warehouses.length === 0 ? (
                     <div className="p-12 text-center text-gray-400 space-y-2">
                       <WarehouseIcon className="w-12 h-12 text-gray-300 mx-auto" />

@@ -84,6 +84,10 @@ export default function MobileOrderPage() {
   const [submitting, setSubmitting] = useState(false)
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
+  // Kho xuất + tồn khả dụng (theo chi nhánh của nhân viên)
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null)
+  const [productStock, setProductStock] = useState<Record<string, number>>({})
+
   // Fetch data
   useEffect(() => {
     const loadData = async () => {
@@ -160,6 +164,49 @@ export default function MobileOrderPage() {
     fetchDebt()
   }, [selectedCustomerId])
 
+  // Nạp kho chính + tồn khả dụng của chi nhánh nhân viên (để chọn kho xuất + cảnh báo)
+  useEffect(() => {
+    const fetchWarehouseStock = async () => {
+      try {
+        let branchId = profile?.branch_id
+        if (!branchId && profile?.id) {
+          const { data: prof } = await supabase
+            .from('profiles').select('branch_id').eq('id', profile.id).single()
+          branchId = prof?.branch_id || undefined
+        }
+        let whIds: string[] = []
+        if (branchId) {
+          const { data: whData } = await supabase
+            .from('warehouses')
+            .select('id, type')
+            .eq('branch_id', branchId)
+            .eq('is_active', true)
+          if (whData && whData.length > 0) {
+            const mainWh = whData.find((w: any) => w.type === 'main') || whData[0]
+            setSelectedWarehouseId((mainWh as any).id)
+            whIds = whData.map((w: any) => w.id)
+          }
+        }
+        let q = supabase
+          .from('stock_lots')
+          .select('product_id, quantity_on_hand, quantity_reserved')
+          .eq('status', 'active')
+        if (whIds.length > 0) q = q.in('warehouse_id', whIds)
+        const { data: stockData } = await q
+        if (stockData) {
+          const map: Record<string, number> = {}
+          stockData.forEach((it: any) => {
+            map[it.product_id] = (map[it.product_id] || 0) + (Number(it.quantity_on_hand) - Number(it.quantity_reserved))
+          })
+          setProductStock(map)
+        }
+      } catch (err) {
+        console.error('Error loading warehouse/stock (mobile):', err)
+      }
+    }
+    fetchWarehouseStock()
+  }, [profile])
+
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId)
 
   // Filter lists
@@ -221,96 +268,44 @@ export default function MobileOrderPage() {
 
   const isCreditLimitExceeded = selectedCustomer && (customerDebt + grandTotal > selectedCustomer.credit_limit)
 
-  // Submit Order
+  // Submit Order — tạo NHÁP đơn giao hàng qua RPC atomic (kiểm quyền + tồn kho
+  // theo chế độ + mã đơn server-side). Admin xác nhận & thu tiền/ghi nợ ở bước sau
+  // (qua trang Chi tiết đơn) → hạn mức công nợ được kiểm tra server-side khi thu.
   const submitOrder = async () => {
     if (!profile?.id) return
     setSubmitting(true)
     try {
-      const rand = Math.floor(10000 + Math.random() * 90000)
-      const orderCode = `DH-${rand}`
+      // Gộp lịch giao + đối tác giao vào ghi chú (RPC nháp không có cột riêng).
+      const deliveryMeta = [
+        deliveryDate ? `Ngày giao: ${deliveryDate}` : '',
+        deliveryPartner ? `Đối tác giao: ${deliveryPartner}` : ''
+      ].filter(Boolean).join(' • ')
+      const noteText = [notes || 'Lên đơn di động từ nhân viên kinh doanh.', deliveryMeta]
+        .filter(Boolean).join(' — ')
 
-      const orderInsert = {
-        order_code: orderCode,
+      const payload = {
         customer_id: selectedCustomerId,
-        status: 'draft',
-        payment_status: paymentMethod === 'credit' ? 'unpaid' : 'paid',
         payment_method: paymentMethod,
-        owner_user_id: profile.id,
+        warehouse_id: selectedWarehouseId || null,
         price_list_id: selectedCustomer?.price_list_id || null,
-        subtotal: subtotal,
-        discount_total: manualDiscount,
-        grand_total: grandTotal,
-        paid_amount: paymentMethod === 'credit' ? 0 : grandTotal,
         delivery_address: deliveryAddress || 'Giao tại trang trại khách hàng',
-        delivery_date: deliveryDate || null,
-        delivery_partner: deliveryPartner,
-        notes: notes || 'Lên đơn di động từ nhân viên kinh doanh.'
+        notes: noteText,
+        invoice_discount: manualDiscount,
+        lines: cart.map((item) => ({
+          product_id: item.product.id,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          discount: item.unitPrice * (item.discountPercent / 100)
+        }))
       }
 
-      const { data: orderData, error: orderErr } = await supabase
-        .from('orders')
-        .insert([orderInsert])
-        .select()
-        .single()
+      const { data, error } = await supabase.rpc('fn_create_delivery_draft', {
+        p_payload: payload
+      })
+      if (error) throw error
 
-      if (orderErr) throw orderErr
-
-      const linesInsert = cart.map((item) => ({
-        order_id: orderData.id,
-        variant_id: null,
-        product_id: item.product.id,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        discount: item.unitPrice * (item.discountPercent / 100)
-      }))
-
-      const { error: linesErr } = await supabase
-        .from('order_lines')
-        .insert(linesInsert)
-
-      if (linesErr) {
-        await supabase.from('orders').delete().eq('id', orderData.id)
-        throw linesErr
-      }
-
-      // Update status to 'confirmed' to trigger FEFO allocation
-      const { error: confirmErr } = await supabase
-        .from('orders')
-        .update({
-          status: 'confirmed',
-          confirmed_by: profile.id
-        })
-        .eq('id', orderData.id)
-
-      if (confirmErr) {
-        await supabase.from('order_lines').delete().eq('order_id', orderData.id)
-        await supabase.from('orders').delete().eq('id', orderData.id)
-        throw confirmErr
-      }
-
-      if (paymentMethod !== 'credit') {
-        await supabase.from('order_payments').insert([{
-          order_id: orderData.id,
-          payment_method: paymentMethod,
-          amount: grandTotal,
-          reference_no: `MB-PAY-${rand}`,
-          notes: 'Thanh toán di động.',
-          created_by: profile.id
-        }])
-      } else {
-        await supabase.from('customer_debts').insert([{
-          customer_id: selectedCustomerId,
-          order_id: orderData.id,
-          debt_type: 'order_debt',
-          amount: grandTotal,
-          due_date: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
-          is_settled: false,
-          notes: `Công nợ đơn hàng di động ${orderCode}`,
-          created_by: profile.id
-        }])
-      }
-
-      setAlertMsg({ type: 'success', text: `Đã lên đơn ${orderCode} thành công.` })
+      const orderCode = (data as any)?.order_code || ''
+      setAlertMsg({ type: 'success', text: `Đã tạo nháp đơn giao ${orderCode}. Chờ Admin xác nhận.` })
       setTimeout(() => {
         navigate('/orders')
       }, 1500)
@@ -435,7 +430,12 @@ export default function MobileOrderPage() {
                 <div className="space-y-2">
                   {cart.map(item => (
                     <div key={item.product.id} className="flex justify-between items-center text-body-md">
-                      <span className="font-semibold text-gray-700 truncate max-w-[200px]">{item.product.name}</span>
+                      <span className="font-semibold text-gray-700 truncate max-w-[200px]">
+                        {item.product.name}
+                        {item.quantity > (productStock[item.product.id] || 0) && (
+                          <span className="ml-1 text-tiny font-bold text-amber-600">⚠ thiếu {(item.quantity - (productStock[item.product.id] || 0)).toLocaleString('vi-VN')}</span>
+                        )}
+                      </span>
                       <div className="flex items-center gap-2">
                         <div className="flex items-center border border-gray-150 rounded bg-white h-6">
                           <button onClick={() => adjustQty(item.product.id, -1)} className="px-1.5 text-gray-500 hover:bg-gray-50"><Minus size={10} /></button>
@@ -505,7 +505,12 @@ export default function MobileOrderPage() {
                     <div className="space-y-0.5 max-w-[280px]">
                       <h4 className="text-body-md font-bold text-gray-800 truncate">{prod.name}</h4>
                       <div className="text-tiny text-gray-400">ĐVT: {prod.unit} | SKU: {prod.sku}</div>
-                      <div className="text-tiny font-bold text-blue-500">{formatCurrency(price)}</div>
+                      <div className="text-tiny font-bold text-blue-500">
+                        {formatCurrency(price)}
+                        <span className="ml-2 font-semibold">
+                          Tồn: <span className={(productStock[prod.id] || 0) > 0 ? 'text-emerald-600' : 'text-red-500'}>{(productStock[prod.id] || 0).toLocaleString('vi-VN')}</span>
+                        </span>
+                      </div>
                     </div>
                     {!added ? (
                       <button className="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center">
@@ -681,7 +686,7 @@ export default function MobileOrderPage() {
               {/* Shipping info */}
               <div className="pb-3 border-b border-gray-50 space-y-1">
                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Hình thức &amp; Vận chuyển</div>
-                <div>Thanh toán: <span className="font-bold capitalize">{paymentMethod === 'credit' ? 'Công nợ' : paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</span></div>
+                <div>Thanh toán: <span className="font-bold capitalize">{paymentMethod === 'credit' ? 'Công nợ' : paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}</span> <span className="text-gray-400">(thu khi Admin hoàn tất đơn)</span></div>
                 {deliveryDate && <div>Ngày giao dự kiến: <span className="font-bold">{deliveryDate}</span></div>}
                 {deliveryAddress && <div className="truncate">Địa chỉ giao: <span className="font-bold">{deliveryAddress}</span></div>}
                 <div>Đơn vị vận chuyển: <span className="font-bold">{deliveryPartner}</span></div>
@@ -716,12 +721,19 @@ export default function MobileOrderPage() {
               </div>
             )}
 
+            <div className="flex items-start gap-2.5 p-3 bg-blue-50/60 text-blue-800 rounded-lg border border-blue-100">
+              <FileText className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <div className="text-tiny leading-tight">
+                Đơn được tạo ở trạng thái <span className="font-bold">nháp giao hàng</span>. Admin sẽ xác nhận để trừ kho, rồi thu tiền/ghi nợ khi hoàn tất.
+              </div>
+            </div>
+
             <button
               onClick={submitOrder}
               disabled={submitting || (paymentMethod === 'credit' && isCreditLimitExceeded)}
               className="w-full h-12 bg-blue-500 text-gray-0 rounded-lg font-bold text-body-md flex items-center justify-center gap-2 hover:bg-blue-600 transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              <span>Lên Đơn Hàng</span>
+              <span>Tạo nháp đơn giao</span>
             </button>
           </div>
         )}
