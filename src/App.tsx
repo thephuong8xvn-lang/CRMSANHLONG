@@ -34,6 +34,7 @@ const ExpiryPage                 = lazy(() => import('./pages/inventory/ExpiryPa
 const ReorderPage                = lazy(() => import('./pages/inventory/ReorderPage'))
 const PurchaseOrderFormPage      = lazy(() => import('./pages/purchase-orders/PurchaseOrderFormPage'))
 const GoodsReceiptFormPage       = lazy(() => import('./pages/goods-receipts/GoodsReceiptFormPage'))
+const GoodsReceiptDetailPage     = lazy(() => import('./pages/goods-receipts/GoodsReceiptDetailPage'))
 const OrderListPage              = lazy(() => import('./pages/orders/OrderListPage'))
 const OrderDetailPage            = lazy(() => import('./pages/orders/OrderDetailPage'))
 const POSPage                    = lazy(() => import('./pages/orders/POSPage'))
@@ -172,6 +173,8 @@ function AppRoutes() {
       <Route path="/inventory" element={<ProtectedRoute perms={['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer']}><InventoryPage /></ProtectedRoute>} />
       <Route path="/purchase-orders/new" element={<ProtectedRoute perms={['purchase_orders.create']}><PurchaseOrderFormPage /></ProtectedRoute>} />
       <Route path="/goods-receipts/new" element={<ProtectedRoute perms={['inventory.receive']}><GoodsReceiptFormPage /></ProtectedRoute>} />
+      {/* ⚠️ /new đứng TRƯỚC /:id */}
+      <Route path="/goods-receipts/:id" element={<ProtectedRoute perms={['inventory.view', 'inventory.receive']}><GoodsReceiptDetailPage /></ProtectedRoute>} />
       <Route path="/orders" element={<ProtectedRoute perms={['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create']}><OrderListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /orders/:id */}
       <Route path="/orders/pos" element={<ProtectedRoute perms={['orders.create']}><POSPage /></ProtectedRoute>} />

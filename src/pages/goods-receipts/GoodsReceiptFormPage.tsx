@@ -91,10 +91,16 @@ export default function GoodsReceiptFormPage() {
   const { profile, user, userRole } = useAuth()
   
   const poIdParam = searchParams.get('po_id')
+  const idParam = searchParams.get('id')   // sửa phiếu nháp hiện có
 
   // Modes
   const [receiptMode, setReceiptMode] = useState<'po' | 'direct'>(poIdParam ? 'po' : 'direct')
   const [viewMode, setViewMode] = useState<'detail' | 'table'>('table')
+
+  // Edit mode (sửa phiếu nháp)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editReceiptId, setEditReceiptId] = useState<string | null>(null)
+  const [editPoId, setEditPoId] = useState<string | null>(null)
 
   // Lookup lists
   const [pendingPOs, setPendingPOs] = useState<PurchaseOrder[]>([])
@@ -359,13 +365,103 @@ export default function GoodsReceiptFormPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPOId, receiptMode])
 
-  // Reset lines when mode changes
+  // Reset lines when mode changes (bỏ qua khi đang sửa phiếu nháp)
   useEffect(() => {
+    if (idParam) return
     setVerificationItems([])
     setSelectedItemIndex(0)
     setSelectedPOId('')
     setSelectedPO(null)
   }, [receiptMode])
+
+  // Nạp phiếu nháp hiện có để SỬA (?id=)
+  useEffect(() => {
+    if (!idParam) return
+    const loadDraftReceipt = async () => {
+      setLoading(true)
+      try {
+        const { data: r, error } = await supabase
+          .from('goods_receipts')
+          .select(`id, receipt_code, po_id, supplier_id, warehouse_id, receipt_date, notes, status, supplier:suppliers(id, name)`)
+          .eq('id', idParam)
+          .single()
+        if (error) throw error
+
+        if (r.status !== 'draft') {
+          setAlertMsg({ type: 'error', text: 'Chỉ sửa được phiếu ở trạng thái Nháp. Đang chuyển về trang chi tiết...' })
+          setTimeout(() => navigate(`/goods-receipts/${idParam}`), 1500)
+          return
+        }
+
+        setIsEditMode(true)
+        setEditReceiptId(r.id)
+        setEditPoId(r.po_id)
+        setReceiptMode('direct')
+        setSelectedSupplierId(r.supplier_id)
+        setSelectedWarehouseId(r.warehouse_id)
+        setReceiptDate(r.receipt_date)
+
+        // Tách VAT + ghi chú người dùng từ trường notes đã lưu
+        const noteStr = r.notes || ''
+        const vatMatch = noteStr.match(/\[Lựa chọn thuế: ([^\]]+)\]/)
+        if (vatMatch) {
+          const lbl = vatMatch[1]
+          setVatOption(lbl.includes('Không') ? 'none' : lbl.includes('10') ? '10' : '5')
+        }
+        const cleanNote = noteStr
+          .replace(/^Nhập kho[^.]*\.\s*/, '')
+          .replace(/\[Lựa chọn thuế: [^\]]+\]\.?\s*/, '')
+          .trim()
+        setNotes(cleanNote)
+
+        const supplierObj = Array.isArray(r.supplier) ? r.supplier[0] : (r.supplier as any)
+        setSelectedPO({
+          id: r.id,
+          po_code: r.receipt_code,
+          status: 'draft',
+          created_at: new Date().toISOString(),
+          supplier: { id: supplierObj?.id || r.supplier_id, name: supplierObj?.name || 'Nhà cung cấp' },
+          warehouse_id: r.warehouse_id
+        })
+        setSelectedPOId(r.id)
+
+        const { data: lns, error: lnErr } = await supabase
+          .from('goods_receipt_lines')
+          .select(`id, po_line_id, product_id, quantity, unit_price, lot_number, manufacture_date, expiry_date, product:products(id, sku, name, is_lot_managed, category:product_categories(name))`)
+          .eq('receipt_id', r.id)
+        if (lnErr) throw lnErr
+
+        const items: ReceiptVerificationState[] = (lns || []).map((l: any) => ({
+          poLineId: l.po_line_id,
+          productId: l.product_id,
+          productName: l.product?.name || 'Sản phẩm không rõ',
+          productSku: l.product?.sku || '',
+          isLotManaged: !!l.product?.is_lot_managed,
+          categoryName: l.product?.category?.name || 'Dược phẩm',
+          quantityOrdered: 0,
+          quantityPreviouslyReceived: 0,
+          quantityReceived: l.quantity,
+          lotNumber: l.lot_number || '',
+          manufactureDate: l.manufacture_date || '',
+          expiryDate: l.expiry_date || '',
+          notes: '',
+          isVerified: true,
+          warehouseId: r.warehouse_id,
+          shelfBin: '',
+          unitPrice: Number(l.unit_price)
+        }))
+        setVerificationItems(items)
+        setSelectedItemIndex(0)
+      } catch (err: any) {
+        console.error('Error loading draft receipt:', err)
+        setAlertMsg({ type: 'error', text: 'Lỗi tải phiếu nháp: ' + err.message })
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadDraftReceipt()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idParam])
 
   // Get current active verification item for detail mode
   const currentItem = verificationItems[selectedItemIndex]
@@ -502,17 +598,18 @@ export default function GoodsReceiptFormPage() {
     setSelectedItemIndex(prev => Math.max(0, prev - 1))
   }
 
-  // Submit Goods Receipt
+  // Submit Goods Receipt — LƯU PHIẾU NHÁP (tạo mới hoặc cập nhật). Hàng CHƯA vào kho.
+  // Hàng chỉ vào kho khi admin duyệt + bấm "Hoàn thành" ở trang chi tiết (qua RPC).
   const handleCompleteReceipt = async () => {
     if (verificationItems.length === 0) {
-      setAlertMsg({ type: 'error', text: 'Chưa có sản phẩm nào để nhập kho.' })
+      setAlertMsg({ type: 'error', text: 'Chưa có sản phẩm nào trong phiếu nhập.' })
       return
     }
-    
+
     // Check if at least one item is verified/received
     const verifiedItems = verificationItems.filter(item => item.isVerified)
     if (verifiedItems.length === 0) {
-      setAlertMsg({ type: 'error', text: 'Vui lòng xác nhận kiểm tra ít nhất một mặt hàng trước khi nhập kho.' })
+      setAlertMsg({ type: 'error', text: 'Vui lòng xác nhận kiểm tra ít nhất một mặt hàng trước khi lưu phiếu.' })
       return
     }
 
@@ -553,54 +650,21 @@ export default function GoodsReceiptFormPage() {
       const activeVatRate = vatOption === 'none' ? 0 : vatOption === '5' ? 0.05 : 0.10
       const totalWithVat = totalAmount * (1 + activeVatRate)
 
-      const randomId = Math.floor(100000 + Math.random() * 900000)
-      const receiptCode = `GR-${randomId}`
       const supplierId = receiptMode === 'po' ? selectedPO!.supplier.id : selectedSupplierId
       const targetWarehouse = verifiedItems[0].warehouseId || selectedWarehouseId || warehouses[0]?.id
 
-      // 1. Insert into goods_receipts
-      // po_id: chỉ truyền khi là PO mode và selectedPOId là UUID thực (không phải dummyId)
-      const realPoId = receiptMode === 'po' && selectedPOId && !selectedPOId.startsWith('direct-')
-        ? selectedPOId
-        : null
+      // po_id: edit → giữ nguyên; PO mode → UUID thực (không phải dummyId); direct → null
+      const realPoId = isEditMode
+        ? editPoId
+        : (receiptMode === 'po' && selectedPOId && !selectedPOId.startsWith('direct-') ? selectedPOId : null)
 
       const vatLabel = vatOption === 'none' ? 'Không VAT' : `VAT ${vatOption}%`
+      const noteText = `${realPoId ? `Nhập kho từ PO` : 'Nhập kho trực tiếp không cần PO'}. [Lựa chọn thuế: ${vatLabel}]. ${notes}`
 
-      const { data: gr, error: grErr } = await supabase
-        .from('goods_receipts')
-        .insert([{
-          receipt_code: receiptCode,
-          po_id: realPoId,
-          supplier_id: supplierId,
-          warehouse_id: targetWarehouse,
-          receipt_date: receiptDate,
-          total_amount: totalWithVat,
-          received_by: receivedById,
-          // Phiếu nhập kho được chốt ngay khi tạo (tồn kho đã ghi qua trigger).
-          // Trước đây luồng inline ở InventoryPage set 'completed' → khi chuyển sang
-          // trang này bị bỏ sót, phiếu mới kẹt ở 'draft'. Khôi phục để phiếu hiển thị "Hoàn tất".
-          status: 'completed',
-          completed_by: receivedById,
-          notes: receiptMode === 'po' 
-            ? `Nhập kho từ PO: ${selectedPO!.po_code}. [Lựa chọn thuế: ${vatLabel}]. ${notes}` 
-            : `Nhập kho trực tiếp không cần PO. [Lựa chọn thuế: ${vatLabel}]. ${notes}`
-        }])
-        .select()
-        .single()
-
-      if (grErr) {
-        console.error('[GoodsReceipt] INSERT goods_receipts error:', grErr)
-        if (grErr.code === '42501' || grErr.message?.includes('row-level security')) {
-          throw new Error('Bạn không có quyền nhập kho. Vui lòng liên hệ quản trị viên để được cấp quyền warehouse_keeper hoặc branch_manager.')
-        }
-        throw grErr
-      }
-
-      // 2. Insert into goods_receipt_lines
-      // Database trigger trg_receipt_lines_create_lot handles stock_lots / stock_movements creation
-      const grLinesToInsert = verifiedItems.map(item => ({
-        receipt_id: gr.id,
-        po_line_id: receiptMode === 'po' ? item.poLineId : null,
+      // Hàm dựng dòng phiếu (carry po_line_id để giữ liên kết PO khi hoàn thành)
+      const buildLines = (receiptId: string) => verifiedItems.map(item => ({
+        receipt_id: receiptId,
+        po_line_id: item.poLineId,
         product_id: item.productId,
         quantity: item.quantityReceived,
         unit_price: item.unitPrice,
@@ -609,61 +673,81 @@ export default function GoodsReceiptFormPage() {
         expiry_date: item.expiryDate || null
       }))
 
-      const { error: grLinesErr } = await supabase
-        .from('goods_receipt_lines')
-        .insert(grLinesToInsert)
+      let targetReceiptId: string
 
-      if (grLinesErr) throw grLinesErr
-
-      // 3. Update PO lines and PO status if PO mode
-      if (receiptMode === 'po') {
-        for (const item of verifiedItems) {
-          if (item.poLineId) {
-            const poLine = poLines.find(l => l.id === item.poLineId)
-            if (poLine) {
-              const newReceivedQty = poLine.received_qty + item.quantityReceived
-              const { error: poLineUpdateErr } = await supabase
-                .from('purchase_order_lines')
-                .update({ received_qty: newReceivedQty })
-                .eq('id', item.poLineId)
-
-              if (poLineUpdateErr) throw poLineUpdateErr
-            }
+      if (isEditMode && editReceiptId) {
+        // ── CẬP NHẬT phiếu nháp ──
+        const { error: upErr } = await supabase
+          .from('goods_receipts')
+          .update({
+            supplier_id: supplierId,
+            warehouse_id: targetWarehouse,
+            receipt_date: receiptDate,
+            total_amount: totalWithVat,
+            po_id: realPoId,
+            notes: noteText,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editReceiptId)
+        if (upErr) {
+          if (upErr.code === '42501' || upErr.message?.includes('row-level security')) {
+            throw new Error('Bạn không có quyền sửa phiếu này (chỉ người lập sửa được phiếu nháp của mình hoặc admin).')
           }
+          throw upErr
         }
 
-        // Check if PO is fully received
-        const { data: updatedLines } = await supabase
-          .from('purchase_order_lines')
-          .select('quantity, received_qty')
-          .eq('po_id', selectedPOId)
+        // Thay toàn bộ dòng
+        const { error: delErr } = await supabase.from('goods_receipt_lines').delete().eq('receipt_id', editReceiptId)
+        if (delErr) throw delErr
+        const { error: insErr } = await supabase.from('goods_receipt_lines').insert(buildLines(editReceiptId))
+        if (insErr) throw insErr
 
-        if (updatedLines) {
-          const isFullyReceived = updatedLines.every((line: { quantity: number; received_qty: number }) => line.received_qty >= line.quantity)
-          const newPOStatus = isFullyReceived ? 'received' : 'partially_received'
+        targetReceiptId = editReceiptId
+        setAlertMsg({ type: 'success', text: 'Đã cập nhật phiếu nháp. Đang chuyển tới trang chi tiết...' })
+      } else {
+        // ── TẠO MỚI phiếu nháp ──
+        const randomId = Math.floor(100000 + Math.random() * 900000)
+        const receiptCode = `GR-${randomId}`
 
-          const { error: poStatusErr } = await supabase
-            .from('purchase_orders')
-            .update({ status: newPOStatus, updated_at: new Date().toISOString() })
-            .eq('id', selectedPOId)
+        const { data: gr, error: grErr } = await supabase
+          .from('goods_receipts')
+          .insert([{
+            receipt_code: receiptCode,
+            po_id: realPoId,
+            supplier_id: supplierId,
+            warehouse_id: targetWarehouse,
+            receipt_date: receiptDate,
+            total_amount: totalWithVat,
+            received_by: receivedById,
+            notes: noteText
+            // status mặc định 'draft' (DB) — hàng CHƯA vào kho cho tới khi hoàn thành
+          }])
+          .select()
+          .single()
 
-          if (poStatusErr) throw poStatusErr
+        if (grErr) {
+          console.error('[GoodsReceipt] INSERT goods_receipts error:', grErr)
+          if (grErr.code === '42501' || grErr.message?.includes('row-level security')) {
+            throw new Error('Bạn không có quyền nhập kho. Vui lòng liên hệ quản trị viên để được cấp quyền warehouse_keeper hoặc branch_manager.')
+          }
+          throw grErr
         }
+
+        const { error: grLinesErr } = await supabase.from('goods_receipt_lines').insert(buildLines(gr.id))
+        if (grLinesErr) throw grLinesErr
+
+        targetReceiptId = gr.id
+        setAlertMsg({ type: 'success', text: `Đã tạo phiếu nháp ${receiptCode}. Chờ Admin duyệt trước khi nhập kho.` })
       }
 
-      setAlertMsg({
-        type: 'success',
-        text: `Nhập kho thành công! Đã tạo phiếu kiểm kho ${receiptCode}.`
-      })
-
-      // Redirect to inventory overview after a short delay
+      // Điều hướng tới trang chi tiết để duyệt / hoàn thành
       setTimeout(() => {
-        navigate('/inventory')
-      }, 1500)
+        navigate(`/goods-receipts/${targetReceiptId}`)
+      }, 1200)
 
     } catch (err: any) {
-      console.error('Error completing goods receipt:', err)
-      setAlertMsg({ type: 'error', text: 'Lỗi hoàn tất nhập kho: ' + err.message })
+      console.error('Error saving goods receipt draft:', err)
+      setAlertMsg({ type: 'error', text: 'Lỗi lưu phiếu nhập: ' + err.message })
     } finally {
       setSubmitting(false)
     }
@@ -912,7 +996,7 @@ export default function GoodsReceiptFormPage() {
                     className="h-9 px-5 bg-blue-500 text-white font-semibold text-body-md rounded-lg hover:bg-blue-600 active:scale-95 transition-all shadow-md disabled:opacity-50 flex items-center gap-1.5"
                   >
                     <Save size={15} />
-                    <span>{submitting ? 'Đang xử lý...' : 'Lưu & Nhập kho'}</span>
+                    <span>{submitting ? 'Đang xử lý...' : (isEditMode ? 'Cập nhật phiếu nháp' : 'Lưu phiếu nháp')}</span>
                   </button>
                 </div>
               </div>
@@ -1597,7 +1681,7 @@ export default function GoodsReceiptFormPage() {
                       className="h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-md flex items-center justify-center gap-2 disabled:opacity-50 transition-all active:scale-95"
                     >
                       <Save size={16} />
-                      <span>{submitting ? 'Đang lưu...' : 'Hoàn tất nhập kho'}</span>
+                      <span>{submitting ? 'Đang lưu...' : (isEditMode ? 'Cập nhật phiếu nháp' : 'Lưu phiếu nháp')}</span>
                     </button>
                   </div>
                 </div>

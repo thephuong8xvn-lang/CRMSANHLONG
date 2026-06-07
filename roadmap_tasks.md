@@ -938,6 +938,29 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 
 ---
 
+### 📦 Phiên 2026-06-05 — Luồng DUYỆT phiếu nhập kho + sửa UI Inventory + audit cap-1000
+
+**1) Luồng duyệt phiếu nhập kho (giống duyệt đơn giao hàng)** — `[HOÀN THÀNH — đã apply remote ✅]`
+- **Vấn đề cũ (toàn vẹn dữ liệu)**: `goods_receipts` không có `status`; trigger `trg_receipt_lines_create_lot` (AFTER INSERT) tạo `stock_lots` NGAY khi tạo phiếu → hàng vào kho tức thì, không kiểm soát.
+- **Migration `20260619000000_goods_receipt_approval.sql`** (apply remote qua Management API + verify + reload schema):
+  - Thêm `goods_receipts.status` (draft/verified/completed/cancelled) + `verified_by/at`, `completed_by/at` + index. **Backfill 34 phiếu cũ → completed** (đã vào kho theo mô hình cũ, không xử lý lại).
+  - **GỠ trigger** `trg_receipt_lines_create_lot` → tồn kho chỉ sinh tại RPC hoàn thành.
+  - **4 RPC `SECURITY DEFINER`**: `fn_verify_goods_receipt` (admin/ceo: draft→verified), `fn_complete_goods_receipt` (người lập HOẶC admin: verified→completed, tạo lô+thẻ kho+giá vốn+cập nhật PO, atomic/idempotent), `fn_cancel_goods_receipt`, `fn_reopen_goods_receipt` (admin: verified→draft).
+  - **RLS bổ sung**: người lập sửa/xóa/thêm trên phiếu NHÁP của chính mình (`received_by=auth.uid() AND status='draft'`).
+- **Frontend**:
+  - `GoodsReceiptFormPage`: tạo phiếu = **lưu nháp** (status draft, hàng CHƯA vào kho), bỏ cập nhật PO ở client (đưa vào RPC hoàn thành); thêm **chế độ sửa** (`?id=`) nạp lại phiếu nháp cho sửa toàn bộ (NCC/kho/ngày/VAT/dòng), lưu = update header + thay dòng; sau lưu → điều hướng trang chi tiết.
+  - **`GoodsReceiptDetailPage.tsx` (mới)** + route `/goods-receipts/:id`: stepper Nháp→Đã duyệt→Hoàn thành; nút theo trạng thái+quyền (Sửa/Hủy/Duyệt/Hoàn thành/Trả về nháp); embed profiles phải chỉ FK rõ (`!goods_receipts_*_fkey`) vì 3 FK→profiles.
+  - `InventoryPage` tab Phiếu nhập: badge trạng thái (desktop+mobile), query thêm `status` + disambiguate `profile:profiles!goods_receipts_received_by_fkey`, click → trang chi tiết.
+
+**2) Sửa UI Inventory (lỗi vỡ chữ)** — `[HOÀN THÀNH]`
+- 3 modal trong `InventoryPage` (Chi tiết chuyển kho, Chi tiết phiếu nhập, Chi tiết trả NCC) bị bảng nhồi trong modal hẹp (`max-w-2xl/3xl`) → tên SP vỡ dọc từng chữ. Sửa: nới `max-w-4xl` + bảng `min-w-[...]` + `overflow-x-auto` (cuộn ngang) + `whitespace-nowrap` cột số + `break-words` cột tên. Gỡ class chết `font-vietnamese`.
+
+**3) Audit cap-1000 + SmartSearchSelect** — `[ĐÃ ĐẠT CHUẨN, KHÔNG CẦN SỬA]`
+- Rà soát các picker trọng yếu: **đều đã** `fetchAllRows` (không rớt SP/KH 1001+) **và** search thông minh: PurchaseOrderFormPage ✓, OrderEditModal ✓, CashbookPage (thu nợ KH) ✓, HerdProjectForm/Detail ✓, PriceListPage (lưới+search riêng) ✓. Bonus đã fix sẵn: CustomerMapPage, PipelinePage. → Phần cap-1000 ở key pickers coi như xong từ session trước.
+- `tsc --noEmit` PASS 0 lỗi.
+
+---
+
 ### 📄 Phiên 2026-05-31 (tiếp) — Xuất file công nợ (sao kê .xlsx giống KiotViet)
 
 **Đã làm (verify: tsc EXIT=0, build ✓):**
@@ -1256,3 +1279,19 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Nguyên nhân thật:** đây là KẼ HỞ DỮ LIỆU — các SP đó được bán (qua đơn/POS) nhưng chưa bao giờ nhập kho có giá, cũng chưa khai cost_price ở bảng giá. Tab "Top 100 tỉ lệ LN" sort margin DESC nên các SP 0-cost (100%) nổi lên đầu → gây hiểu nhầm cả báo cáo sai.
 - **Sửa (minh bạch hóa, KHÔNG bịa số):** `ProfitReportPage.tsx` — dòng có `revenue>0 && cogs=0` hiển thị badge amber **"Thiếu giá vốn"** + ô giá vốn "Chưa có giá vốn" + lợi nhuận màu amber, thay vì badge xanh 100% gây hiểu nhầm. Footnote giải thích. `tsc -b`+build PASS.
 - **Hành động cho user (nghiệp vụ):** nhập kho có giá cho các SP đó HOẶC khai cost_price ở bảng giá GIA-LE → COGS sẽ tự đúng (view đã fallback về lô mới nhất / bảng giá). Không cần sửa code thêm.
+
+### 🐛🔒 2026-06-07 — Phiếu "Hoàn tất" nhưng tồn kho = 0 + khoá toàn vẹn status (gốc rễ)
+
+**Bối cảnh:** User báo: danh sách phiếu nhập "Hoàn tất" nhưng tồn kho = 0; phiếu nháp hiển thị "đã duyệt" dù chưa duyệt; SP vừa nhập không có lô. Yêu cầu kiểm tra toàn vẹn dữ liệu, phân quyền, bảo mật, UX.
+
+- **Gốc rễ (xác minh trên DB thật `gdotgcrtivjdpkcchrro`):** Migration duyệt `20260619000000` ĐÃ apply remote (gỡ trigger `trg_receipt_lines_create_lot` → kho chỉ sinh qua RPC `fn_complete_goods_receipt`). NHƯNG frontend live (commit `c8791fb`, mục 2026-06-06 ở trên) vẫn **INSERT thẳng `status:'completed'`** → phiếu "Hoàn tất" mà KHÔNG chạy RPC → **không stock_lots/stock_movements → tồn = 0**. Đây là mâu thuẫn giữa fix DB (luồng duyệt) và fix frontend trước đó (auto-complete) — hai hướng ngược nhau.
+  - 4 phiếu dính: `GR-879217`, `GR-532466`, `GR-752693` (06/06) + `GR-837193` (**07/06 → lỗi vẫn đang sinh phiếu hỏng**). Dấu hiệu: `status=completed`, `completed_at=NULL`, không lô/thẻ kho. (34 phiếu cũ tạo trước khi gỡ trigger vẫn có kho đủ.)
+- **Lỗ hổng bảo mật (xác minh pg_policy):** RLS `goods_receipts` KHÔNG ràng buộc `status`: `receipts_insert_warehouse` cho INSERT status bất kỳ; `receipts_update_own_draft` WITH CHECK chỉ kiểm `received_by` (người lập tự nâng draft→completed); `receipts_update_warehouse` không gate status. → Luồng duyệt **bypass hoàn toàn từ client** (anon key public). Workflow duyệt chỉ là "khuyến nghị".
+- **Đã làm — Migration `20260622000000_harden_receipt_status.sql` (ĐÃ apply remote qua Management API, verify OK):**
+  1. **Guard** `fn_guard_receipt_status` (BEFORE INSERT/UPDATE): INSERT **ép `status='draft'`** + xoá cờ verified/completed (an toàn deploy — frontend cũ vẫn tạo phiếu được, chỉ ra draft, KHÔNG lỗi); UPDATE đổi status trực tiếp **RAISE EXCEPTION**. Miễn trừ qua cờ phiên `app.receipt_rpc='on'`.
+  2. 4 RPC `fn_verify/complete/cancel/reopen_goods_receipt` thêm `PERFORM set_config('app.receipt_rpc','on',true)` → CHỈ RPC (có kiểm quyền: admin duyệt; người lập/admin hoàn thành) mới đổi được status.
+  3. **Sửa dữ liệu:** 4 phiếu hỏng → trả về `'verified'` (user chọn phương án này thay vì sinh kho tự động) → người lập/Admin bấm **Hoàn thành** trên UI mới → kho sinh qua RPC đúng quy trình. Verify: `completed_no_stock_remaining = 0`; guard chặn UPDATE status trực tiếp OK.
+- **Frontend (cần COMMIT + DEPLOY):** working-tree `GoodsReceiptFormPage` đã lưu `draft` (bỏ `status:'completed'`); `GoodsReceiptDetailPage.tsx` mới (stepper + nút duyệt/hoàn thành/huỷ/trả-nháp theo quyền); route `/goods-receipts/:id` đã có. Sửa `InventoryPage:960` fallback `|| 'completed'` → `|| 'draft'`. `npm run build` PASS.
+- **Công nợ NCC — ĐÃ sửa (user chọn "ghi nợ khi Hoàn thành").** Migration `20260623000000_supplier_debt_on_completion.sql` (đã apply remote): `fn_supplier_debt_on_receipt` viết lại theo mô hình "đóng góp công nợ = total_amount CHỈ khi status='completed'", điều chỉnh theo chênh lệch ở insert/update/đổi-NCC/sửa-total/delete → huỷ phiếu tự hoàn nợ, nháp/verified không tính nợ. Đối soát 1 lần: `current_debt_payable -= Σ(total_amount phiếu không-completed)` (chỉ sửa sai sót trigger cũ, giữ nguyên thanh toán & số dư đầu kỳ). Verify: MAVIN 4.833.210 → 2.779.460 = đúng tổng phiếu completed (loại nợ ảo 2.053.750 của phiếu huỷ GR-532466).
+- **Nghiệm thu thực tế (user tự thao tác trong lúc fix):** GR-879217/752693/837193 → bấm Hoàn thành → có lô + thẻ kho (kho sinh qua RPC ✓); GR-532466 → Huỷ. Kết quả: 37 completed (đều có kho), 1 cancelled, 0 phiếu completed-thiếu-kho. Frontend do user tự commit & deploy.
+- **Bài học:** khi DB và frontend cùng đụng 1 luồng nhưng deploy lệch pha (DB đã có luồng duyệt, frontend còn auto-complete) → bug ngầm. State machine quan trọng (status phiếu) PHẢI khoá ở tầng DB (trigger/RPC), KHÔNG dựa vào client tự giác — vì anon key public, RLS thiếu ràng buộc = bypass được.
