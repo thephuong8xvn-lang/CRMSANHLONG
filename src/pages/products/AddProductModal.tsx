@@ -22,7 +22,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
   const [brandId, setBrandId] = useState('')
   const [storageCondition, setStorageCondition] = useState('')
   const [usageInstructions, setUsageInstructions] = useState('')
-  const [isLotManaged, setIsLotManaged] = useState(false)
+  const [isLotManaged, setIsLotManaged] = useState(true)
   const [isActive, setIsActive] = useState(true)
   const [registrationNumber, setRegistrationNumber] = useState('')
   const [contraindications, setContraindications] = useState('')

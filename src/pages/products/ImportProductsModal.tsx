@@ -214,7 +214,7 @@ export default function ImportProductsModal({
             unit: 'lọ',
             category_id: defaultCategoryId,
             brand_id: defaultBrandId,
-            is_lot_managed: false,
+            is_lot_managed: true,
             is_active: true,
             image_urls: []
           })
