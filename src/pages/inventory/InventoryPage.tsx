@@ -21,11 +21,14 @@ import {
 import Layout from '../../components/Layout'
 import { Skeleton } from '../../components/Skeleton'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
+import Pagination from '../../components/Pagination'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import LotEditModal, { type EditableLot } from './LotEditModal'
 
+// Phân trang client-side: 20 dòng / trang cho mọi bảng trong Kho
+const PAGE_SIZE = 20
 
 interface StockLot {
   id: string
@@ -116,6 +119,14 @@ export default function InventoryPage() {
   const { profile, userRole } = useAuth()
   const isAdmin = userRole?.code === 'admin' || userRole?.code === 'ceo'
   const [activeTab, setActiveTab] = useState<'lots' | 'pos' | 'receipts' | 'transfers' | 'purchase_returns' | 'settings'>('lots')
+
+  // Phân trang theo từng tab (client-side, 20 dòng/trang)
+  const [lotsPage, setLotsPage] = useState(1)
+  const [posPage, setPosPage] = useState(1)
+  const [receiptsPage, setReceiptsPage] = useState(1)
+  const [transfersPage, setTransfersPage] = useState(1)
+  const [returnsPage, setReturnsPage] = useState(1)
+  const [settingsPage, setSettingsPage] = useState(1)
 
   // Admin sửa/xóa lô hàng
   const [editingLot, setEditingLot] = useState<EditableLot | null>(null)
@@ -1160,6 +1171,22 @@ export default function InventoryPage() {
     )
   }), [receipts, debouncedReceiptSearch])
 
+  // ── Phân trang client-side (20 dòng/trang) ──
+  // Reset về trang 1 mỗi khi danh sách (đã lọc) thay đổi → không bao giờ ở trang ngoài phạm vi.
+  useEffect(() => { setLotsPage(1) }, [filteredLots])
+  useEffect(() => { setPosPage(1) }, [filteredPOs])
+  useEffect(() => { setReceiptsPage(1) }, [filteredReceipts])
+  useEffect(() => { setTransfersPage(1) }, [filteredTransfers])
+  useEffect(() => { setReturnsPage(1) }, [filteredReturns])
+  useEffect(() => { setSettingsPage(1) }, [invSettings])
+
+  const pagedLots = useMemo(() => filteredLots.slice((lotsPage - 1) * PAGE_SIZE, lotsPage * PAGE_SIZE), [filteredLots, lotsPage])
+  const pagedPOs = useMemo(() => filteredPOs.slice((posPage - 1) * PAGE_SIZE, posPage * PAGE_SIZE), [filteredPOs, posPage])
+  const pagedReceipts = useMemo(() => filteredReceipts.slice((receiptsPage - 1) * PAGE_SIZE, receiptsPage * PAGE_SIZE), [filteredReceipts, receiptsPage])
+  const pagedTransfers = useMemo(() => filteredTransfers.slice((transfersPage - 1) * PAGE_SIZE, transfersPage * PAGE_SIZE), [filteredTransfers, transfersPage])
+  const pagedReturns = useMemo(() => filteredReturns.slice((returnsPage - 1) * PAGE_SIZE, returnsPage * PAGE_SIZE), [filteredReturns, returnsPage])
+  const pagedSettings = useMemo(() => invSettings.slice((settingsPage - 1) * PAGE_SIZE, settingsPage * PAGE_SIZE), [invSettings, settingsPage])
+
   const reloadInvSettings = async () => {
     let query = supabase
       .from('inventory_settings')
@@ -1495,7 +1522,7 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {filteredLots.map((lot) => {
+                      {pagedLots.map((lot) => {
                         const isExpired = lot.expiry_date && new Date(lot.expiry_date).getTime() < new Date().getTime()
                         const isNearExpiry = lot.expiry_date && !isExpired && 
                           (new Date(lot.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) <= 30
@@ -1574,7 +1601,7 @@ export default function InventoryPage() {
               {/* Mobile Card List for Stock Lots */}
               {!loading && (
                 <div className="block md:hidden space-y-4">
-                  {filteredLots.map((lot) => {
+                  {pagedLots.map((lot) => {
                     const isExpired = lot.expiry_date && new Date(lot.expiry_date).getTime() < new Date().getTime()
                     const isNearExpiry = lot.expiry_date && !isExpired && 
                       (new Date(lot.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) <= 30
@@ -1655,6 +1682,7 @@ export default function InventoryPage() {
                   })}
                 </div>
               )}
+              <Pagination currentPage={lotsPage} totalItems={filteredLots.length} pageSize={PAGE_SIZE} onPageChange={setLotsPage} itemLabel="lô hàng" />
             </div>
           )}
 
@@ -1711,7 +1739,7 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {filteredPOs.map((po) => (
+                      {pagedPOs.map((po) => (
                         <tr key={po.id} className="hover:bg-gray-25/50 transition-colors">
                           <td className="px-6 py-4 font-mono font-bold text-blue-500">{po.po_code}</td>
                           <td className="px-6 py-4 font-semibold text-gray-800">{po.supplier.name}</td>
@@ -1757,7 +1785,7 @@ export default function InventoryPage() {
               {/* Mobile Card List for Purchase Orders */}
               {!loading && (
                 <div className="block md:hidden space-y-4">
-                  {filteredPOs.map((po) => (
+                  {pagedPOs.map((po) => (
                     <div key={po.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
                       <div className="flex justify-between items-start gap-2">
                         <div>
@@ -1810,6 +1838,7 @@ export default function InventoryPage() {
                   ))}
                 </div>
               )}
+              <Pagination currentPage={posPage} totalItems={filteredPOs.length} pageSize={PAGE_SIZE} onPageChange={setPosPage} itemLabel="đơn đặt hàng" />
             </div>
           )}
 
@@ -1854,7 +1883,7 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {filteredReceipts.map((gr) => (
+                      {pagedReceipts.map((gr) => (
                         <tr key={gr.id} className="hover:bg-gray-25/50 transition-colors">
                           <td className="px-6 py-4">
                             <span className="font-mono font-bold text-blue-500 block">{gr.receipt_code}</span>
@@ -1901,7 +1930,7 @@ export default function InventoryPage() {
               {/* Mobile Card List for Goods Receipts */}
               {!loading && (
                 <div className="block md:hidden space-y-4">
-                  {filteredReceipts.map((gr) => (
+                  {pagedReceipts.map((gr) => (
                     <div key={gr.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
                       <div className="flex justify-between items-start gap-2">
                         <div>
@@ -1957,6 +1986,7 @@ export default function InventoryPage() {
                   ))}
                 </div>
               )}
+              <Pagination currentPage={receiptsPage} totalItems={filteredReceipts.length} pageSize={PAGE_SIZE} onPageChange={setReceiptsPage} itemLabel="phiếu nhập" />
             </div>
           )}
 
@@ -2009,7 +2039,7 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {filteredTransfers.map((t) => (
+                      {pagedTransfers.map((t) => (
                         <tr key={t.id} className="hover:bg-gray-25/50 transition-colors">
                           <td className="px-6 py-4 font-mono font-bold text-blue-500">{t.transfer_code}</td>
                           <td className="px-6 py-4 font-semibold text-gray-800">{t.from_wh?.name || 'Kho nguồn'}</td>
@@ -2058,7 +2088,7 @@ export default function InventoryPage() {
               {/* Mobile Card List for Stock Transfers */}
               {!loading && (
                 <div className="block md:hidden space-y-4">
-                  {filteredTransfers.map((t) => (
+                  {pagedTransfers.map((t) => (
                     <div key={t.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
                       <div className="flex justify-between items-start gap-2">
                         <div>
@@ -2111,6 +2141,7 @@ export default function InventoryPage() {
                   ))}
                 </div>
               )}
+              <Pagination currentPage={transfersPage} totalItems={filteredTransfers.length} pageSize={PAGE_SIZE} onPageChange={setTransfersPage} itemLabel="phiếu chuyển" />
             </div>
           )}
 
@@ -2162,7 +2193,7 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {filteredReturns.map((r) => (
+                      {pagedReturns.map((r) => (
                         <tr key={r.id} className="hover:bg-gray-25/50 transition-colors">
                           <td className="px-6 py-4 font-mono font-bold text-blue-500">{r.return_code}</td>
                           <td className="px-6 py-4 font-semibold text-gray-800">{r.supplier?.name || 'Nhà cung cấp'}</td>
@@ -2210,7 +2241,7 @@ export default function InventoryPage() {
               {/* Mobile Card List for Purchase Returns */}
               {!loading && (
                 <div className="block md:hidden space-y-4">
-                  {filteredReturns.map((r) => (
+                  {pagedReturns.map((r) => (
                     <div key={r.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
                       <div className="flex justify-between items-start gap-2">
                         <div>
@@ -2265,6 +2296,7 @@ export default function InventoryPage() {
                   ))}
                 </div>
               )}
+              <Pagination currentPage={returnsPage} totalItems={filteredReturns.length} pageSize={PAGE_SIZE} onPageChange={setReturnsPage} itemLabel="phiếu trả" />
             </div>
           )}
 
@@ -2307,7 +2339,7 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {invSettings.map((set) => (
+                      {pagedSettings.map((set) => (
                         <tr key={set.id} className="hover:bg-gray-25/50 transition-colors">
                           <td className="px-6 py-4">
                             <div>
@@ -2345,7 +2377,7 @@ export default function InventoryPage() {
               {/* Mobile Card List for Safety Stock Settings */}
               {invSettings.length > 0 && (
                 <div className="block md:hidden space-y-4">
-                  {invSettings.map((set) => (
+                  {pagedSettings.map((set) => (
                     <div key={set.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
                       <div className="flex justify-between items-start gap-2">
                         <div>
@@ -2390,6 +2422,7 @@ export default function InventoryPage() {
                   ))}
                 </div>
               )}
+              <Pagination currentPage={settingsPage} totalItems={invSettings.length} pageSize={PAGE_SIZE} onPageChange={setSettingsPage} itemLabel="định mức" />
             </div>
           )}
         </div>

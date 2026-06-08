@@ -1331,3 +1331,12 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Frontend `POSPage.tsx` (cần COMMIT + DEPLOY):** `fetchStockData` truy vấn tồn theo **kho chính** (`mainWh.id`) thay vì cộng mọi kho → "Tồn" hiển thị khớp số backend enforce; memo `oversellLines` (gộp giỏ theo product vs `productStock`); `handlePayment` chặn cả 2 mode khi có oversell; nút `#btn-pos-pay` `disabled` thêm `oversellLines.length>0`; banner đỏ liệt kê SP thiếu trên nút.
 - **Nghiệm thu remote (tx + savepoint rollback, user authenticated qua jwt claims):** tồn 0 bán → RAISE "Không đủ tồn kho: ... (cần 2, còn 0)"; tồn đủ → tạo nháp OK (rollback, leaked_order=0); thiếu kho → RAISE "Chưa chọn kho xuất hàng". `tsc -b`+`vite build` PASS.
 - **Toàn vẹn/bảo mật:** chặn ở backend (không bypass qua API), `fn_pos_build_draft` REVOKE PUBLIC; phân quyền không đổi (vẫn `orders.create`). Lưu ý: đơn nháp không giữ chỗ tồn (reserve chỉ khi xác nhận FEFO) → 2 nháp có thể cùng qua check rồi 1 kẹt lúc xác nhận; bảo đảm cứng cuối cùng vẫn ở bước xác nhận.
+
+---
+
+## 2026-06-08 (tiếp) — Kho: phân trang 20 dòng/trang toàn bộ bảng
+
+- **Frontend-only, KHÔNG migration. `tsc -b` + `vite build` PASS.**
+- **Component mới `src/components/Pagination.tsx`** (dùng chung): controlled (`currentPage`/`totalItems`/`pageSize`/`onPageChange`/`itemLabel`), hiển thị "Hiển thị X-Y trên tổng số Z <đơn vị>" + nút Trước/số trang/Sau (mẫu lấy từ `ProductListPage`); ẩn khi rỗng, nút trang chỉ hiện khi >1 trang.
+- **`InventoryPage.tsx`:** `PAGE_SIZE=20`; thêm 6 state trang + 6 `pagedX` (slice client-side) cho cả 6 tab (Tồn kho/Đơn đặt hàng/Phiếu nhập/Chuyển kho/Trả NCC/Định mức); thay 12 chỗ `.map` (desktop + mobile mỗi tab) sang `pagedX`; chèn `<Pagination>` cuối mỗi tab. Reset trang về 1 khi danh sách (đã lọc) đổi (`useEffect` theo `filteredX`/`invSettings`) → không kẹt trang ngoài phạm vi.
+- **Phạm vi:** phân trang client-side (dữ liệu đã nạp sẵn trong state — lots dùng `fetchAllRows`, các tab khác `.limit(100)`). Empty-state vẫn theo `filteredX.length`. Không đổi RLS/phân quyền/truy vấn.
