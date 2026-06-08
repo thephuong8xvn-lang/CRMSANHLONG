@@ -484,31 +484,36 @@ export default function POSPage() {
         }
       }
 
-      let whIds: string[] = []
+      // Kho xuất hàng của đơn = kho chính chi nhánh → tồn hiển thị/kiểm tra
+      // phải khớp ĐÚNG kho này (nơi hệ thống thực trừ kho khi xác nhận đơn).
+      let mainWhId: string | null = null
       if (currentBranchId) {
         const { data: whData } = await supabase
           .from('warehouses')
           .select('id, type')
           .eq('branch_id', currentBranchId)
           .eq('is_active', true)
-        
+
         if (whData && whData.length > 0) {
           const mainWh = whData.find((w: any) => w.type === 'main') || whData[0]
           if (mainWh) {
-            setSelectedWarehouseId((mainWh as any).id)
+            mainWhId = (mainWh as any).id
+            setSelectedWarehouseId(mainWhId as string)
           }
-          whIds = whData.map((w: any) => w.id)
         }
       }
 
-      let stockQuery = supabase
+      // Không xác định được kho chính → để tồn rỗng (không cho POS bán mù).
+      if (!mainWhId) {
+        setProductStock({})
+        return
+      }
+
+      const stockQuery = supabase
         .from('stock_lots')
         .select('product_id, quantity_on_hand, quantity_reserved')
         .eq('status', 'active')
-
-      if (whIds.length > 0) {
-        stockQuery = stockQuery.in('warehouse_id', whIds)
-      }
+        .eq('warehouse_id', mainWhId)
 
       const { data: stockData, error } = await stockQuery
       if (!error && stockData) {
@@ -869,6 +874,23 @@ export default function POSPage() {
   const isCreditLimitExceeded = !!selectedCustomer && debtAmount > 0 &&
     (customerDebt + debtAmount > selectedCustomer.credit_limit)
 
+  // Các SP trong giỏ vượt tồn kho chính (gộp mọi dòng cùng SP, gồm quà tặng/KM).
+  // Khớp đúng số tồn backend enforce ở fn_pos_build_draft → chặn bán âm cả 2 mode.
+  const oversellLines = useMemo(() => {
+    const reqByProduct = new Map<string, { name: string; req: number }>()
+    cart.forEach(item => {
+      const cur = reqByProduct.get(item.product.id)
+      if (cur) cur.req += item.quantity
+      else reqByProduct.set(item.product.id, { name: item.product.name, req: item.quantity })
+    })
+    const out: { name: string; req: number; avail: number; short: number }[] = []
+    reqByProduct.forEach(({ name, req }, id) => {
+      const avail = productStock[id] || 0
+      if (req > avail) out.push({ name, req, avail, short: req - avail })
+    })
+    return out
+  }, [cart, productStock])
+
   // Autocomplete products
   const searchResults = useMemo(() => products.filter(p => {
     if (!debouncedSearch.trim()) return false
@@ -1040,6 +1062,14 @@ export default function POSPage() {
     }
     if (!profile?.id) {
       setAlertMsg({ type: 'error', text: 'Lỗi tài khoản. Vui lòng đăng nhập lại.' })
+      return
+    }
+    // Chặn cứng bán âm tồn kho (cả Bán nhanh & Bán giao hàng) — khớp check server.
+    if (oversellLines.length > 0) {
+      setAlertMsg({
+        type: 'error',
+        text: 'Không đủ tồn kho: ' + oversellLines.map(l => `${l.name} (cần ${l.req.toLocaleString('vi-VN')}, còn ${l.avail.toLocaleString('vi-VN')})`).join('; ')
+      })
       return
     }
     // Chặn vượt hạn mức khi bán nhanh có phát sinh ghi nợ
@@ -1898,12 +1928,25 @@ export default function POSPage() {
                 </div>
               )}
 
+              {/* Cảnh báo thiếu tồn kho — chặn bán cả 2 chế độ */}
+              {oversellLines.length > 0 && (
+                <div className="pt-1">
+                  <div className="flex items-start gap-1.5 p-2 bg-red-50 text-red-800 rounded border border-red-100">
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <div className="text-[10px] leading-tight">
+                      <span className="font-bold">Không đủ tồn kho!</span>{' '}
+                      {oversellLines.map(l => `${l.name} (cần ${l.req.toLocaleString('vi-VN')}, còn ${l.avail.toLocaleString('vi-VN')})`).join('; ')}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Nút thanh toán / tạo đơn — thích ứng theo chế độ bán */}
               <div className="pt-2 border-t border-gray-200/60">
                 <button
                   id="btn-pos-pay"
                   onClick={handlePayment}
-                  disabled={submitting || cart.length === 0 || (salesMode === 'quick' && isCreditLimitExceeded)}
+                  disabled={submitting || cart.length === 0 || oversellLines.length > 0 || (salesMode === 'quick' && isCreditLimitExceeded)}
                   className={`w-full h-10 rounded font-bold text-[13px] flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all shadow disabled:opacity-50 text-white ${
                     salesMode === 'delivery' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'
                   }`}

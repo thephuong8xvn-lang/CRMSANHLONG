@@ -1318,3 +1318,16 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
   - `SystemSettingsPage` (tab Kho): toggle **Cảnh báo (soft) / Chặn cứng (hard)** ghi `system_settings` (chỉ admin) — lật khi dữ liệu kho đã sạch.
 - **Nghiệm thu remote (transaction + ROLLBACK trên đơn DH-2026-00030, 4 dòng):** soft → đơn qua, `allocs=2` (SP có lô trừ kho), `logged=2` (SP thiếu ghi log); hard → RAISE "Không đủ tồn kho... cần 1.000, còn 0.000"; guard chặn UPDATE status trực tiếp; mode persist=soft. `tsc -b`+`vite build` PASS.
 - **Việc còn cho user:** chạy ở **soft** một thời gian, nhập kho bù theo `stock_oversell_log`; khi sạch → lật **hard** ở tab Kho. (Tuỳ chọn tương lai: công cụ nhập tồn đầu kỳ hàng loạt.)
+
+---
+
+## 2026-06-08 — POS: chặn cứng bán khi tồn < số lượng bán (cả 2 luồng)
+
+**Bối cảnh:** User yêu cầu ở POS không cho bán nếu tồn dưới số lượng bán (vd tồn 0 bán 1 → lỗi; tồn 5 bán 6 → lỗi). Trước đó luồng **Bán giao hàng** (`fn_create_delivery_draft`) chỉ tạo đơn nháp KHÔNG kiểm tồn; việc kiểm/trừ tồn dồn về bước Admin xác nhận và còn phụ thuộc `stock_control_mode` (mặc định soft → vẫn cho bán âm). Frontend chỉ cảnh báo mềm "⚠ thiếu" nhưng vẫn cho bấm.
+
+**Quyết định user:** chặn CỨNG cho **cả Bán giao hàng + Bán nhanh** (độc lập soft/hard toàn cục); tồn dùng để kiểm tra + hiển thị = **kho chính chi nhánh** (`warehouse_id`, khớp nơi thực trừ kho).
+
+- **Migration `20260625000000_pos_block_oversell.sql` (ĐÃ apply remote + verify OK):** sửa thân `fn_pos_build_draft` — chokepoint dùng chung của `fn_pos_quick_sale` và `fn_create_delivery_draft`. Thêm bước kiểm tồn HARD độc lập `stock_control_mode`: yêu cầu `warehouse_id` NOT NULL (else RAISE "Chưa chọn kho xuất hàng"); gộp theo product (gồm dòng quà tặng/KM), so tồn khả dụng (`quantity_on_hand - quantity_reserved`) tại kho đơn; thiếu → `RAISE 'Không đủ tồn kho: <SP> (cần X, còn Y)'` (dùng `trim_scale` bỏ số lẻ thừa) → rollback. Soft toàn cục VẪN áp cho các luồng xác nhận khác (đơn herd...).
+- **Frontend `POSPage.tsx` (cần COMMIT + DEPLOY):** `fetchStockData` truy vấn tồn theo **kho chính** (`mainWh.id`) thay vì cộng mọi kho → "Tồn" hiển thị khớp số backend enforce; memo `oversellLines` (gộp giỏ theo product vs `productStock`); `handlePayment` chặn cả 2 mode khi có oversell; nút `#btn-pos-pay` `disabled` thêm `oversellLines.length>0`; banner đỏ liệt kê SP thiếu trên nút.
+- **Nghiệm thu remote (tx + savepoint rollback, user authenticated qua jwt claims):** tồn 0 bán → RAISE "Không đủ tồn kho: ... (cần 2, còn 0)"; tồn đủ → tạo nháp OK (rollback, leaked_order=0); thiếu kho → RAISE "Chưa chọn kho xuất hàng". `tsc -b`+`vite build` PASS.
+- **Toàn vẹn/bảo mật:** chặn ở backend (không bypass qua API), `fn_pos_build_draft` REVOKE PUBLIC; phân quyền không đổi (vẫn `orders.create`). Lưu ý: đơn nháp không giữ chỗ tồn (reserve chỉ khi xác nhận FEFO) → 2 nháp có thể cùng qua check rồi 1 kẹt lúc xác nhận; bảo đảm cứng cuối cùng vẫn ở bước xác nhận.
