@@ -1340,3 +1340,116 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Component mới `src/components/Pagination.tsx`** (dùng chung): controlled (`currentPage`/`totalItems`/`pageSize`/`onPageChange`/`itemLabel`), hiển thị "Hiển thị X-Y trên tổng số Z <đơn vị>" + nút Trước/số trang/Sau (mẫu lấy từ `ProductListPage`); ẩn khi rỗng, nút trang chỉ hiện khi >1 trang.
 - **`InventoryPage.tsx`:** `PAGE_SIZE=20`; thêm 6 state trang + 6 `pagedX` (slice client-side) cho cả 6 tab (Tồn kho/Đơn đặt hàng/Phiếu nhập/Chuyển kho/Trả NCC/Định mức); thay 12 chỗ `.map` (desktop + mobile mỗi tab) sang `pagedX`; chèn `<Pagination>` cuối mỗi tab. Reset trang về 1 khi danh sách (đã lọc) đổi (`useEffect` theo `filteredX`/`invSettings`) → không kẹt trang ngoài phạm vi.
 - **Phạm vi:** phân trang client-side (dữ liệu đã nạp sẵn trong state — lots dùng `fetchAllRows`, các tab khác `.limit(100)`). Empty-state vẫn theo `filteredX.length`. Không đổi RLS/phân quyền/truy vấn.
+
+---
+
+## 2026-06-09 — Kho: nén bảng danh sách còn 1 dòng/phiếu (thuần UI)
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` PASS.** Chỉ sửa `src/pages/inventory/InventoryPage.tsx`.
+- **Bối cảnh (user báo qua ảnh tab Phiếu nhập kho):** mỗi phiếu chiếm 4-6 dòng → xem được ít, phải cuộn nhiều. Yêu cầu: hiển thị mỗi phiếu trên 1 dòng; CHỈ tối ưu giao diện, KHÔNG đổi chức năng.
+- **Gốc làm hàng cao:** (1) padding `px-6 py-4` lớn; (2) text tự xuống dòng — tên NCC/kho/người nhận dài wrap nhiều dòng; (3) trạng thái hiển thị TRÙNG 2 chỗ (badge dưới mã phiếu + cột "Trạng thái" riêng, nội dung lại không nhất quán).
+- **Đã làm (cả 6 tab desktop — user duyệt phạm vi toàn module + gộp trạng thái):**
+  - Nén mật độ `px-6 py-4` → `px-4 py-2.5` cho th/td.
+  - Chống wrap: cột tên (NCC/SP/kho) dùng `max-w-[...] truncate` + `title` (hover xem đủ); các cột ngắn (mã/ngày/người/tiền/trạng thái/hành động) thêm `whitespace-nowrap`.
+  - **Tab Phiếu nhập:** bỏ badge trạng thái trùng dưới mã phiếu → ô mã 1 dòng; gộp về 1 badge `RECEIPT_STATUS` (đủ 4 trạng thái Nháp/Đã duyệt/Hoàn thành/Đã hủy) ở cột "Trạng thái" (trước đó cột này chỉ phân biệt Hoàn tất/raw).
+- **Card mobile giữ nguyên** (đang phù hợp màn nhỏ). Trang chi tiết `GoodsReceiptDetailPage` đã tối ưu sẵn (stepper + grid + bảng `whitespace-nowrap`) — không sửa.
+- **Toàn vẹn/phân quyền/bảo mật KHÔNG đổi:** không đụng query/RPC/RLS/lọc branch (`warehouse.branch_id`)/gate `isAdmin`/phân trang 20 dòng/điều hướng. 100% là class Tailwind + cấu trúc JSX trình bày.
+
+---
+
+## 2026-06-09 (tiếp) — Kho: XÓA HẲN cuộn ngang bảng danh sách (table-fixed, thuần UI)
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` PASS.** Chỉ `src/pages/inventory/InventoryPage.tsx`.
+- **User báo:** sau khi nén 1 dòng/phiếu, bảng vẫn rộng hơn khung → còn thanh cuộn ngang, phải kéo qua mới thấy Ghi chú/Chi tiết → chậm thao tác. Yêu cầu xóa hẳn cuộn ngang.
+- **Kỹ thuật:** bỏ `overflow-x-auto` ở 6 wrapper bảng (→ `hidden md:block`); đổi mọi bảng sang **`table-fixed w-full`** (cột chia theo khung, nội dung dài tự cắt `…`); mỗi ô `truncate` + `title` (hover xem đủ); padding `px-4`→`px-3`; cột phụ (kho/ngày/người) `text-tiny`; badge `text-[10px]`. Đặt bề rộng cố định `w-[..px]` cho cột ngắn, để cột tên (NCC/SP/kho) co giãn.
+- **Tab Phiếu nhập (theo yêu cầu user):** header "Mã phiếu nhập"→**"Code"**, "Nhà cung cấp"→**"NCC"**; **bỏ cột "Hành động"**; **gán hyperlink** vào Code (button gọi `navigate('/goods-receipts/:id')` — đúng hàm nút "Chi tiết" cũ).
+- **Đồng bộ các tab khác:**
+  - **Chuyển kho / Trả NCC:** "Mã yêu cầu"/"Mã phiếu"→**"Code"** (button mở modal chi tiết — chuyển onClick từ cột Hành động sang Code); **bỏ cột Hành động**; Trả NCC "Nhà cung cấp"→"NCC".
+  - **PO:** "Mã đơn PO"→"Code", "Nhà cung cấp"→"NCC"; **GIỮ nút "Nhập kho"** (chức năng tạo phiếu nhập từ PO — PO không có trang chi tiết).
+  - **Tồn kho theo lô / Định mức:** `table-fixed` + rút gọn header dài (HSD/Giá vốn/Tồn KD); **GIỮ cột Thao tác** (Sửa/Xóa lô, Sửa/Xóa định mức = chức năng — user duyệt giữ nguyên).
+- **Card mobile giữ nguyên.** Modal chi tiết chuyển kho/trả NCC giữ nguyên (chỉ đổi nguồn mở từ Code).
+- **Toàn vẹn/phân quyền/bảo mật KHÔNG đổi:** không đụng query/RPC/RLS/lọc branch/gate isAdmin/phân trang 20 dòng/đích điều hướng. Nút Code gọi đúng hàm cũ. 100% class Tailwind + đổi vị trí onClick.
+
+---
+
+## 2026-06-09 (tiếp 2) — Kho/Phiếu nhập: bỏ cột Ghi chú, Ngày nhập kèm giờ, tab mặc định
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` PASS.** Chỉ `src/pages/inventory/InventoryPage.tsx`.
+- **Bỏ cột "Ghi chú"** ở bảng desktop tab Phiếu nhập (chiếm diện tích, ít tác dụng). Vẫn giữ `notes` trong query + card mobile.
+- **Cột "Ngày nhận" → "Ngày nhập"**, hiển thị **ngày + giờ** lấy từ `created_at` (TIMESTAMPTZ — "giờ nhập" thực tế; `receipt_date` là DATE không có giờ). Định dạng `dd/mm/yyyy HH:mm`. Đổi sắp xếp mặc định `.order('created_at', desc)` → phiếu nhập **mới nhất theo giờ lên đầu**. Thêm `created_at` vào select + interface + card mobile (nhãn + giờ).
+- **Tab mặc định khi mở /inventory = "Phiếu nhập kho"** (`useState` `activeTab` đổi `'lots'`→`'receipts'`). Nhờ vậy nút **"Về Kho hàng"** ở trang chi tiết (`navigate('/inventory')`) cũng quay về đúng tab Phiếu nhập kho.
+- **Toàn vẹn/phân quyền/bảo mật KHÔNG đổi:** chỉ đổi cột hiển thị + thứ tự sắp xếp + tab mặc định (state cục bộ). Không đụng RLS/lọc branch/RPC/phân trang. `created_at` đã có sẵn trong bảng.
+
+---
+
+## 2026-06-09 (tiếp 3) — Đơn hàng: bảng 1 dòng/đơn, xóa cuộn ngang (thuần UI)
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` PASS.** Chỉ `src/pages/orders/OrderListPage.tsx`.
+- Áp dụng cùng pattern như Kho: bỏ `overflow-x-auto` (→ `hidden md:block`); bảng `table-fixed w-full`; `px-6 py-4`→`px-4 py-2.5`; cột Mã đơn/Khách hàng/NV phụ trách `truncate`+`title`; Ngày tạo + Tổng giá trị `whitespace-nowrap`; đặt `w-[..px]` cho cột ngắn, cột Khách hàng co giãn.
+- **Badge** `renderStatusBadge`/`renderPaymentStatusBadge` thêm `whitespace-nowrap` → "Chưa thanh toán"/"Đã xác nhận" không còn wrap 2 dòng (thủ phạm chính làm hàng cao).
+- Cột "NV phụ trách": flex `min-w-0` + icon `shrink-0` + span `truncate` để tên dài không đẩy bảng.
+- Card mobile giữ nguyên. Toàn vẹn/phân quyền/bảo mật KHÔNG đổi (row vẫn onClick `navigate('/orders/:id')`; không đụng query/RLS/lọc/phân trang).
+
+---
+
+## 2026-06-09 (tiếp 4) — Đơn hàng: rút gọn header, fix đè cột, phân trang 20/trang
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` PASS.** Chỉ `src/pages/orders/OrderListPage.tsx`.
+- **Đổi header (theo user):** "Mã đơn hàng"→**Code**, "Khách hàng / Trang trại"→**Khách hàng**, "Ngày tạo"→**Time**, "Nhân viên phụ trách"→**NV**, "Tổng giá trị"→**Tổng**.
+- **Fix "đè lên nhau":** gốc lỗi = trong `table-fixed`, cột Time (`whitespace-nowrap`) hẹp (128px) → text "08:55 09/06/2026" TRÀN đè sang cột NV; Code 124px → cắt mất mã. **Sửa:** nới Code `w-[148px]`, Time `w-[150px]`, badge Thanh toán `w-[160px]`/Trạng thái `w-[150px]`; thêm `overflow-hidden` vào các ô (Time/NV/Tổng/badge) để KHÔNG bao giờ tràn đè ô bên cạnh; padding `px-4`→`px-3`.
+- **Phân trang 20 đơn/trang:** `itemsPerPage` 8→20 (client-side slice; data nạp đủ qua `fetchAllRows` rồi lọc+slice). Nút trang render theo `totalPages` (≈3 trang với lượng đơn hiện tại).
+- **Toàn vẹn/phân quyền/bảo mật KHÔNG đổi:** không đụng query/RLS/lọc branch (`branch_id`)/realtime/điều hướng. Row vẫn onClick `navigate('/orders/:id')`. Card mobile giữ nguyên.
+
+---
+
+## 2026-06-09 (tiếp 5) — Đơn hàng: trị tận gốc đè cột (spacer column + giảm font)
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` PASS.** Chỉ `src/pages/orders/OrderListPage.tsx`.
+- **Gốc rễ thật sự của đè cột:** trong `table-fixed w-full`, cột "Khách hàng" là cột CO GIÃN DUY NHẤT → nuốt toàn bộ chiều rộng dư (~600px) → các cột Time/NV/Thanh toán/Trạng thái giữ bề rộng nhỏ → nội dung cắt/đè + khoảng trống lớn giữa Khách hàng↔Time. (Lần trước chỉ thêm overflow-hidden = clip chứ chưa hết hẹp.)
+- **Sửa:** đặt bề rộng cố định cho CẢ 7 cột (Code150/KH320/Time120/NV108/Tổng116/TT140/TThái132) + thêm **1 cột trống cuối (spacer, auto width)** hút phần dư → cột dồn sát trái, thu hẹp khoảng cách, không cột nào bị bóp. Giảm **font 5 cột** Time/NV/Tổng/Thanh toán/Trạng thái → `text-[11px]`; badge `px-2 text-[11px] gap-1 icon11`. Padding 5 cột phải `px-2`.
+- **Bài học table-fixed (quan trọng):** muốn các cột "dồn trái + không bị cột flex nuốt chỗ" → đặt width cố định hết + 1 spacer cuối auto. Không để 1 cột flex giữa bảng độc chiếm slack.
+- Toàn vẹn/phân quyền/bảo mật KHÔNG đổi. Card mobile dùng chung badge (nay 11px — vẫn hợp lý).
+
+---
+
+## 2026-06-09 (tiếp 6) — Đơn hàng: bỏ spacer, cân bằng bảng lấp đầy body
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` PASS.** Chỉ `src/pages/orders/OrderListPage.tsx`.
+- **Lỗi:** cột spacer (tiếp 5) hút hết phần dư về bên phải → bảng dồn trái, khoảng trống lớn bên phải, không cân với body.
+- **Sửa:** bỏ cột spacer (th+td); trả cột "Khách hàng" về **co giãn** (`min-w-[240px]`, không width cố định) → hút phần dư, **lấp đầy đều chiều rộng body**. 6 cột còn lại giữ width cố định + font `text-[11px]` (không đè/cắt như đã fix). Kết quả cân bằng: Khách hàng (nội dung dài nhất) chiếm phần rộng, cụm phải gọn.
+- Không đụng dữ liệu/quyền/điều hướng/phân trang.
+
+---
+
+## 2026-06-09 (tiếp 7) — LAYOUT BẢNG CHUẨN TOÀN CỤC: component DataTable (Phase 1)
+
+**Bối cảnh:** User nhận ra 33 bảng trong dự án tự viết tay, KHÔNG kế thừa (Order/Inventory/Customer/Product mỗi nơi một kiểu). Yêu cầu: xây 1 layout bảng chuẩn (theo Order) áp toàn cục. Đã chốt: **component DataTable** + **Phase 1 = Order + Inventory**.
+
+- **Frontend-only, KHÔNG migration. `tsc -b --noEmit` + `vite build` PASS.**
+- **Component MỚI `src/components/DataTable.tsx`** — bảng danh sách CHUẨN kế thừa toàn cục:
+  - `table-fixed w-full` (KHÔNG cuộn ngang) · 1 cột `flex` co giãn + cột phụ `width` cố định (qua `<colgroup>`) · header chuẩn (bg-gray-25, text-tiny uppercase, whitespace-nowrap) · body divide-y + hover + mỗi ô `overflow-hidden`+`truncate` (trừ ô `noTruncate`) · font `text-[13px]`.
+  - Tích hợp: **loading skeleton · empty state (emptyText/emptyIcon) · card mobile TỰ SINH từ columns · phân trang client-side 20 dòng (tự reset trang qua `resetSignal`)**.
+  - API: `columns: DataTableColumn<T>[]` (key/header/width|flex/minWidth/align/render/noTruncate/hideOnMobile/mobileHeaderRight) + `rows`/`getRowKey`/`loading`/`onRowClick`/`pageSize`/`itemLabel`/`resetSignal`/`card`/`emptyText`/`emptyIcon`. `card={false}` khi đã nằm trong card sẵn (vd tab Inventory).
+- **OrderListPage:** xóa bảng/desktop + card mobile + pagination thủ công (state currentPage/itemsPerPage/indexOf...) → dùng `<DataTable>` + `columns`. Bỏ import ChevronLeft/ChevronRight/Skeleton. Bỏ `setCurrentPage(1)` trong handler lọc (DataTable lo qua resetSignal).
+- **InventoryPage (6 tab):** xóa toàn bộ 6 bảng + 6 card mobile + 6 `<Pagination>` + state phân trang (PAGE_SIZE, lotsPage..., pagedXxx, reset effects) → 6 cấu hình cột (lot/po/receipt/transfer/return/setting) + 6 `<DataTable card={false}>`. Hành vi giữ: Phiếu nhập **click dòng → trang chi tiết**; Chuyển kho/Trả NCC **click dòng → mở modal chi tiết**; Lots/Định mức **giữ cột Sửa/Xóa**; PO **giữ nút Nhập kho**. Fix luôn lỗi **Code bị cắt** (cột Code đủ rộng) + header wrap.
+- **Toàn vẹn/phân quyền/bảo mật KHÔNG đổi:** DataTable CHỈ render; mỗi trang giữ nguyên fetch/RLS/lọc branch/phân quyền/điều hướng. Đã verify `tsc -b` + `vite build`.
+- **CÒN LẠI (Phase 2/3):** Khách hàng · Sản phẩm · NCC · Sổ quỹ (P2); Báo cáo · Pipeline · Herd... (P3). Bảng chi tiết/line-item/modal xét riêng. Dùng lại `DataTable` cho nhất quán.
+
+---
+
+## 2026-06-09 (tiếp 8) — DataTable Phase 2: Khách hàng · Sản phẩm · Sổ quỹ (NCC giữ card grid)
+
+**Frontend-only, KHÔNG migration. `tsc -b --noEmit` + `vite build` PASS.**
+
+- **Khảo sát phát hiện 4 trang RẤT khác nhau:** Khách hàng/Sản phẩm/Sổ quỹ = bảng **server-pagination** + **dòng mở rộng** (Customer: CustomerQuickView; Product: ProductQuickView); Product thêm **dòng "Tổng cộng"** + ảnh + sao yêu thích (KHÔNG có checkbox chọn nhiều); **NCC = LƯỚI THẺ** (không phải bảng).
+- **Quyết định user:** giữ NCC card grid (UX phù hợp); nâng DataTable + convert 3 trang còn lại.
+- **Nâng cấp `DataTable.tsx` (props mới, tương thích ngược 100%):**
+  - `manualPagination` + `page`/`onPageChange`/`totalItems` → phân trang server-side (không slice).
+  - `expandedRowRender(row, collapse)` → click dòng mở panel chi tiết inline (Fragment + `<tr colSpan>`); `collapse` để nút Đóng của QuickView hoạt động; cột render nhận tham số 2 `expanded` (cho mũi tên ▾).
+  - `headerSummary` → 1 dòng `<tr>` tổng hợp dưới header (Product "Tổng cộng").
+- **Đã convert:**
+  - `CustomerListPage` → DataTable (manualPagination + expandedRowRender=CustomerQuickView + cột mã có ▾ + dropdown ⋮ stopPropagation). Bỏ state expandedId/startIndex/totalPages + import ChevronLeft/Right/Fragment/Skeleton.
+  - `ProductListPage` → DataTable (manualPagination + expandedRowRender=ProductQuickView + headerSummary tổng tồn/đặt + cột chevron/sao/ảnh). Bỏ state expandedId/totalPages/indexOf + import tương tự.
+  - `CashbookPage` → DataTable cho **tab Lịch sử dòng tiền** (manualPagination, click dòng → modal chi tiết) + **tab Phiên ca** (client). Bỏ import ChevronLeft/Skeleton.
+- **Toàn vẹn/phân quyền/bảo mật KHÔNG đổi:** giữ nguyên server query (useCustomersList/useProductsList/fetchTransactions), RLS, lọc branch, phân quyền, CSV export, modal chi tiết, localStorage sao yêu thích. DataTable chỉ render.
+- **Phase 3 còn lại:** Báo cáo · Pipeline · Herd · các bảng chi tiết/line-item/modal (xét riêng).

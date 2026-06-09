@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
   Search,
-  ChevronLeft,
-  ChevronRight,
   Receipt,
   AlertCircle,
   CheckCircle,
@@ -18,7 +16,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
-import { Skeleton } from '../../components/Skeleton'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
@@ -59,10 +57,6 @@ export default function OrderListPage() {
   const [selectedDateRange, setSelectedDateRange] = useState('all') // 'all', 'today', '7days', '30days'
   const [quickDeliveryPending, setQuickDeliveryPending] = useState(false) // lọc nhanh đơn giao chờ xác nhận
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
-
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 8
 
   // Fetch Orders
   const loadOrders = useCallback(async () => {
@@ -151,16 +145,8 @@ export default function OrderListPage() {
   // Số đơn giao chờ xác nhận (cho badge quick view)
   const deliveryPendingCount = orders.filter(o => o.sale_channel === 'delivery' && o.status === 'draft').length
 
-  // Pagination calculations
-  const totalItems = filteredOrders.length
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1
-  const indexOfLastItem = currentPage * itemsPerPage
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage
-  const currentOrders = filteredOrders.slice(indexOfFirstItem, indexOfLastItem)
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [debouncedSearch, selectedStatus, selectedChannel, selectedPaymentStatus, selectedDateRange, quickDeliveryPending])
+  // Tín hiệu reset phân trang về trang 1 khi đổi bộ lọc/tìm kiếm (DataTable lo phân trang)
+  const filterSignal = `${debouncedSearch}|${selectedStatus}|${selectedChannel}|${selectedPaymentStatus}|${selectedDateRange}|${quickDeliveryPending}`
 
   // Helper to format currency
   const formatCurrency = (value: number) => {
@@ -234,8 +220,8 @@ export default function OrderListPage() {
     }
 
     return (
-      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-tiny font-semibold bg-gray-50 border border-gray-150 ${textColor}`}>
-        <Icon size={12} className="shrink-0 text-current" />
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-50 border border-gray-150 whitespace-nowrap ${textColor}`}>
+        <Icon size={11} className="shrink-0 text-current" />
         {text}
       </span>
     )
@@ -266,14 +252,53 @@ export default function OrderListPage() {
     }
 
     return (
-      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-tiny font-semibold bg-gray-50 border border-gray-150 ${textColor}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-50 border border-gray-150 whitespace-nowrap ${textColor}`}>
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}></span>
         {text}
       </span>
     )
   }
 
-  const displayList = currentOrders
+  // ── Cấu hình cột chuẩn cho DataTable (layout kế thừa toàn cục) ──
+  const columns: DataTableColumn<Order>[] = [
+    {
+      key: 'code', header: 'Code', width: 150,
+      render: o => <span className="font-mono font-bold text-blue-600 group-hover:underline">{o.order_code}</span>
+    },
+    {
+      key: 'customer', header: 'Khách hàng', flex: true, minWidth: 240,
+      render: o => (
+        <span className="font-semibold text-gray-800" title={o.customers?.farm_name || ''}>
+          {o.customers?.farm_name || 'Khách lẻ / Không xác định'}
+        </span>
+      )
+    },
+    {
+      key: 'time', header: 'Time', width: 120, align: 'center',
+      render: o => <span className="text-gray-400 text-[11px]">{formatDate(o.created_at)}</span>
+    },
+    {
+      key: 'nv', header: 'NV', width: 120,
+      render: o => (
+        <div className="flex items-center gap-1 text-gray-500 text-[11px] min-w-0">
+          <User size={13} className="text-gray-400 shrink-0" />
+          <span className="truncate" title={o.owner?.full_name || 'Hệ thống'}>{o.owner?.full_name || 'Hệ thống'}</span>
+        </div>
+      )
+    },
+    {
+      key: 'total', header: 'Tổng', width: 124, align: 'right',
+      render: o => <span className="font-bold text-gray-800 text-[11px] tabular-nums">{formatCurrency(o.grand_total)}</span>
+    },
+    {
+      key: 'payment', header: 'Thanh toán', width: 148, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: o => renderPaymentStatusBadge(o.payment_status)
+    },
+    {
+      key: 'status', header: 'Trạng thái', width: 140, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: o => renderStatusBadge(o.status)
+    }
+  ]
 
   return (
     <Layout activeMenu="Đơn hàng">
@@ -420,15 +445,8 @@ export default function OrderListPage() {
           </div>
         </div>
 
-        {/* Loading State */}
-        {loading && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
-          </div>
-        )}
-
         {/* Empty State */}
-        {!loading && displayList.length === 0 && (
+        {!loading && filteredOrders.length === 0 && (
           <div className="bg-gray-0 border border-gray-100 rounded-xl p-12 text-center flex flex-col items-center justify-center shadow-sm">
             <div className="w-16 h-16 bg-gray-50 flex items-center justify-center rounded-full text-gray-400 mb-4">
               <Receipt size={32} strokeWidth={1.5} />
@@ -456,142 +474,18 @@ export default function OrderListPage() {
           </div>
         )}
 
-        {/* Data Table */}
-        {!loading && displayList.length > 0 && (
-          <div className="bg-gray-0 border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-            <div className="overflow-x-auto hidden md:block">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="bg-gray-25 text-gray-400 font-semibold text-tiny uppercase tracking-wider border-b border-gray-100">
-                    <th className="px-6 py-4">Mã đơn hàng</th>
-                    <th className="px-6 py-4">Khách hàng / Trang trại</th>
-                    <th className="px-6 py-4">Ngày tạo</th>
-                    <th className="px-6 py-4">Nhân viên phụ trách</th>
-                    <th className="px-6 py-4 text-right">Tổng giá trị</th>
-                    <th className="px-6 py-4 text-center">Thanh toán</th>
-                    <th className="px-6 py-4 text-center">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 text-body-md text-gray-700">
-                  {displayList.map(order => (
-                    <tr
-                      key={order.id}
-                      onClick={() => navigate(`/orders/${order.id}`)}
-                      className="transition-colors group hover:bg-gray-25/50 cursor-pointer"
-                    >
-                      <td className="px-6 py-4 font-mono font-bold text-blue-600 group-hover:underline">
-                        {order.order_code}
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-gray-800">
-                        {order.customers?.farm_name || 'Khách lẻ / Không xác định'}
-                      </td>
-                      <td className="px-6 py-4 text-gray-400 text-tiny">
-                        {formatDate(order.created_at)}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 text-gray-500">
-                          <User size={14} className="text-gray-400" />
-                          <span>{order.owner?.full_name || 'Hệ thống'}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right font-bold text-gray-800 tabular-nums">
-                        {formatCurrency(order.grand_total)}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {renderPaymentStatusBadge(order.payment_status)}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {renderStatusBadge(order.status)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Card List View */}
-            <div className="block md:hidden divide-y divide-gray-100">
-              {displayList.map(order => (
-                <div
-                  key={order.id}
-                  onClick={() => navigate(`/orders/${order.id}`)}
-                  className="p-4 hover:bg-gray-25/50 transition-colors cursor-pointer space-y-3"
-                >
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="min-w-0">
-                      <span className="font-mono font-bold text-blue-600">
-                        {order.order_code}
-                      </span>
-                      <h4 className="font-bold text-gray-800 leading-snug break-words mt-1">
-                        {order.customers?.farm_name || 'Khách lẻ / Không xác định'}
-                      </h4>
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      {renderStatusBadge(order.status)}
-                      {renderPaymentStatusBadge(order.payment_status)}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-50 text-tiny text-gray-500">
-                    <div>
-                      <span className="text-gray-400 block mb-0.5">Ngày tạo:</span>
-                      <span className="text-gray-700 font-semibold">{formatDate(order.created_at)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 block mb-0.5">Phụ trách:</span>
-                      <span className="text-gray-700 font-semibold truncate block">
-                        {order.owner?.full_name || 'Hệ thống'}
-                      </span>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-gray-400 block mb-0.5">Tổng giá trị:</span>
-                      <span className="text-body-lg font-bold text-gray-800 tabular-nums">
-                        {formatCurrency(order.grand_total)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Pagination Section */}
-        {!loading && displayList.length > 0 && (
-          <div className="mt-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-t border-gray-100 pt-8">
-            <span className="text-body-md text-gray-400">
-              Hiển thị <span className="font-semibold text-gray-600">{indexOfFirstItem + 1}-{Math.min(indexOfLastItem, totalItems)}</span> của <span className="font-semibold text-gray-600">{totalItems}</span> đơn hàng
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              {Array.from({ length: totalPages }).map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentPage(idx + 1)}
-                  className={`w-10 h-10 rounded-lg text-body-md font-semibold transition-all ${
-                    currentPage === idx + 1
-                      ? 'bg-blue-500 text-gray-0 shadow-sm'
-                      : 'border border-gray-200 text-gray-500 hover:bg-gray-50'
-                  }`}
-                >
-                  {idx + 1}
-                </button>
-              ))}
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
+        {/* Data Table (layout chuẩn dùng chung) */}
+        {(loading || filteredOrders.length > 0) && (
+          <DataTable
+            rows={filteredOrders}
+            columns={columns}
+            getRowKey={o => o.id}
+            loading={loading}
+            onRowClick={o => navigate(`/orders/${o.id}`)}
+            pageSize={20}
+            itemLabel="đơn hàng"
+            resetSignal={filterSignal}
+          />
         )}
 
         {/* Mobile Filter Bottom Sheet */}
@@ -613,7 +507,7 @@ export default function OrderListPage() {
                   <select
                     className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
                     value={selectedStatus}
-                    onChange={e => { setSelectedStatus(e.target.value); setCurrentPage(1) }}
+                    onChange={e => setSelectedStatus(e.target.value)}
                   >
                     <option value="">Tất cả trạng thái</option>
                     <option value="draft">Nháp</option>
@@ -631,7 +525,7 @@ export default function OrderListPage() {
                   <select
                     className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
                     value={selectedChannel}
-                    onChange={e => { setSelectedChannel(e.target.value); setCurrentPage(1) }}
+                    onChange={e => setSelectedChannel(e.target.value)}
                   >
                     <option value="">Tất cả luồng</option>
                     <option value="pos_quick">Bán nhanh tại quầy</option>
@@ -644,7 +538,7 @@ export default function OrderListPage() {
                   <select
                     className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
                     value={selectedPaymentStatus}
-                    onChange={e => { setSelectedPaymentStatus(e.target.value); setCurrentPage(1) }}
+                    onChange={e => setSelectedPaymentStatus(e.target.value)}
                   >
                     <option value="">Tất cả thanh toán</option>
                     <option value="unpaid">Chưa thanh toán</option>
@@ -658,7 +552,7 @@ export default function OrderListPage() {
                   <select
                     className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
                     value={selectedDateRange}
-                    onChange={e => { setSelectedDateRange(e.target.value); setCurrentPage(1) }}
+                    onChange={e => setSelectedDateRange(e.target.value)}
                   >
                     <option value="all">Mọi thời gian</option>
                     <option value="today">Hôm nay</option>
@@ -674,7 +568,6 @@ export default function OrderListPage() {
                       setSelectedChannel('')
                       setSelectedPaymentStatus('')
                       setSelectedDateRange('all')
-                      setCurrentPage(1)
                       setMobileFiltersOpen(false)
                     }}
                     className="flex-1 h-10 border border-gray-200 text-gray-500 bg-gray-0 rounded-lg text-body-md font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"

@@ -19,16 +19,12 @@ import {
   Ban
 } from 'lucide-react'
 import Layout from '../../components/Layout'
-import { Skeleton } from '../../components/Skeleton'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
-import Pagination from '../../components/Pagination'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import LotEditModal, { type EditableLot } from './LotEditModal'
-
-// Phân trang client-side: 20 dòng / trang cho mọi bảng trong Kho
-const PAGE_SIZE = 20
 
 interface StockLot {
   id: string
@@ -76,6 +72,7 @@ interface GoodsReceipt {
   id: string
   receipt_code: string
   receipt_date: string
+  created_at: string
   total_amount: number
   status: string
   notes: string | null
@@ -118,15 +115,8 @@ export default function InventoryPage() {
   const navigate = useNavigate()
   const { profile, userRole } = useAuth()
   const isAdmin = userRole?.code === 'admin' || userRole?.code === 'ceo'
-  const [activeTab, setActiveTab] = useState<'lots' | 'pos' | 'receipts' | 'transfers' | 'purchase_returns' | 'settings'>('lots')
+  const [activeTab, setActiveTab] = useState<'lots' | 'pos' | 'receipts' | 'transfers' | 'purchase_returns' | 'settings'>('receipts')
 
-  // Phân trang theo từng tab (client-side, 20 dòng/trang)
-  const [lotsPage, setLotsPage] = useState(1)
-  const [posPage, setPosPage] = useState(1)
-  const [receiptsPage, setReceiptsPage] = useState(1)
-  const [transfersPage, setTransfersPage] = useState(1)
-  const [returnsPage, setReturnsPage] = useState(1)
-  const [settingsPage, setSettingsPage] = useState(1)
 
   // Admin sửa/xóa lô hàng
   const [editingLot, setEditingLot] = useState<EditableLot | null>(null)
@@ -945,6 +935,7 @@ export default function InventoryPage() {
               id,
               receipt_code,
               receipt_date,
+              created_at,
               total_amount,
               status,
               notes,
@@ -958,7 +949,7 @@ export default function InventoryPage() {
           }
 
           const { data, error } = await query
-            .order('receipt_date', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(100)
 
           if (error) throw error
@@ -967,6 +958,7 @@ export default function InventoryPage() {
             id: gr.id,
             receipt_code: gr.receipt_code,
             receipt_date: gr.receipt_date,
+            created_at: gr.created_at,
             total_amount: Number(gr.total_amount),
             status: gr.status || 'draft',
             notes: gr.notes,
@@ -1171,21 +1163,7 @@ export default function InventoryPage() {
     )
   }), [receipts, debouncedReceiptSearch])
 
-  // ── Phân trang client-side (20 dòng/trang) ──
-  // Reset về trang 1 mỗi khi danh sách (đã lọc) thay đổi → không bao giờ ở trang ngoài phạm vi.
-  useEffect(() => { setLotsPage(1) }, [filteredLots])
-  useEffect(() => { setPosPage(1) }, [filteredPOs])
-  useEffect(() => { setReceiptsPage(1) }, [filteredReceipts])
-  useEffect(() => { setTransfersPage(1) }, [filteredTransfers])
-  useEffect(() => { setReturnsPage(1) }, [filteredReturns])
-  useEffect(() => { setSettingsPage(1) }, [invSettings])
-
-  const pagedLots = useMemo(() => filteredLots.slice((lotsPage - 1) * PAGE_SIZE, lotsPage * PAGE_SIZE), [filteredLots, lotsPage])
-  const pagedPOs = useMemo(() => filteredPOs.slice((posPage - 1) * PAGE_SIZE, posPage * PAGE_SIZE), [filteredPOs, posPage])
-  const pagedReceipts = useMemo(() => filteredReceipts.slice((receiptsPage - 1) * PAGE_SIZE, receiptsPage * PAGE_SIZE), [filteredReceipts, receiptsPage])
-  const pagedTransfers = useMemo(() => filteredTransfers.slice((transfersPage - 1) * PAGE_SIZE, transfersPage * PAGE_SIZE), [filteredTransfers, transfersPage])
-  const pagedReturns = useMemo(() => filteredReturns.slice((returnsPage - 1) * PAGE_SIZE, returnsPage * PAGE_SIZE), [filteredReturns, returnsPage])
-  const pagedSettings = useMemo(() => invSettings.slice((settingsPage - 1) * PAGE_SIZE, settingsPage * PAGE_SIZE), [invSettings, settingsPage])
+  // Phân trang (20 dòng/trang) do <DataTable> tự xử lý — không cần state/slice ở đây.
 
   const reloadInvSettings = async () => {
     let query = supabase
@@ -1293,6 +1271,170 @@ export default function InventoryPage() {
       return () => clearTimeout(timer)
     }
   }, [alertMsg])
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cấu hình cột chuẩn cho <DataTable> (layout kế thừa toàn cục) — 6 tab
+  // ─────────────────────────────────────────────────────────────────────────
+  const lotColumns: DataTableColumn<StockLot>[] = [
+    {
+      key: 'product', header: 'Sản phẩm / SKU', flex: true, minWidth: 220, noTruncate: true,
+      render: lot => (
+        <div className="min-w-0">
+          <p className="font-bold text-gray-800 truncate" title={lot.product.name}>{lot.product.name}</p>
+          <span className="text-gray-400 font-mono text-tiny">SKU: {lot.product.sku}</span>
+        </div>
+      )
+    },
+    { key: 'wh', header: 'Kho', width: 120, render: lot => <span className="text-[11px] font-semibold text-gray-700" title={lot.warehouse.name}>{lot.warehouse.name}</span> },
+    { key: 'lot', header: 'Số lô', width: 110, render: lot => <span className="font-mono font-bold text-blue-500" title={lot.lot_number}>{lot.lot_number}</span> },
+    {
+      key: 'hsd', header: 'HSD', width: 110, align: 'center', noTruncate: true,
+      render: lot => {
+        if (!lot.expiry_date) return <span className="text-gray-300 text-[11px]">Không QL</span>
+        const isExpired = new Date(lot.expiry_date).getTime() < Date.now()
+        const isNear = !isExpired && (new Date(lot.expiry_date).getTime() - Date.now()) / 86400000 <= 30
+        return (
+          <div className="space-y-0.5">
+            <span className="text-[11px]">{new Date(lot.expiry_date).toLocaleDateString('vi-VN')}</span>
+            {isExpired && <span className="block text-[10px] text-red-500 font-bold uppercase">Hết hạn</span>}
+            {isNear && <span className="block text-[10px] text-amber-500 font-bold uppercase">Cận date</span>}
+          </div>
+        )
+      }
+    },
+    { key: 'cost', header: 'Giá vốn', width: 120, align: 'right', render: lot => <span className="text-[11px] font-semibold text-gray-700">{lot.cost_price.toLocaleString('vi-VN')} ₫</span> },
+    { key: 'qty', header: 'Tồn KD', width: 96, align: 'center', render: lot => <span className="font-bold text-gray-850">{lot.quantity_on_hand}</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 104, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: lot => (
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+          lot.status === 'active' ? 'bg-emerald-50 text-emerald-700'
+            : lot.status === 'quarantine' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-750'
+        }`}>
+          {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : lot.status === 'disposed' ? 'Đã hủy' : 'Khóa'}
+        </span>
+      )
+    }
+  ]
+  if (isAdmin) {
+    lotColumns.push({
+      key: 'actions', header: 'Thao tác', width: 84, align: 'center', noTruncate: true,
+      render: lot => (
+        <div className="flex items-center justify-center gap-1">
+          <button onClick={() => setEditingLot(lot)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Sửa lô"><Pencil size={15} /></button>
+          <button onClick={() => { setDeletingLot(lot); setDeleteLotReason('') }} disabled={lot.status === 'disposed'} className="p-1.5 text-red-600 hover:bg-red-50 rounded disabled:opacity-30 disabled:cursor-not-allowed" title="Hủy lô"><Trash2 size={15} /></button>
+        </div>
+      )
+    })
+  }
+
+  const poColumns: DataTableColumn<PurchaseOrder>[] = [
+    { key: 'code', header: 'Code', width: 100, render: po => <span className="font-mono font-bold text-blue-500" title={po.po_code}>{po.po_code}</span> },
+    { key: 'ncc', header: 'NCC', flex: true, minWidth: 200, render: po => <span className="font-semibold text-gray-800" title={po.supplier.name}>{po.supplier.name}</span> },
+    { key: 'wh', header: 'Kho đích', width: 120, render: po => <span className="text-[11px] text-gray-500" title={po.warehouse.name}>{po.warehouse.name}</span> },
+    { key: 'expected', header: 'Dự kiến giao', width: 108, align: 'center', render: po => <span className="text-[11px] text-gray-500">{po.expected_date ? new Date(po.expected_date).toLocaleDateString('vi-VN') : '---'}</span> },
+    { key: 'total', header: 'Tổng giá trị', width: 120, align: 'right', render: po => <span className="text-[11px] font-bold text-gray-700">{po.grand_total.toLocaleString('vi-VN')} ₫</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 110, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: po => (
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+          po.status === 'received' ? 'bg-emerald-50 text-emerald-700'
+            : po.status === 'partially_received' ? 'bg-amber-50 text-amber-700'
+            : po.status === 'sent' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
+        }`}>
+          {po.status === 'draft' ? 'Nháp' : po.status === 'sent' ? 'Chờ nhận' : po.status === 'partially_received' ? 'Nhập một phần' : 'Đã nhận đủ'}
+        </span>
+      )
+    },
+    {
+      key: 'action', header: '', width: 92, align: 'center', noTruncate: true, hideOnMobile: true,
+      render: po => (po.status === 'sent' || po.status === 'partially_received') ? (
+        <button onClick={() => navigate(`/goods-receipts/new?po_id=${po.id}`)} className="text-blue-500 hover:text-blue-600 font-bold hover:underline whitespace-nowrap text-[11px]">Nhập kho</button>
+      ) : null
+    }
+  ]
+
+  const receiptColumns: DataTableColumn<GoodsReceipt>[] = [
+    { key: 'code', header: 'Code', width: 128, render: gr => <span className="font-mono font-bold text-blue-500 group-hover:underline">{gr.receipt_code}</span> },
+    { key: 'ncc', header: 'NCC', flex: true, minWidth: 200, render: gr => <span className="font-semibold text-gray-800" title={gr.supplier.name}>{gr.supplier.name}</span> },
+    { key: 'wh', header: 'Kho nhận', width: 124, render: gr => <span className="text-[11px] text-gray-500" title={gr.warehouse.name}>{gr.warehouse.name}</span> },
+    {
+      key: 'date', header: 'Ngày nhập', width: 138, align: 'center',
+      render: gr => <span className="text-[11px] text-gray-500">{new Date(gr.created_at).toLocaleDateString('vi-VN')} <span className="text-gray-400">{new Date(gr.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span></span>
+    },
+    { key: 'receiver', header: 'Người nhận', width: 120, render: gr => <span className="text-[11px] font-medium text-gray-700" title={gr.profile?.full_name || 'Hệ thống'}>{gr.profile?.full_name || 'Hệ thống'}</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 116, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: gr => <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold ${(RECEIPT_STATUS[gr.status] || RECEIPT_STATUS.completed).cls}`}>{(RECEIPT_STATUS[gr.status] || RECEIPT_STATUS.completed).label}</span>
+    },
+    { key: 'total', header: 'Tổng giá trị', width: 128, align: 'right', render: gr => <span className="font-bold text-gray-750 text-[11px]">{gr.total_amount.toLocaleString('vi-VN')} ₫</span> }
+  ]
+
+  const transferColumns: DataTableColumn<any>[] = [
+    { key: 'code', header: 'Code', width: 110, render: t => <span className="font-mono font-bold text-blue-500 group-hover:underline">{t.transfer_code}</span> },
+    { key: 'from', header: 'Kho nguồn', flex: true, minWidth: 150, render: t => <span className="text-[11px] font-semibold text-gray-800" title={t.from_wh?.name || 'Kho nguồn'}>{t.from_wh?.name || 'Kho nguồn'}</span> },
+    { key: 'to', header: 'Kho đích', flex: true, minWidth: 150, render: t => <span className="text-[11px] font-semibold text-gray-800" title={t.to_wh?.name || 'Kho đích'}>{t.to_wh?.name || 'Kho đích'}</span> },
+    { key: 'date', header: 'Ngày chuyển', width: 108, align: 'center', render: t => <span className="text-[11px] text-gray-500">{new Date(t.transfer_date).toLocaleDateString('vi-VN')}</span> },
+    { key: 'creator', header: 'Người tạo', width: 120, render: t => <span className="text-[11px] font-medium text-gray-700" title={t.creator?.full_name || 'Hệ thống'}>{t.creator?.full_name || 'Hệ thống'}</span> },
+    { key: 'total', header: 'Tổng giá trị', width: 120, align: 'right', render: t => <span className="text-[11px] font-bold text-gray-700">{t.total_amount ? `${Number(t.total_amount).toLocaleString('vi-VN')} ₫` : '0 ₫'}</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 110, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: t => (
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+          t.status === 'received' ? 'bg-emerald-50 text-emerald-700'
+            : t.status === 'in_transit' ? 'bg-amber-50 text-amber-700'
+            : t.status === 'draft' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
+        }`}>
+          {t.status === 'draft' ? 'Nháp' : t.status === 'in_transit' ? 'Đang chuyển' : t.status === 'received' ? 'Đã nhận' : 'Đã hủy'}
+        </span>
+      )
+    }
+  ]
+
+  const returnColumns: DataTableColumn<any>[] = [
+    { key: 'code', header: 'Code', width: 110, render: r => <span className="font-mono font-bold text-blue-500 group-hover:underline">{r.return_code}</span> },
+    { key: 'ncc', header: 'NCC', flex: true, minWidth: 200, render: r => <span className="font-semibold text-gray-800" title={r.supplier?.name || 'Nhà cung cấp'}>{r.supplier?.name || 'Nhà cung cấp'}</span> },
+    { key: 'wh', header: 'Kho trả', width: 120, render: r => <span className="text-[11px] text-gray-500" title={r.warehouse?.name || 'Kho xuất'}>{r.warehouse?.name || 'Kho xuất'}</span> },
+    { key: 'refund', header: 'Hoàn tiền', width: 110, align: 'center', render: r => <span className="text-[11px] font-medium capitalize text-gray-700">{r.refund_method === 'cash_refund' ? 'Tiền mặt' : r.refund_method === 'credit_note' ? 'Trừ công nợ' : 'Cấn trừ PO'}</span> },
+    { key: 'total', header: 'Tổng giá trị', width: 120, align: 'right', render: r => <span className="text-[11px] font-bold text-gray-700">{Number(r.total_amount || 0).toLocaleString('vi-VN')} ₫</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 110, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: r => (
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+          r.status === 'completed' ? 'bg-emerald-50 text-emerald-700'
+            : r.status === 'confirmed' ? 'bg-blue-50 text-blue-700'
+            : r.status === 'draft' ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-750'
+        }`}>
+          {r.status === 'draft' ? 'Nháp' : r.status === 'confirmed' ? 'Đã duyệt' : r.status === 'completed' ? 'Hoàn tất' : 'Đã hủy'}
+        </span>
+      )
+    }
+  ]
+
+  const settingColumns: DataTableColumn<InventorySetting>[] = [
+    {
+      key: 'product', header: 'Sản phẩm / SKU', flex: true, minWidth: 220, noTruncate: true,
+      render: set => (
+        <div className="min-w-0">
+          <p className="font-bold text-gray-800 truncate" title={set.product.name}>{set.product.name}</p>
+          <span className="text-gray-400 font-mono text-tiny">SKU: {set.product.sku}</span>
+        </div>
+      )
+    },
+    { key: 'wh', header: 'Kho áp dụng', width: 150, render: set => <span className="text-[11px] font-semibold text-gray-700" title={set.warehouse.name}>{set.warehouse.name}</span> },
+    { key: 'min', header: 'Tồn tối thiểu', width: 110, align: 'center', render: set => <span className="font-bold text-red-500">{set.min_stock_level}</span> },
+    { key: 'max', header: 'Tồn tối đa', width: 100, align: 'center', render: set => <span className="font-bold text-gray-700">{set.max_stock_level || '---'}</span> },
+    { key: 'reorder', header: 'Điểm đặt lại', width: 110, align: 'center', render: set => <span className="text-gray-500">{set.reorder_point || '---'}</span> },
+    {
+      key: 'actions', header: 'Hành động', width: 100, align: 'center', noTruncate: true,
+      render: set => (
+        <div className="flex gap-2 justify-center">
+          <button onClick={() => handleOpenEditSetting(set)} className="text-blue-500 hover:text-blue-600 font-semibold text-tiny hover:underline">Sửa</button>
+          <button onClick={() => handleDeleteSetting(set.id)} className="text-red-500 hover:text-red-600 font-semibold text-tiny hover:underline">Xóa</button>
+        </div>
+      )
+    }
+  ]
 
   return (
     <Layout activeMenu="Kho hàng">
@@ -1497,192 +1639,19 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* Data Table */}
-              <div className="hidden md:block overflow-x-auto">
-                {loading ? (
-                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
-                ) : filteredLots.length === 0 ? (
-                  <div className="p-12 text-center text-gray-400 space-y-2">
-                    <Layers className="w-12 h-12 text-gray-300 mx-auto" />
-                    <p className="font-semibold text-body-lg">Không tìm thấy lô hàng nào</p>
-                    <p className="text-body-md">Vui lòng điều chỉnh điều kiện lọc hoặc nhập kho thêm.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                        <th className="px-6 py-4">Sản phẩm / SKU</th>
-                        <th className="px-6 py-4">Kho</th>
-                        <th className="px-6 py-4">Số lô</th>
-                        <th className="px-6 py-4 text-center">Hạn sử dụng (HSD)</th>
-                        <th className="px-6 py-4 text-right">Giá vốn lô (₫)</th>
-                        <th className="px-6 py-4 text-center">Tồn kho khả dụng</th>
-                        <th className="px-6 py-4 text-center">Trạng thái</th>
-                        {isAdmin && <th className="px-6 py-4 text-center">Thao tác</th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {pagedLots.map((lot) => {
-                        const isExpired = lot.expiry_date && new Date(lot.expiry_date).getTime() < new Date().getTime()
-                        const isNearExpiry = lot.expiry_date && !isExpired && 
-                          (new Date(lot.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) <= 30
-
-                        return (
-                          <tr key={lot.id} className="hover:bg-gray-25/50 transition-colors">
-                            <td className="px-6 py-4">
-                              <div>
-                                <p className="font-bold text-gray-800">{lot.product.name}</p>
-                                <span className="text-gray-400 font-mono text-tiny">SKU: {lot.product.sku}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 font-semibold text-gray-700">{lot.warehouse.name}</td>
-                            <td className="px-6 py-4 font-mono font-bold text-blue-500">{lot.lot_number}</td>
-                            <td className="px-6 py-4 text-center font-medium">
-                              {lot.expiry_date ? (
-                                <div className="space-y-0.5">
-                                  <span>{new Date(lot.expiry_date).toLocaleDateString('vi-VN')}</span>
-                                  {isExpired && (
-                                    <span className="block text-[10px] text-red-500 font-bold uppercase font-mono">Hết hạn</span>
-                                  )}
-                                  {isNearExpiry && (
-                                    <span className="block text-[10px] text-amber-500 font-bold uppercase font-mono">Cận date</span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-gray-300">Không quản lý HSD</span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4 text-right font-semibold text-gray-700">
-                              {lot.cost_price.toLocaleString('vi-VN')} ₫
-                            </td>
-                            <td className="px-6 py-4 text-center font-bold text-gray-850">
-                              {lot.quantity_on_hand}
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <span className={`px-2.5 py-0.5 rounded text-tiny font-bold uppercase ${
-                                lot.status === 'active' 
-                                  ? 'bg-emerald-50 text-emerald-700' 
-                                  : lot.status === 'quarantine' 
-                                  ? 'bg-amber-50 text-amber-700' 
-                                  : 'bg-red-50 text-red-750'
-                              }`}>
-                                {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : lot.status === 'disposed' ? 'Đã hủy' : 'Khóa'}
-                              </span>
-                            </td>
-                            {isAdmin && (
-                              <td className="px-6 py-4">
-                                <div className="flex items-center justify-center gap-1.5">
-                                  <button
-                                    onClick={() => setEditingLot(lot)}
-                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                                    title="Sửa lô"
-                                  >
-                                    <Pencil size={15} />
-                                  </button>
-                                  <button
-                                    onClick={() => { setDeletingLot(lot); setDeleteLotReason('') }}
-                                    disabled={lot.status === 'disposed'}
-                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                                    title="Hủy lô"
-                                  >
-                                    <Trash2 size={15} />
-                                  </button>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Mobile Card List for Stock Lots */}
-              {!loading && (
-                <div className="block md:hidden space-y-4">
-                  {pagedLots.map((lot) => {
-                    const isExpired = lot.expiry_date && new Date(lot.expiry_date).getTime() < new Date().getTime()
-                    const isNearExpiry = lot.expiry_date && !isExpired && 
-                      (new Date(lot.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24) <= 30
-
-                    return (
-                      <div key={lot.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <p className="font-bold text-gray-805 text-body-md text-gray-800">{lot.product.name}</p>
-                            <span className="text-gray-400 font-mono text-tiny">SKU: {lot.product.sku}</span>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
-                            lot.status === 'active' 
-                              ? 'bg-emerald-50 text-emerald-700' 
-                              : lot.status === 'quarantine' 
-                              ? 'bg-amber-50 text-amber-700' 
-                              : 'bg-red-50 text-red-750'
-                          }`}>
-                            {lot.status === 'active' ? 'Sẵn dùng' : lot.status === 'quarantine' ? 'Kiểm dịch' : lot.status === 'disposed' ? 'Đã hủy' : 'Khóa'}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
-                          <div>
-                            <span className="block text-gray-400 font-medium">Kho hàng</span>
-                            <span className="font-semibold text-gray-700">{lot.warehouse.name}</span>
-                          </div>
-                          <div>
-                            <span className="block text-gray-400 font-medium font-mono">Số lô</span>
-                            <span className="font-bold text-blue-500 font-mono">{lot.lot_number}</span>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1">
-                          <div>
-                            <span className="block text-gray-400 font-medium">Hạn sử dụng</span>
-                            <span className="font-semibold text-gray-700">
-                              {lot.expiry_date ? (
-                                <span className="inline-flex flex-col">
-                                  <span>{new Date(lot.expiry_date).toLocaleDateString('vi-VN')}</span>
-                                  {isExpired && <span className="text-[10px] text-red-500 font-bold uppercase font-mono">Hết hạn</span>}
-                                  {isNearExpiry && <span className="text-[10px] text-amber-500 font-bold uppercase font-mono">Cận date</span>}
-                                </span>
-                              ) : (
-                                <span className="text-gray-300">Không có HSD</span>
-                              )}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="block text-gray-400 font-medium">Tồn khả dụng / Giá vốn</span>
-                            <span className="block">
-                              <strong className="text-body-md text-gray-800">{lot.quantity_on_hand}</strong>
-                              <span className="text-gray-300 mx-1">|</span>
-                              <span className="font-semibold text-gray-700">{lot.cost_price.toLocaleString('vi-VN')} ₫</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        {isAdmin && (
-                          <div className="flex items-center gap-2 pt-2 border-t border-gray-50">
-                            <button
-                              onClick={() => setEditingLot(lot)}
-                              className="flex-1 h-9 border border-blue-200 text-blue-600 font-semibold rounded-lg text-tiny flex items-center justify-center gap-1.5"
-                            >
-                              <Pencil size={14} /> Sửa
-                            </button>
-                            <button
-                              onClick={() => { setDeletingLot(lot); setDeleteLotReason('') }}
-                              disabled={lot.status === 'disposed'}
-                              className="flex-1 h-9 border border-red-200 text-red-600 font-semibold rounded-lg text-tiny flex items-center justify-center gap-1.5 disabled:opacity-30"
-                            >
-                              <Trash2 size={14} /> Hủy lô
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              <Pagination currentPage={lotsPage} totalItems={filteredLots.length} pageSize={PAGE_SIZE} onPageChange={setLotsPage} itemLabel="lô hàng" />
+              {/* Data Table (layout chuẩn dùng chung) */}
+              <DataTable
+                rows={filteredLots}
+                columns={lotColumns}
+                getRowKey={lot => lot.id}
+                loading={loading}
+                card={false}
+                pageSize={20}
+                itemLabel="lô hàng"
+                resetSignal={`${debouncedLotSearch}|${whFilter}|${lotQuickFilter}`}
+                emptyText="Không tìm thấy lô hàng nào"
+                emptyIcon={<Layers className="w-12 h-12 text-gray-300 mx-auto" />}
+              />
             </div>
           )}
 
@@ -1715,130 +1684,19 @@ export default function InventoryPage() {
                 </select>
               </div>
 
-              {/* Data Table */}
-              <div className="hidden md:block overflow-x-auto">
-                {loading ? (
-                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
-                ) : filteredPOs.length === 0 ? (
-                  <div className="p-12 text-center text-gray-400 space-y-2">
-                    <FileText className="w-12 h-12 text-gray-300 mx-auto" />
-                    <p className="font-semibold text-body-lg">Không tìm thấy đơn hàng nào</p>
-                    <p className="text-body-md">Hãy click Tạo đơn PO ở góc phải để tạo giao dịch đặt hàng mới.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                        <th className="px-6 py-4">Mã đơn PO</th>
-                        <th className="px-6 py-4">Nhà cung cấp</th>
-                        <th className="px-6 py-4">Kho đích dự kiến</th>
-                        <th className="px-6 py-4 text-center">Dự kiến giao</th>
-                        <th className="px-6 py-4 text-right">Tổng giá trị</th>
-                        <th className="px-6 py-4 text-center">Trạng thái</th>
-                        <th className="px-6 py-4 w-12"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {pagedPOs.map((po) => (
-                        <tr key={po.id} className="hover:bg-gray-25/50 transition-colors">
-                          <td className="px-6 py-4 font-mono font-bold text-blue-500">{po.po_code}</td>
-                          <td className="px-6 py-4 font-semibold text-gray-800">{po.supplier.name}</td>
-                          <td className="px-6 py-4 text-gray-500">{po.warehouse.name}</td>
-                          <td className="px-6 py-4 text-center text-gray-500">
-                            {po.expected_date ? new Date(po.expected_date).toLocaleDateString('vi-VN') : '---'}
-                          </td>
-                          <td className="px-6 py-4 text-right font-bold text-gray-700">
-                            {po.grand_total.toLocaleString('vi-VN')} ₫
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase ${
-                              po.status === 'received' 
-                                ? 'bg-emerald-50 text-emerald-700' 
-                                : po.status === 'partially_received' 
-                                ? 'bg-amber-50 text-amber-700' 
-                                : po.status === 'sent' 
-                                ? 'bg-blue-50 text-blue-700' 
-                                : 'bg-gray-100 text-gray-500'
-                            }`}>
-                              {po.status === 'draft' ? 'Nháp' :
-                               po.status === 'sent' ? 'Chờ nhận' :
-                               po.status === 'partially_received' ? 'Nhập một phần' : 'Đã nhận đủ'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            {(po.status === 'sent' || po.status === 'partially_received') && (
-                              <button
-                                onClick={() => navigate(`/goods-receipts/new?po_id=${po.id}`)}
-                                className="text-blue-500 hover:text-blue-600 font-bold hover:underline whitespace-nowrap text-body-md"
-                              >
-                                Nhập kho
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Mobile Card List for Purchase Orders */}
-              {!loading && (
-                <div className="block md:hidden space-y-4">
-                  {pagedPOs.map((po) => (
-                    <div key={po.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <span className="font-mono font-bold text-blue-500 block">{po.po_code}</span>
-                          <p className="font-semibold text-gray-800 text-tiny mt-1">{po.supplier.name}</p>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
-                          po.status === 'received' 
-                            ? 'bg-emerald-50 text-emerald-700' 
-                            : po.status === 'partially_received' 
-                            ? 'bg-amber-50 text-amber-700' 
-                            : po.status === 'sent' 
-                            ? 'bg-blue-50 text-blue-700' 
-                            : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {po.status === 'draft' ? 'Nháp' :
-                           po.status === 'sent' ? 'Chờ nhận' :
-                           po.status === 'partially_received' ? 'Nhập một phần' : 'Đã nhận đủ'}
-                        </span>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
-                        <div>
-                          <span className="block text-gray-400 font-medium">Kho nhận dự kiến</span>
-                          <span className="font-semibold text-gray-750">{po.warehouse.name}</span>
-                        </div>
-                        <div>
-                          <span className="block text-gray-400 font-medium">Dự kiến giao</span>
-                          <span className="font-semibold text-gray-750">
-                            {po.expected_date ? new Date(po.expected_date).toLocaleDateString('vi-VN') : '---'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center pt-2 border-t border-gray-50">
-                        <div>
-                          <span className="text-gray-450 text-[11px] block">Tổng giá trị</span>
-                          <strong className="text-body-md text-gray-800 font-bold tabular-nums">{po.grand_total.toLocaleString('vi-VN')} ₫</strong>
-                        </div>
-                        {(po.status === 'sent' || po.status === 'partially_received') && (
-                          <button
-                            onClick={() => navigate(`/goods-receipts/new?po_id=${po.id}`)}
-                            className="h-9 px-4 bg-blue-55 bg-blue-50 text-blue-600 rounded-lg font-bold text-tiny hover:bg-blue-100 flex items-center justify-center transition-all"
-                          >
-                            Nhập kho
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Pagination currentPage={posPage} totalItems={filteredPOs.length} pageSize={PAGE_SIZE} onPageChange={setPosPage} itemLabel="đơn đặt hàng" />
+              {/* Data Table (layout chuẩn dùng chung) */}
+              <DataTable
+                rows={filteredPOs}
+                columns={poColumns}
+                getRowKey={po => po.id}
+                loading={loading}
+                card={false}
+                pageSize={20}
+                itemLabel="đơn đặt hàng"
+                resetSignal={`${debouncedPoSearch}|${poStatusFilter}`}
+                emptyText="Không tìm thấy đơn hàng nào"
+                emptyIcon={<FileText className="w-12 h-12 text-gray-300 mx-auto" />}
+              />
             </div>
           )}
 
@@ -1857,136 +1715,20 @@ export default function InventoryPage() {
                 />
               </div>
 
-              {/* Data Table */}
-              <div className="hidden md:block overflow-x-auto">
-                {loading ? (
-                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={8} /></tbody></table>
-                ) : filteredReceipts.length === 0 ? (
-                  <div className="p-12 text-center text-gray-400 space-y-2">
-                    <WarehouseIcon className="w-12 h-12 text-gray-300 mx-auto" />
-                    <p className="font-semibold text-body-lg">Không tìm thấy phiếu nhập kho nào</p>
-                    <p className="text-body-md">Hãy click Nhập kho thực tế ở góc phải để tạo phiếu nhập mới.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                        <th className="px-6 py-4">Mã phiếu nhập</th>
-                        <th className="px-6 py-4">Nhà cung cấp</th>
-                        <th className="px-6 py-4">Kho nhận</th>
-                        <th className="px-6 py-4 text-center">Ngày nhận</th>
-                        <th className="px-6 py-4">Người nhận</th>
-                        <th className="px-6 py-4 text-center">Trạng thái</th>
-                        <th className="px-6 py-4 text-right">Tổng giá trị</th>
-                        <th className="px-6 py-4">Ghi chú</th>
-                        <th className="px-6 py-4 w-20 text-center">Hành động</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {pagedReceipts.map((gr) => (
-                        <tr key={gr.id} className="hover:bg-gray-25/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <span className="font-mono font-bold text-blue-500 block">{gr.receipt_code}</span>
-                            <span className={`mt-1 inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold ${(RECEIPT_STATUS[gr.status] || RECEIPT_STATUS.completed).cls}`}>
-                              {(RECEIPT_STATUS[gr.status] || RECEIPT_STATUS.completed).label}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 font-semibold text-gray-800">{gr.supplier.name}</td>
-                          <td className="px-6 py-4 text-gray-500">{gr.warehouse.name}</td>
-                          <td className="px-6 py-4 text-center text-gray-500">
-                            {new Date(gr.receipt_date).toLocaleDateString('vi-VN')}
-                          </td>
-                          <td className="px-6 py-4 font-medium text-gray-700">
-                            {gr.profile?.full_name || 'Hệ thống'}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase ${
-                              gr.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                            }`}>
-                              {gr.status === 'completed' ? 'Hoàn tất' : gr.status === 'draft' ? 'Chưa chốt' : gr.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right font-bold text-gray-750">
-                            {gr.total_amount.toLocaleString('vi-VN')} ₫
-                          </td>
-                          <td className="px-6 py-4 text-gray-400 italic text-tiny max-w-[200px] truncate" title={gr.notes || ''}>
-                            {gr.notes || '---'}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => navigate(`/goods-receipts/${gr.id}`)}
-                              className="text-blue-500 hover:text-blue-600 font-bold hover:underline"
-                            >
-                              Chi tiết
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Mobile Card List for Goods Receipts */}
-              {!loading && (
-                <div className="block md:hidden space-y-4">
-                  {pagedReceipts.map((gr) => (
-                    <div key={gr.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <span className="font-mono font-bold text-blue-500 block">{gr.receipt_code}</span>
-                          <span className={`mt-1 inline-block px-2 py-0.5 rounded-full border text-[10px] font-bold ${(RECEIPT_STATUS[gr.status] || RECEIPT_STATUS.completed).cls}`}>
-                            {(RECEIPT_STATUS[gr.status] || RECEIPT_STATUS.completed).label}
-                          </span>
-                          <p className="font-semibold text-gray-800 text-tiny mt-1">{gr.supplier.name}</p>
-                          <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
-                            gr.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {gr.status === 'completed' ? 'Hoàn tất' : gr.status === 'draft' ? 'Chưa chốt' : gr.status}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => navigate(`/goods-receipts/${gr.id}`)}
-                          className="h-8 px-3 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg font-semibold text-tiny hover:bg-gray-100 flex items-center justify-center transition-all shrink-0"
-                        >
-                          Chi tiết
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
-                        <div>
-                          <span className="block text-gray-400 font-medium">Kho nhận</span>
-                          <span className="font-semibold text-gray-750">{gr.warehouse.name}</span>
-                        </div>
-                        <div>
-                          <span className="block text-gray-400 font-medium">Ngày nhận</span>
-                          <span className="font-semibold text-gray-750">
-                            {new Date(gr.receipt_date).toLocaleDateString('vi-VN')}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1">
-                        <div>
-                          <span className="block text-gray-400 font-medium">Người nhận</span>
-                          <span className="font-semibold text-gray-750">{gr.profile?.full_name || 'Hệ thống'}</span>
-                        </div>
-                        <div>
-                          <span className="block text-gray-400 font-medium">Tổng giá trị</span>
-                          <strong className="text-body-md text-gray-800 font-bold tabular-nums">{gr.total_amount.toLocaleString('vi-VN')} ₫</strong>
-                        </div>
-                      </div>
-
-                      {gr.notes && (
-                        <div className="text-[11px] text-gray-400 italic bg-gray-50 p-2 rounded-lg border border-gray-100">
-                          Ghi chú: {gr.notes}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Pagination currentPage={receiptsPage} totalItems={filteredReceipts.length} pageSize={PAGE_SIZE} onPageChange={setReceiptsPage} itemLabel="phiếu nhập" />
+              {/* Data Table (layout chuẩn dùng chung) */}
+              <DataTable
+                rows={filteredReceipts}
+                columns={receiptColumns}
+                getRowKey={gr => gr.id}
+                loading={loading}
+                card={false}
+                pageSize={20}
+                itemLabel="phiếu nhập"
+                resetSignal={debouncedReceiptSearch}
+                onRowClick={gr => navigate(`/goods-receipts/${gr.id}`)}
+                emptyText="Không tìm thấy phiếu nhập kho nào"
+                emptyIcon={<WarehouseIcon className="w-12 h-12 text-gray-300 mx-auto" />}
+              />
             </div>
           )}
 
@@ -2014,134 +1756,20 @@ export default function InventoryPage() {
                 </button>
               </div>
 
-              {/* Data Table */}
-              <div className="hidden md:block overflow-x-auto">
-                {loading ? (
-                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
-                ) : filteredTransfers.length === 0 ? (
-                  <div className="p-12 text-center text-gray-400 space-y-2">
-                    <ArrowRightLeft className="w-12 h-12 text-gray-300 mx-auto" />
-                    <p className="font-semibold text-body-lg">Không tìm thấy phiếu chuyển kho nào</p>
-                    <p className="text-body-md">Hãy click Tạo yêu cầu chuyển kho để bắt đầu.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                        <th className="px-6 py-4">Mã yêu cầu</th>
-                        <th className="px-6 py-4">Kho nguồn</th>
-                        <th className="px-6 py-4">Kho đích</th>
-                        <th className="px-6 py-4 text-center">Ngày chuyển</th>
-                        <th className="px-6 py-4">Người tạo</th>
-                        <th className="px-6 py-4 text-right">Tổng giá trị</th>
-                        <th className="px-6 py-4 text-center">Trạng thái</th>
-                        <th className="px-6 py-4 w-20 text-center">Hành động</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {pagedTransfers.map((t) => (
-                        <tr key={t.id} className="hover:bg-gray-25/50 transition-colors">
-                          <td className="px-6 py-4 font-mono font-bold text-blue-500">{t.transfer_code}</td>
-                          <td className="px-6 py-4 font-semibold text-gray-800">{t.from_wh?.name || 'Kho nguồn'}</td>
-                          <td className="px-6 py-4 font-semibold text-gray-800">{t.to_wh?.name || 'Kho đích'}</td>
-                          <td className="px-6 py-4 text-center text-gray-500">
-                            {new Date(t.transfer_date).toLocaleDateString('vi-VN')}
-                          </td>
-                          <td className="px-6 py-4 font-medium text-gray-700">{t.creator?.full_name || 'Hệ thống'}</td>
-                          <td className="px-6 py-4 text-right font-bold text-gray-700">
-                            {t.total_amount ? `${Number(t.total_amount).toLocaleString('vi-VN')} ₫` : '0 ₫'}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`px-2.5 py-0.5 rounded text-tiny font-bold uppercase ${
-                              t.status === 'received' 
-                                ? 'bg-emerald-50 text-emerald-700' 
-                                : t.status === 'in_transit' 
-                                ? 'bg-amber-50 text-amber-700' 
-                                : t.status === 'draft' 
-                                ? 'bg-blue-50 text-blue-700' 
-                                : 'bg-gray-100 text-gray-500'
-                            }`}>
-                              {t.status === 'draft' ? 'Nháp' :
-                               t.status === 'in_transit' ? 'Đang chuyển' :
-                               t.status === 'received' ? 'Đã nhận' : 'Đã hủy'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={async () => {
-                                setSelectedTransfer(t)
-                                await fetchTransferDetails(t.id)
-                                setShowTransferDetailModal(true)
-                              }}
-                              className="text-blue-500 hover:text-blue-600 font-bold hover:underline"
-                            >
-                              Chi tiết
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Mobile Card List for Stock Transfers */}
-              {!loading && (
-                <div className="block md:hidden space-y-4">
-                  {pagedTransfers.map((t) => (
-                    <div key={t.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <span className="font-mono font-bold text-blue-500 block">{t.transfer_code}</span>
-                          <span className="text-[11px] text-gray-400 mt-1 block">Ngày chuyển: {new Date(t.transfer_date).toLocaleDateString('vi-VN')}</span>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
-                          t.status === 'received' 
-                            ? 'bg-emerald-50 text-emerald-700' 
-                            : t.status === 'in_transit' 
-                            ? 'bg-amber-50 text-amber-700' 
-                            : t.status === 'draft' 
-                            ? 'bg-blue-50 text-blue-700' 
-                            : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {t.status === 'draft' ? 'Nháp' :
-                           t.status === 'in_transit' ? 'Đang chuyển' :
-                           t.status === 'received' ? 'Đã nhận' : 'Đã hủy'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
-                        <div>
-                          <span className="block text-gray-400 font-medium">Kho nguồn</span>
-                          <span className="font-semibold text-gray-750">{t.from_wh?.name || 'Kho nguồn'}</span>
-                        </div>
-                        <div>
-                          <span className="block text-gray-400 font-medium">Kho đích</span>
-                          <span className="font-semibold text-gray-755 text-gray-700">{t.to_wh?.name || 'Kho đích'}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center pt-2 border-t border-gray-50">
-                        <div className="flex flex-col">
-                          <span className="text-[11px] text-gray-400 font-vietnamese">Người tạo: <strong className="text-gray-600 font-semibold">{t.creator?.full_name || 'Hệ thống'}</strong></span>
-                          <span className="text-[11px] text-gray-400">Tổng tiền: <strong className="text-gray-850 font-bold">{t.total_amount ? `${Number(t.total_amount).toLocaleString('vi-VN')} ₫` : '0 ₫'}</strong></span>
-                        </div>
-                        <button
-                          onClick={async () => {
-                            setSelectedTransfer(t)
-                            await fetchTransferDetails(t.id)
-                            setShowTransferDetailModal(true)
-                          }}
-                          className="h-8 px-4 bg-gray-50 text-gray-605 text-gray-600 border border-gray-200 rounded-lg font-semibold text-tiny hover:bg-gray-100 flex items-center justify-center transition-all"
-                        >
-                          Chi tiết
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Pagination currentPage={transfersPage} totalItems={filteredTransfers.length} pageSize={PAGE_SIZE} onPageChange={setTransfersPage} itemLabel="phiếu chuyển" />
+              {/* Data Table (layout chuẩn dùng chung) */}
+              <DataTable
+                rows={filteredTransfers}
+                columns={transferColumns}
+                getRowKey={t => t.id}
+                loading={loading}
+                card={false}
+                pageSize={20}
+                itemLabel="phiếu chuyển"
+                resetSignal={debouncedTransferSearch}
+                onRowClick={t => { setSelectedTransfer(t); fetchTransferDetails(t.id); setShowTransferDetailModal(true) }}
+                emptyText="Không tìm thấy phiếu chuyển kho nào"
+                emptyIcon={<ArrowRightLeft className="w-12 h-12 text-gray-300 mx-auto" />}
+              />
             </div>
           )}
 
@@ -2169,134 +1797,20 @@ export default function InventoryPage() {
                 </button>
               </div>
 
-              {/* Data Table */}
-              <div className="hidden md:block overflow-x-auto">
-                {loading ? (
-                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={7} /></tbody></table>
-                ) : filteredReturns.length === 0 ? (
-                  <div className="p-12 text-center text-gray-400 space-y-2">
-                    <RotateCcw className="w-12 h-12 text-gray-300 mx-auto" />
-                    <p className="font-semibold text-body-lg">Không tìm thấy phiếu trả hàng nào</p>
-                    <p className="text-body-md">Hãy click Tạo phiếu trả hàng NCC để bắt đầu.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                        <th className="px-6 py-4">Mã phiếu</th>
-                        <th className="px-6 py-4">Nhà cung cấp</th>
-                        <th className="px-6 py-4">Kho trả hàng</th>
-                        <th className="px-6 py-4 text-center">Hoàn tiền</th>
-                        <th className="px-6 py-4 text-right">Tổng giá trị</th>
-                        <th className="px-6 py-4 text-center">Trạng thái</th>
-                        <th className="px-6 py-4 w-20 text-center">Hành động</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {pagedReturns.map((r) => (
-                        <tr key={r.id} className="hover:bg-gray-25/50 transition-colors">
-                          <td className="px-6 py-4 font-mono font-bold text-blue-500">{r.return_code}</td>
-                          <td className="px-6 py-4 font-semibold text-gray-800">{r.supplier?.name || 'Nhà cung cấp'}</td>
-                          <td className="px-6 py-4 text-gray-500">{r.warehouse?.name || 'Kho xuất'}</td>
-                          <td className="px-6 py-4 text-center font-medium capitalize text-gray-700">
-                            {r.refund_method === 'cash_refund' ? 'Tiền mặt' : r.refund_method === 'credit_note' ? 'Trừ công nợ' : 'Cấn trừ PO'}
-                          </td>
-                          <td className="px-6 py-4 text-right font-bold text-gray-700">
-                            {Number(r.total_amount || 0).toLocaleString('vi-VN')} ₫
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`px-2.5 py-0.5 rounded text-tiny font-bold uppercase ${
-                              r.status === 'completed' 
-                                ? 'bg-emerald-50 text-emerald-700' 
-                                : r.status === 'confirmed'
-                                ? 'bg-blue-50 text-blue-700'
-                                : r.status === 'draft' 
-                                ? 'bg-gray-100 text-gray-500' 
-                                : 'bg-red-50 text-red-750'
-                            }`}>
-                              {r.status === 'draft' ? 'Nháp' :
-                               r.status === 'confirmed' ? 'Đã duyệt' :
-                               r.status === 'completed' ? 'Hoàn tất' : 'Đã hủy'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={async () => {
-                                setSelectedReturn(r)
-                                await fetchReturnDetails(r.id)
-                                setShowReturnDetailModal(true)
-                              }}
-                              className="text-blue-500 hover:text-blue-600 font-bold hover:underline"
-                            >
-                              Chi tiết
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Mobile Card List for Purchase Returns */}
-              {!loading && (
-                <div className="block md:hidden space-y-4">
-                  {pagedReturns.map((r) => (
-                    <div key={r.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <span className="font-mono font-bold text-blue-500 block">{r.return_code}</span>
-                          <p className="font-semibold text-gray-800 text-tiny mt-1">{r.supplier?.name || 'Nhà cung cấp'}</p>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase shrink-0 ${
-                          r.status === 'completed' 
-                            ? 'bg-emerald-50 text-emerald-700' 
-                            : r.status === 'confirmed'
-                            ? 'bg-blue-50 text-blue-700'
-                            : r.status === 'draft' 
-                            ? 'bg-gray-100 text-gray-500' 
-                            : 'bg-red-50 text-red-750'
-                        }`}>
-                          {r.status === 'draft' ? 'Nháp' :
-                           r.status === 'confirmed' ? 'Đã duyệt' :
-                           r.status === 'completed' ? 'Hoàn tất' : 'Đã hủy'}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-tiny text-gray-500 pt-1 border-t border-gray-50">
-                        <div>
-                          <span className="block text-gray-400 font-medium">Kho trả hàng</span>
-                          <span className="font-semibold text-gray-750">{r.warehouse?.name || 'Kho xuất'}</span>
-                        </div>
-                        <div>
-                          <span className="block text-gray-400 font-medium">Hoàn tiền</span>
-                          <span className="font-semibold text-gray-750 capitalize text-gray-700">
-                            {r.refund_method === 'cash_refund' ? 'Tiền mặt' : r.refund_method === 'credit_note' ? 'Trừ công nợ' : 'Cấn trừ PO'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-center pt-2 border-t border-gray-50">
-                        <div>
-                          <span className="text-gray-455 text-[11px] block">Tổng giá trị</span>
-                          <strong className="text-body-md text-gray-850 font-bold tabular-nums">{Number(r.total_amount || 0).toLocaleString('vi-VN')} ₫</strong>
-                        </div>
-                        <button
-                          onClick={async () => {
-                            setSelectedReturn(r)
-                            await fetchReturnDetails(r.id)
-                            setShowReturnDetailModal(true)
-                          }}
-                          className="h-8 px-4 bg-gray-50 text-gray-650 text-gray-600 border border-gray-200 rounded-lg font-semibold text-tiny hover:bg-gray-100 flex items-center justify-center transition-all"
-                        >
-                          Chi tiết
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Pagination currentPage={returnsPage} totalItems={filteredReturns.length} pageSize={PAGE_SIZE} onPageChange={setReturnsPage} itemLabel="phiếu trả" />
+              {/* Data Table (layout chuẩn dùng chung) */}
+              <DataTable
+                rows={filteredReturns}
+                columns={returnColumns}
+                getRowKey={r => r.id}
+                loading={loading}
+                card={false}
+                pageSize={20}
+                itemLabel="phiếu trả"
+                resetSignal={debouncedReturnSearch}
+                onRowClick={r => { setSelectedReturn(r); fetchReturnDetails(r.id); setShowReturnDetailModal(true) }}
+                emptyText="Không tìm thấy phiếu trả hàng nào"
+                emptyIcon={<RotateCcw className="w-12 h-12 text-gray-300 mx-auto" />}
+              />
             </div>
           )}
 
@@ -2318,111 +1832,19 @@ export default function InventoryPage() {
                 </button>
               </div>
 
-              {/* Data Table */}
-              <div className="hidden md:block overflow-x-auto">
-                {invSettings.length === 0 ? (
-                  <div className="p-12 text-center text-gray-400 border border-dashed border-gray-150 rounded-xl">
-                    <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-2" />
-                    <p className="font-semibold text-body-lg">Chưa cấu hình định mức an toàn nào</p>
-                    <p className="text-body-md">Sử dụng nút Cài đặt định mức để bắt đầu thiết lập hạn mức cảnh báo.</p>
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                        <th className="px-6 py-4">Sản phẩm / SKU</th>
-                        <th className="px-6 py-4">Kho áp dụng</th>
-                        <th className="px-6 py-4 text-center">Tồn tối thiểu</th>
-                        <th className="px-6 py-4 text-center">Tồn tối đa</th>
-                        <th className="px-6 py-4 text-center">Điểm đặt lại</th>
-                        <th className="px-6 py-4 w-24 text-center">Hành động</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
-                      {pagedSettings.map((set) => (
-                        <tr key={set.id} className="hover:bg-gray-25/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div>
-                              <p className="font-bold text-gray-800">{set.product.name}</p>
-                              <span className="text-gray-400 font-mono text-tiny">SKU: {set.product.sku}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 font-semibold text-gray-700">{set.warehouse.name}</td>
-                          <td className="px-6 py-4 text-center font-bold text-red-500">{set.min_stock_level}</td>
-                          <td className="px-6 py-4 text-center font-bold text-gray-700">{set.max_stock_level || '---'}</td>
-                          <td className="px-6 py-4 text-center text-gray-500">{set.reorder_point || '---'}</td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="flex gap-2 justify-center">
-                              <button
-                                onClick={() => handleOpenEditSetting(set)}
-                                className="text-blue-500 hover:text-blue-600 font-semibold text-tiny hover:underline"
-                              >
-                                Sửa
-                              </button>
-                              <button
-                                onClick={() => handleDeleteSetting(set.id)}
-                                className="text-red-500 hover:text-red-600 font-semibold text-tiny hover:underline"
-                              >
-                                Xóa
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Mobile Card List for Safety Stock Settings */}
-              {invSettings.length > 0 && (
-                <div className="block md:hidden space-y-4">
-                  {pagedSettings.map((set) => (
-                    <div key={set.id} className="bg-white p-4 rounded-xl border border-gray-150 shadow-sm space-y-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <p className="font-bold text-gray-800 text-body-md">{set.product.name}</p>
-                          <span className="text-gray-400 font-mono text-tiny">SKU: {set.product.sku}</span>
-                        </div>
-                        <div className="flex gap-1.5 shrink-0">
-                          <button
-                            onClick={() => handleOpenEditSetting(set)}
-                            className="h-8 px-2.5 bg-blue-50 text-blue-600 rounded-lg font-semibold text-tiny hover:bg-blue-100 flex items-center justify-center transition-all"
-                          >
-                            Sửa
-                          </button>
-                          <button
-                            onClick={() => handleDeleteSetting(set.id)}
-                            className="h-8 px-2.5 bg-red-50 text-red-650 rounded-lg font-semibold text-tiny hover:bg-red-100 flex items-center justify-center transition-all"
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-tiny text-gray-500 pt-2 border-t border-gray-50">
-                        <div>
-                          <span className="block text-gray-450 text-[10px]">Tồn tối thiểu</span>
-                          <strong className="text-body-md text-red-500 font-bold">{set.min_stock_level}</strong>
-                        </div>
-                        <div>
-                          <span className="block text-gray-450 text-[10px]">Tồn tối đa</span>
-                          <strong className="text-body-md text-gray-700 font-bold">{set.max_stock_level || '---'}</strong>
-                        </div>
-                        <div>
-                          <span className="block text-gray-450 text-[10px]">Điểm đặt lại</span>
-                          <span className="text-body-md text-gray-500 font-semibold">{set.reorder_point || '---'}</span>
-                        </div>
-                      </div>
-
-                      <div className="text-tiny text-gray-500 pt-1">
-                        Kho áp dụng: <strong className="text-gray-700 font-semibold">{set.warehouse.name}</strong>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Pagination currentPage={settingsPage} totalItems={invSettings.length} pageSize={PAGE_SIZE} onPageChange={setSettingsPage} itemLabel="định mức" />
+              {/* Data Table (layout chuẩn dùng chung) */}
+              <DataTable
+                rows={invSettings}
+                columns={settingColumns}
+                getRowKey={set => set.id}
+                loading={loading}
+                card={false}
+                pageSize={20}
+                itemLabel="định mức"
+                resetSignal={invSettings.length}
+                emptyText="Chưa cấu hình định mức an toàn nào"
+                emptyIcon={<AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-2" />}
+              />
             </div>
           )}
         </div>

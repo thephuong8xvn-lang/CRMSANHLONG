@@ -1,10 +1,8 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
   Search,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
   Package,
   FileSpreadsheet,
@@ -19,7 +17,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
-import { Skeleton } from '../../components/Skeleton'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import ProductQuickView from './ProductQuickView'
 import AddProductModal from './AddProductModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
@@ -63,7 +61,6 @@ export default function ProductListPage() {
   const [selectedStatus, setSelectedStatus]   = useState<'active' | 'inactive' | 'all'>('active')
   const [currentPage, setCurrentPage]         = useState(1)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
-  const [expandedId, setExpandedId]           = useState<string | null>(null)
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
 
   // Starred Products (Favorite) Local State
@@ -98,9 +95,6 @@ export default function ProductListPage() {
   const categories   = categoriesQuery.data ?? []
   const brands       = brandsQuery.data ?? []
 
-  const totalPages       = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
-  const indexOfFirstItem = (currentPage - 1) * PAGE_SIZE
-  const indexOfLastItem  = indexOfFirstItem + PAGE_SIZE
 
   const handleToggleStar = (prodId: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -181,6 +175,45 @@ export default function ProductListPage() {
       alert('Xuất CSV thất bại. Vui lòng thử lại.')
     }
   }
+
+  // ── Cấu hình cột chuẩn DataTable: Sản phẩm ──
+  const productColumns: DataTableColumn<ProductStockRow>[] = [
+    { key: 'expand', header: '', width: 36, align: 'center', noTruncate: true, hideOnMobile: true, render: (_p, expanded) => <ChevronDown size={15} className={`mx-auto text-gray-400 transition-transform ${expanded ? 'rotate-180 text-blue-500' : ''}`} /> },
+    { key: 'star', header: '', width: 36, align: 'center', noTruncate: true, hideOnMobile: true, render: p => <button onClick={e => handleToggleStar(p.id, e)} className="p-1 hover:bg-gray-100 rounded text-gray-300 hover:text-amber-500"><Star size={14} className={starredProducts[p.id] ? 'fill-amber-400 text-amber-400' : 'text-gray-300'} /></button> },
+    { key: 'image', header: 'Ảnh', width: 56, align: 'center', noTruncate: true, render: p => { const image = p.image_urls && p.image_urls.length > 0 ? p.image_urls[0] : null; return <div className="w-10 h-10 rounded border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center mx-auto"><ProductImage src={image} alt={p.name} /></div> } },
+    { key: 'sku', header: 'Mã hàng', width: 110, render: p => <span className="font-mono text-[12px] text-gray-500 font-semibold group-hover:text-blue-500">{p.sku || '-'}</span> },
+    {
+      key: 'name', header: 'Tên hàng', flex: true, minWidth: 200, noTruncate: true,
+      render: p => (
+        <div className="min-w-0">
+          <span className="font-bold text-gray-800 leading-snug group-hover:text-blue-600 line-clamp-2 block">{p.name}</span>
+          <div className="flex gap-2 items-center text-[10px] text-gray-400 font-medium truncate">
+            <span className="truncate">Nhóm: <strong className="text-gray-500">{p.category_name || '-'}</strong></span>
+            <span>•</span>
+            <span className="truncate">Hãng: <strong className="text-gray-500">{p.brand_name || '-'}</strong></span>
+            {p.package_specs && <><span>•</span><span className="truncate">Quy cách: <strong className="text-gray-500">{p.package_specs}</strong></span></>}
+          </div>
+        </div>
+      )
+    },
+    { key: 'price', header: 'Giá bán', width: 110, align: 'right', render: p => <span className="font-bold text-blue-600 tabular-nums">{formatCurrency(p.retail_price)}</span> },
+    { key: 'cost', header: 'Giá vốn', width: 110, align: 'right', render: p => <span className="text-gray-500 tabular-nums">{formatCurrency(p.retail_cost)}</span> },
+    { key: 'stock', header: 'Tồn kho', width: 96, align: 'right', render: p => <span className="font-bold text-gray-700 tabular-nums">{p.stock_on_hand.toLocaleString('vi-VN')}</span> },
+    { key: 'order', header: 'Khách đặt', width: 96, align: 'right', render: p => <span className="text-gray-600 tabular-nums">{p.on_order_qty.toLocaleString('vi-VN')}</span> },
+    { key: 'created', header: 'Thời gian tạo', width: 130, render: p => <span className="text-gray-400 text-tiny font-mono">{p.created_at ? new Date(p.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</span> },
+    { key: 'days', header: 'Dự kiến hết', width: 110, noTruncate: true, render: p => { const daysLabel = formatDaysToOOS(p.days_to_oos); return <span className={`px-1.5 py-0.5 text-[11px] font-bold rounded ${daysLabel === '0 ngày' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-50 text-gray-600 border border-gray-100'}`}>{daysLabel}</span> } }
+  ]
+
+  const productSummary = (
+    <tr className="bg-blue-50/20 border-b border-gray-100 font-bold text-gray-700">
+      <td></td><td></td><td></td>
+      <td className="px-3 py-2 text-tiny italic text-gray-400 whitespace-nowrap">Tổng cộng:</td>
+      <td></td><td></td><td></td>
+      <td className="px-3 py-2 text-right font-extrabold text-blue-700 tabular-nums">{totalStockSum.toLocaleString('vi-VN')}</td>
+      <td className="px-3 py-2 text-right font-extrabold text-blue-700 tabular-nums">{totalOrderedSum.toLocaleString('vi-VN')}</td>
+      <td></td><td></td>
+    </tr>
+  )
 
   return (
     <Layout activeMenu="Sản phẩm">
@@ -295,270 +328,27 @@ export default function ProductListPage() {
               </button>
             </div>
 
-            {/* Table */}
-            <div className="flex-1 overflow-x-auto hidden md:block">
-              <table className="w-full border-collapse text-[13px] text-left">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-[10px] font-bold">
-                    <th className="py-2.5 px-3 text-center w-8"></th>
-                    <th className="py-2.5 px-1 text-center w-8"></th>
-                    <th className="py-2.5 px-3 text-center w-12">Ảnh</th>
-                    <th className="py-2.5 px-3 w-28">Mã hàng</th>
-                    <th className="py-2.5 px-4 min-w-[200px]">Tên hàng</th>
-                    <th className="py-2.5 px-3 text-right w-28">Giá bán</th>
-                    <th className="py-2.5 px-3 text-right w-28">Giá vốn</th>
-                    <th className="py-2.5 px-3 text-right w-24">Tồn kho</th>
-                    <th className="py-2.5 px-3 text-right w-24">Khách đặt</th>
-                    <th className="py-2.5 px-4 w-36">Thời gian tạo</th>
-                    <th className="py-2.5 px-4 w-32">Dự kiến hết</th>
-                  </tr>
-
-                  {/* Totals Header Row – server-side aggregate */}
-                  <tr className="bg-blue-50/20 border-b border-gray-200 font-bold text-gray-700">
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-1"></td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3 text-tiny italic text-gray-400">Tổng cộng:</td>
-                    <td className="py-2 px-4"></td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3"></td>
-                    <td className="py-2 px-3 text-right font-extrabold text-blue-700">{totalStockSum.toLocaleString('vi-VN')}</td>
-                    <td className="py-2 px-3 text-right font-extrabold text-blue-700">{totalOrderedSum.toLocaleString('vi-VN')}</td>
-                    <td className="py-2 px-4"></td>
-                    <td className="py-2 px-4"></td>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading && rows.length === 0 ? (
-                    <Skeleton.TableRows count={8} cols={11} />
-                  ) : rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={11} className="py-20 text-center text-gray-400 italic">Không tìm thấy sản phẩm nào khớp với bộ lọc.</td>
-                    </tr>
-                  ) : (
-                    rows.map(prod => {
-                      const image = prod.image_urls && prod.image_urls.length > 0 ? prod.image_urls[0] : null
-                      const createdAt = prod.created_at
-                        ? new Date(prod.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                        : '-'
-                      const daysLabel = formatDaysToOOS(prod.days_to_oos)
-                      const isExpanded = expandedId === prod.id
-                      return (
-                        <Fragment key={prod.id}>
-                        <tr
-                          onClick={() => setExpandedId(prev => prev === prod.id ? null : prod.id)}
-                          className={`border-b border-gray-100 transition-colors cursor-pointer group ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/50'}`}
-                        >
-                          <td className="py-3 px-3 text-center">
-                            <ChevronDown size={15} className={`mx-auto text-gray-400 transition-transform ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
-                          </td>
-                          <td className="py-3 px-1 text-center">
-                            <button
-                              onClick={e => handleToggleStar(prod.id, e)}
-                              className="p-1 hover:bg-gray-100 rounded transition-all text-gray-300 hover:text-amber-500"
-                            >
-                              <Star size={14} className={starredProducts[prod.id] ? 'fill-amber-400 text-amber-400' : 'text-gray-300'} />
-                            </button>
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <div className="w-10 h-10 rounded border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center mx-auto">
-                              <ProductImage src={image} alt={prod.name} />
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 font-mono text-[12px] text-gray-500 font-semibold group-hover:text-blue-500 transition-colors">
-                            {prod.sku || '-'}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="font-bold text-gray-800 leading-snug group-hover:text-blue-600 transition-colors line-clamp-2">
-                                {prod.name}
-                              </span>
-                              <div className="flex gap-2 items-center text-[10px] text-gray-400 font-medium">
-                                <span>Nhóm: <strong className="text-gray-500">{prod.category_name || '-'}</strong></span>
-                                <span>•</span>
-                                <span>Hãng: <strong className="text-gray-500">{prod.brand_name || '-'}</strong></span>
-                                {prod.package_specs && (
-                                  <>
-                                    <span>•</span>
-                                    <span>Quy cách: <strong className="text-gray-500">{prod.package_specs}</strong></span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 text-right font-bold text-blue-600 tabular-nums">
-                            {formatCurrency(prod.retail_price)}
-                          </td>
-                          <td className="py-3 px-3 text-right text-gray-500 tabular-nums">
-                            {formatCurrency(prod.retail_cost)}
-                          </td>
-                          <td className="py-3 px-3 text-right font-bold text-gray-700 tabular-nums">
-                            {prod.stock_on_hand.toLocaleString('vi-VN')}
-                          </td>
-                          <td className="py-3 px-3 text-right text-gray-600 tabular-nums">
-                            {prod.on_order_qty.toLocaleString('vi-VN')}
-                          </td>
-                          <td className="py-3 px-4 text-gray-400 text-tiny font-mono">{createdAt}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-1.5 py-0.5 text-[11px] font-bold rounded ${
-                              daysLabel === '0 ngày' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-50 text-gray-600 border border-gray-100'
-                            }`}>
-                              {daysLabel}
-                            </span>
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr className="bg-blue-50/20">
-                            <td colSpan={11} className="p-0 px-3 pb-3">
-                              <ProductQuickView
-                                row={prod}
-                                branchId={listParams.branchId}
-                                onClose={() => setExpandedId(null)}
-                                onOpenDetail={() => navigate(`/products/${prod.id}`)}
-                              />
-                            </td>
-                          </tr>
-                        )}
-                        </Fragment>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+            {/* Bảng sản phẩm (layout chuẩn DataTable) */}
+            <div className="px-3 pb-3">
+              <DataTable
+                rows={rows}
+                columns={productColumns}
+                getRowKey={p => p.id}
+                loading={loading}
+                card={false}
+                pageSize={PAGE_SIZE}
+                itemLabel="sản phẩm"
+                manualPagination
+                page={currentPage}
+                onPageChange={setCurrentPage}
+                totalItems={totalItems}
+                headerSummary={productSummary}
+                expandedRowRender={(prod, collapse) => (
+                  <ProductQuickView row={prod} branchId={listParams.branchId} onClose={collapse} onOpenDetail={() => navigate(`/products/${prod.id}`)} />
+                )}
+                emptyText="Không tìm thấy sản phẩm nào khớp với bộ lọc."
+              />
             </div>
-
-            {/* Mobile Card List View */}
-            <div className="block md:hidden divide-y divide-gray-100 flex-1">
-              {loading && rows.length === 0 ? (
-                <div className="p-4 space-y-3">
-                  <Skeleton.TableRows count={5} cols={4} />
-                </div>
-              ) : rows.length === 0 ? (
-                <div className="py-20 text-center text-gray-450 italic">Không tìm thấy sản phẩm nào khớp với bộ lọc.</div>
-              ) : (
-                rows.map(prod => {
-                  const image = prod.image_urls && prod.image_urls.length > 0 ? prod.image_urls[0] : null
-                  const daysLabel = formatDaysToOOS(prod.days_to_oos)
-                  const isExpanded = expandedId === prod.id
-                  return (
-                    <Fragment key={prod.id}>
-                    <div
-                      onClick={() => setExpandedId(prev => prev === prod.id ? null : prod.id)}
-                      className={`p-4 transition-colors cursor-pointer space-y-3 relative ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-50/50'}`}
-                    >
-                      <div className="flex gap-3">
-                        <div className="w-16 h-16 rounded border border-gray-100 bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
-                          <ProductImage src={image} alt={prod.name} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start">
-                            <span className="font-mono text-[11px] text-gray-400 font-semibold">{prod.sku || '-'}</span>
-                            <button
-                              onClick={e => handleToggleStar(prod.id, e)}
-                              className="p-1 hover:bg-gray-100 rounded transition-all text-gray-300 hover:text-amber-500"
-                            >
-                              <Star size={14} className={starredProducts[prod.id] ? 'fill-amber-400 text-amber-400' : 'text-gray-300'} />
-                            </button>
-                          </div>
-                          <h4 className="font-bold text-gray-800 leading-snug break-words line-clamp-2 mt-0.5">
-                            {prod.name}
-                          </h4>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-gray-500 font-semibold">
-                        <span className="bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded">Nhóm: {prod.category_name || '-'}</span>
-                        <span className="bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded">Hãng: {prod.brand_name || '-'}</span>
-                        {prod.package_specs && (
-                          <span className="bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded">Quy cách: {prod.package_specs}</span>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-50 text-tiny text-gray-500">
-                        <div>
-                          <span className="text-gray-400 block mb-0.5">Giá bán:</span>
-                          <span className="font-bold text-blue-600">{formatCurrency(prod.retail_price)}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block mb-0.5">Giá vốn:</span>
-                          <span className="font-semibold text-gray-750">{formatCurrency(prod.retail_cost)}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block mb-0.5">Tồn kho / Khách đặt:</span>
-                          <span className="font-bold text-gray-800">{prod.stock_on_hand.toLocaleString('vi-VN')} / {prod.on_order_qty.toLocaleString('vi-VN')}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block mb-0.5">Dự kiến hết:</span>
-                          <span className={`px-1.5 py-0.2 rounded font-bold text-[11px] ${
-                            daysLabel === '0 ngày' ? 'bg-red-50 text-red-600' : 'bg-gray-50 text-gray-600'
-                          }`}>
-                            {daysLabel}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    {isExpanded && (
-                      <div className="px-3 pb-3 bg-blue-50/20">
-                        <ProductQuickView
-                          row={prod}
-                          branchId={listParams.branchId}
-                          onClose={() => setExpandedId(null)}
-                          onOpenDetail={() => navigate(`/products/${prod.id}`)}
-                        />
-                      </div>
-                    )}
-                    </Fragment>
-                  )
-                })
-              )}
-            </div>
-
-            {/* Pagination */}
-            {!loading && rows.length > 0 && (
-              <div className="p-4 border-t border-gray-100 bg-gray-25 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
-                <span className="text-tiny text-gray-450 font-medium">
-                  Hiển thị <span className="font-bold text-gray-600">{indexOfFirstItem + 1}-{Math.min(indexOfLastItem, totalItems)}</span> trên tổng số <span className="font-bold text-gray-600">{totalItems}</span> sản phẩm
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="w-8 h-8 rounded border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white transition-all shadow-sm"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  {Array.from({ length: totalPages }).map((_, idx) => {
-                    const page = idx + 1
-                    if (page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)) {
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => setCurrentPage(page)}
-                          className={`w-8 h-8 rounded text-tiny font-bold transition-all shadow-sm ${
-                            currentPage === page
-                              ? 'bg-blue-600 text-white border border-blue-600'
-                              : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      )
-                    }
-                    if (page === 2 || page === totalPages - 1) {
-                      return <span key={idx} className="px-1 text-gray-300">...</span>
-                    }
-                    return null
-                  })}
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="w-8 h-8 rounded border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-white transition-all shadow-sm"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

@@ -10,7 +10,6 @@ import {
   Download,
   ShieldCheck,
   Upload,
-  ChevronLeft,
   Wallet,
   Clock,
   Printer,
@@ -22,7 +21,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { useRealtimeTable } from '../../hooks/useRealtimeTable'
-import { Skeleton } from '../../components/Skeleton'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
@@ -1248,6 +1247,100 @@ export default function CashbookPage() {
     )
   }
 
+  // ── Cấu hình cột chuẩn DataTable: Lịch sử dòng tiền ──
+  const txColumns: DataTableColumn<CashbookTransaction>[] = [
+    {
+      key: 'code', header: 'Mã GD', width: 120, noTruncate: true,
+      render: tx => (
+        <div className="min-w-0">
+          <span className="text-tiny font-bold text-blue-600 font-mono block truncate">{tx.transaction_code || 'SQ-DRAFT'}</span>
+          <span className="text-[10px] text-gray-400 font-mono block">{new Date(tx.transaction_date).toLocaleDateString('vi-VN')}</span>
+        </div>
+      )
+    },
+    {
+      key: 'category', header: 'Hạng mục / Ca', width: 200, noTruncate: true,
+      render: tx => {
+        const isTransfer = tx.flow_type === 'internal_transfer'
+        const isIncome = tx.flow_type === 'inflow'
+        let badgeColor = 'bg-gray-50 text-gray-600 border-gray-150'
+        if (isIncome) badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-100'
+        else if (tx.flow_type === 'outflow') badgeColor = 'bg-orange-50 text-orange-700 border-orange-100'
+        else if (isTransfer) badgeColor = 'bg-purple-50 text-purple-700 border-purple-100'
+        return (
+          <div className="min-w-0">
+            <span className={`inline-block max-w-full truncate px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${badgeColor}`}>{tx.expense_category?.name || (isTransfer ? 'Chuyển tiền nội bộ' : 'Không phân loại')}</span>
+            <span className="text-[10px] text-gray-400 block mt-1 truncate">
+              {tx.cash_fund_id
+                ? (cashFunds.find(f => f.id === tx.cash_fund_id)?.name ?? 'Quỹ tiền mặt')
+                : (() => { const bank = bankAccounts.find(b => b.id === tx.bank_account_id); return bank ? `${bank.bank_name} ...${bank.account_no.slice(-4)}` : 'Ngân hàng' })()}
+              {tx.session_id && ` · Ca #${tx.session_id.slice(0, 4).toUpperCase()}`}
+            </span>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'amount', header: 'Số tiền', width: 130, align: 'right',
+      render: tx => {
+        const isIncome = tx.flow_type === 'inflow'
+        return <span className={`font-bold tabular-nums text-tiny ${isIncome ? 'text-emerald-600' : 'text-orange-600'}`}>{isIncome ? '+' : '-'}{formatCurrency(tx.amount)}</span>
+      }
+    },
+    {
+      key: 'counterparty', header: 'Đối tượng / Ghi chú', flex: true, minWidth: 180, noTruncate: true,
+      render: tx => {
+        let counterparty = 'Khách vãng lai'
+        if (tx.customer) counterparty = `KH: ${tx.customer.farm_name || tx.customer.name}`
+        else if (tx.supplier) counterparty = `NCC: ${tx.supplier.name}`
+        else if (tx.employee) counterparty = `NV: ${tx.employee.full_name}`
+        return (
+          <div className="min-w-0">
+            <p className="text-tiny font-bold text-gray-700 truncate">{counterparty}</p>
+            <p className="text-[10px] text-gray-400 truncate mt-0.5">{tx.description}</p>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'status', header: 'Trạng thái', width: 120, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: tx => {
+        let statusColor = 'bg-gray-50 text-gray-500 border-gray-100'; let statusText = 'Nháp'
+        if (tx.status === 'approved') { statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-100'; statusText = 'Đã duyệt' }
+        else if (tx.status === 'pending_approval') { statusColor = 'bg-amber-50 text-amber-700 border-amber-100'; statusText = 'Chờ duyệt' }
+        else if (tx.status === 'cancelled') { statusColor = 'bg-red-50 text-red-700 border-red-100'; statusText = 'Đã hủy' }
+        return <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusColor}`}>{statusText}</span>
+      }
+    },
+    { key: 'chev', header: '', width: 44, align: 'right', noTruncate: true, hideOnMobile: true, render: () => <ChevronRight size={16} className="text-gray-300 inline" /> }
+  ]
+
+  // ── Cấu hình cột chuẩn DataTable: Phiên ca ──
+  const sessionColumns: DataTableColumn<CashierSession>[] = [
+    { key: 'code', header: 'Phiên ca', width: 120, render: s => <span className="font-mono font-bold text-gray-600">{s.id.slice(0, 8).toUpperCase()}</span> },
+    { key: 'cashier', header: 'Người mở', flex: true, minWidth: 150, render: s => <span className="font-semibold text-gray-700" title={s.cashier?.full_name || 'N/A'}>{s.cashier?.full_name || 'N/A'}</span> },
+    { key: 'opened', header: 'Mở lúc', width: 150, render: s => <span className="text-gray-500 font-mono text-[11px]">{new Date(s.opened_at).toLocaleString('vi-VN')}</span> },
+    { key: 'opening', header: 'Đầu ca', width: 120, align: 'right', render: s => <span className="font-semibold text-gray-700 tabular-nums">{formatCurrency(s.opening_balance)}</span> },
+    { key: 'closing', header: 'Cuối ca (HT)', width: 140, align: 'right', render: s => <span className="font-semibold text-gray-700 tabular-nums">{s.status === 'closed' ? formatCurrency(s.closing_balance || 0) : '—'}</span> },
+    {
+      key: 'actual', header: 'Thực tế', width: 150, align: 'right', noTruncate: true,
+      render: s => {
+        if (s.status !== 'closed') return <span className="text-gray-400">—</span>
+        const varVal = s.variance || 0
+        return (
+          <div className="flex flex-col items-end">
+            <span className="font-semibold text-gray-700 tabular-nums">{formatCurrency(s.cash_actual || 0)}</span>
+            <span className={`text-[10px] ${varVal > 0 ? 'text-emerald-600' : varVal < 0 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>({varVal > 0 ? '+' : ''}{formatCurrency(varVal)})</span>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'status', header: 'Trạng thái', width: 100, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: s => <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${s.status === 'open' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-50 text-gray-500 border-gray-150'}`}>{s.status === 'open' ? 'Đang mở' : 'Đã đóng'}</span>
+    }
+  ]
+
   return (
     <Layout activeMenu="Sổ quỹ">
       <div className="p-4 md:p-10 max-w-[1800px] mx-auto flex flex-col space-y-6">
@@ -1595,167 +1688,23 @@ export default function CashbookPage() {
                 </div>
               </div>
 
-              {/* Table Data */}
-              <div className="overflow-x-auto">
-                {loading ? (
-                  <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={6} /></tbody></table>
-                ) : transactions.length === 0 ? (
-                  <div className="h-60 flex flex-col items-center justify-center text-gray-400 gap-2 italic text-tiny">
-                    Không tìm thấy giao dịch nào thỏa mãn bộ lọc.
-                  </div>
-                ) : (
-                  <table className="w-full text-left">
-                    <thead className="bg-gray-50 border-b border-gray-100">
-                      <tr>
-                        <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Mã GD</th>
-                        <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Hạng mục / Ca</th>
-                        <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Số tiền</th>
-                        <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Đối tượng / Ghi chú</th>
-                        <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Trạng thái</th>
-                        <th className="px-4 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {transactions.map(tx => {
-                        const isIncome = tx.flow_type === 'inflow'
-                        const isTransfer = tx.flow_type === 'internal_transfer'
-                        
-                        let badgeColor = 'bg-gray-50 text-gray-600 border-gray-150'
-                        if (isIncome) badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                        else if (tx.flow_type === 'outflow') badgeColor = 'bg-orange-50 text-orange-700 border-orange-100'
-                        else if (isTransfer) badgeColor = 'bg-purple-50 text-purple-700 border-purple-100'
-
-                        let statusColor = 'bg-gray-50 text-gray-500 border-gray-100'
-                        let statusText = 'Nháp'
-                        if (tx.status === 'approved') {
-                          statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                          statusText = 'Đã duyệt'
-                        } else if (tx.status === 'pending_approval') {
-                          statusColor = 'bg-amber-50 text-amber-700 border-amber-100 animate-pulse'
-                          statusText = 'Chờ duyệt'
-                        } else if (tx.status === 'cancelled') {
-                          statusColor = 'bg-red-50 text-red-700 border-red-100'
-                          statusText = 'Đã hủy'
-                        }
-
-                        // Counterparty label
-                        let counterparty = 'Khách vãng lai'
-                        if (tx.customer) counterparty = `KH: ${tx.customer.farm_name || tx.customer.name}`
-                        else if (tx.supplier) counterparty = `NCC: ${tx.supplier.name}`
-                        else if (tx.employee) counterparty = `NV: ${tx.employee.full_name}`
-
-                        return (
-                          <tr key={tx.id} className="hover:bg-gray-25 transition-colors group">
-                            {/* Code & date */}
-                            <td className="px-5 py-3.5">
-                              <span className="text-tiny font-bold text-blue-600 font-mono block">
-                                {tx.transaction_code || 'SQ-DRAFT'}
-                              </span>
-                              <span className="text-[10px] text-gray-400 font-medium font-mono mt-0.5 block">
-                                {new Date(tx.transaction_date).toLocaleDateString('vi-VN')}
-                              </span>
-                            </td>
-
-                            {/* Category / Ca */}
-                            <td className="px-5 py-3.5">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${badgeColor}`}>
-                                {tx.expense_category?.name || (isTransfer ? 'Chuyển tiền nội bộ' : 'Không phân loại')}
-                              </span>
-                              <span className="text-[10px] text-gray-400 block mt-1">
-                                {tx.cash_fund_id
-                                  ? (cashFunds.find(f => f.id === tx.cash_fund_id)?.name ?? 'Quỹ tiền mặt')
-                                  : (() => {
-                                      const bank = bankAccounts.find(b => b.id === tx.bank_account_id)
-                                      return bank ? `${bank.bank_name} ...${bank.account_no.slice(-4)}` : 'Ngân hàng'
-                                    })()
-                                }
-                                {tx.session_id && ` · Ca #${tx.session_id.slice(0, 4).toUpperCase()}`}
-                              </span>
-                            </td>
-
-                            {/* Amount */}
-                            <td className="px-5 py-3.5 text-right font-bold tabular-nums text-tiny">
-                              <span className={isIncome ? 'text-emerald-600' : 'text-orange-600'}>
-                                {isIncome ? '+' : '-'}{formatCurrency(tx.amount)}
-                              </span>
-                            </td>
-
-                            {/* Counterparty & description */}
-                            <td className="px-5 py-3.5 max-w-[200px]">
-                              <p className="text-tiny font-bold text-gray-700 truncate">{counterparty}</p>
-                              <p className="text-[10px] text-gray-400 truncate mt-0.5">{tx.description}</p>
-                            </td>
-
-                            {/* Status */}
-                            <td className="px-5 py-3.5">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${statusColor}`}>
-                                {tx.status === 'pending_approval' && <span className="w-1 h-1 rounded-full bg-amber-500"></span>}
-                                {tx.status === 'approved' && <span className="w-1 h-1 rounded-full bg-emerald-500"></span>}
-                                {statusText}
-                              </span>
-                            </td>
-
-                            {/* View details */}
-                            <td className="px-4 py-3.5 text-right">
-                              <button
-                                onClick={() => {
-                                  setSelectedTx(tx)
-                                  setIsDetailsModalOpen(true)
-                                }}
-                                className="p-1 hover:bg-gray-100 text-gray-400 rounded-md transition-colors"
-                              >
-                                <ChevronRight size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              {/* Pagination */}
-              <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between shrink-0 bg-gray-50">
-                <p className="text-tiny text-gray-400 font-medium">
-                  Hiển thị {Math.min(totalCount, (currentPage - 1) * pageSize + 1)} - {Math.min(totalCount, currentPage * pageSize)} trong tổng số {totalCount} giao dịch
-                </p>
-                <div className="flex gap-1.5">
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-white disabled:opacity-40 transition-colors"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  
-                  {Array.from({ length: Math.ceil(totalCount / pageSize) }, (_, idx) => {
-                    const pageNum = idx + 1
-                    // Only show 3 pages around current
-                    if (Math.abs(pageNum - currentPage) > 1 && pageNum !== 1 && pageNum !== Math.ceil(totalCount / pageSize)) return null
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-tiny font-bold transition-all ${
-                          currentPage === pageNum 
-                            ? 'bg-blue-500 text-white shadow-sm' 
-                            : 'border border-gray-200 text-gray-500 hover:bg-white'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    )
-                  })}
-
-                  <button
-                    disabled={currentPage === Math.ceil(totalCount / pageSize) || totalCount === 0}
-                    onClick={() => setCurrentPage(prev => prev + 1)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:bg-white disabled:opacity-40 transition-colors"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
+              {/* Bảng giao dịch (layout chuẩn DataTable) */}
+              <div className="px-3 pb-3">
+                <DataTable
+                  rows={transactions}
+                  columns={txColumns}
+                  getRowKey={tx => tx.id}
+                  loading={loading}
+                  card={false}
+                  pageSize={pageSize}
+                  itemLabel="giao dịch"
+                  manualPagination
+                  page={currentPage}
+                  onPageChange={setCurrentPage}
+                  totalItems={totalCount}
+                  onRowClick={tx => { setSelectedTx(tx); setIsDetailsModalOpen(true) }}
+                  emptyText="Không tìm thấy giao dịch nào thỏa mãn bộ lọc."
+                />
               </div>
             </div>
 
@@ -2126,148 +2075,16 @@ export default function CashbookPage() {
               </div>
             </div>
 
-            {/* List of Sessions */}
-            <div>
-              {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-gray-50 border-b border-gray-100">
-                    <tr>
-                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Phiên ca</th>
-                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Người mở</th>
-                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Mở lúc</th>
-                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Số dư mở ca</th>
-                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Số dư đóng ca (hệ thống)</th>
-                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider text-right">Thực tế (variance)</th>
-                      <th className="px-5 py-3 text-tiny text-gray-400 font-bold uppercase tracking-wider">Trạng thái</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {sessions.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-5 py-8 text-center text-tiny text-gray-400 italic">
-                          Không có dữ liệu phiên ca nào.
-                        </td>
-                      </tr>
-                    ) : (
-                      sessions.map(s => {
-                        const isClosed = s.status === 'closed'
-                        const varVal = s.variance || 0
-
-                        return (
-                          <tr key={s.id} className="hover:bg-gray-25 transition-colors text-tiny">
-                            <td className="px-5 py-3 font-bold font-mono text-gray-600">
-                              {s.id.slice(0, 8).toUpperCase()}
-                            </td>
-                            <td className="px-5 py-3 font-semibold text-gray-700">
-                              {s.cashier?.full_name || 'N/A'}
-                            </td>
-                            <td className="px-5 py-3 text-gray-500 font-mono">
-                              {new Date(s.opened_at).toLocaleString('vi-VN')}
-                            </td>
-                            <td className="px-5 py-3 text-right font-semibold text-gray-700 tabular-nums">
-                              {formatCurrency(s.opening_balance)}
-                            </td>
-                            <td className="px-5 py-3 text-right font-semibold text-gray-700 tabular-nums">
-                              {isClosed ? formatCurrency(s.closing_balance || 0) : '—'}
-                            </td>
-                            <td className="px-5 py-3 text-right font-semibold tabular-nums">
-                              {isClosed ? (
-                                <div className="flex flex-col items-end">
-                                  <span>{formatCurrency(s.cash_actual || 0)}</span>
-                                  <span className={`text-[10px] ${varVal > 0 ? 'text-emerald-600' : varVal < 0 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
-                                    ({varVal > 0 ? '+' : ''}{formatCurrency(varVal)})
-                                  </span>
-                                </div>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td className="px-5 py-3">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                                s.status === 'open' 
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                                  : 'bg-gray-50 text-gray-500 border-gray-150'
-                              }`}>
-                                {s.status === 'open' ? 'Đang mở' : 'Đã đóng'}
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile Card List View */}
-              <div className="block md:hidden space-y-4">
-                {sessions.length === 0 ? (
-                  <div className="p-8 text-center text-tiny text-gray-400 italic">
-                    Không có dữ liệu phiên ca nào.
-                  </div>
-                ) : (
-                  sessions.map(s => {
-                    const isClosed = s.status === 'closed'
-                    const varVal = s.variance || 0
-                    return (
-                      <div
-                        key={s.id}
-                        className="p-4 bg-white rounded-xl border border-gray-150 shadow-sm space-y-3"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="text-tiny font-bold font-mono text-gray-600 block">
-                              Ca #{s.id.slice(0, 8).toUpperCase()}
-                            </span>
-                            <span className="text-[10px] text-gray-400 block mt-0.5 font-mono">
-                              Mở: {new Date(s.opened_at).toLocaleString('vi-VN')}
-                            </span>
-                          </div>
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
-                            s.status === 'open' 
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                              : 'bg-gray-50 text-gray-500 border-gray-150'
-                          }`}>
-                            {s.status === 'open' ? 'Đang mở' : 'Đã đóng'}
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 text-tiny pt-2 border-t border-gray-50">
-                          <div>
-                            <span className="text-gray-400 block">Người mở</span>
-                            <span className="font-semibold text-gray-700">{s.cashier?.full_name || 'N/A'}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block text-right">Đầu ca</span>
-                            <span className="font-semibold text-gray-700 block text-right tabular-nums">{formatCurrency(s.opening_balance)}</span>
-                          </div>
-                        </div>
-
-                        {isClosed && (
-                          <div className="grid grid-cols-2 gap-3 text-tiny pt-2 border-t border-gray-50">
-                            <div>
-                              <span className="text-gray-400 block">Cuối ca (Hệ thống)</span>
-                              <span className="font-semibold text-gray-700 tabular-nums">{formatCurrency(s.closing_balance || 0)}</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-400 block text-right">Thực tế</span>
-                              <span className="font-semibold text-gray-700 block text-right tabular-nums">{formatCurrency(s.cash_actual || 0)}</span>
-                            </div>
-                            <div className="col-span-2 flex justify-between items-center pt-1 border-t border-gray-50 mt-1">
-                              <span className="text-gray-400">Chênh lệch:</span>
-                              <span className={`font-bold tabular-nums ${varVal > 0 ? 'text-emerald-600' : varVal < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                                {varVal > 0 ? '+' : ''}{formatCurrency(varVal)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </div>
+            <DataTable
+              rows={sessions}
+              columns={sessionColumns}
+              getRowKey={s => s.id}
+              card={false}
+              pageSize={20}
+              itemLabel="phiên ca"
+              resetSignal={sessions.length}
+              emptyText="Không có dữ liệu phiên ca nào."
+            />
           </div>
         )}
 

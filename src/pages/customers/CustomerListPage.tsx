@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Plus,
@@ -10,8 +10,6 @@ import {
   AlertCircle,
   Users,
   MapPin,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
   Filter,
   UserCheck,
@@ -20,7 +18,7 @@ import {
   Settings
 } from 'lucide-react'
 import Layout from '../../components/Layout'
-import { Skeleton } from '../../components/Skeleton'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import CustomerQuickView from './CustomerQuickView'
 import AddCustomerModal from './AddCustomerModal'
 import ImportCustomersModal from './ImportCustomersModal'
@@ -70,7 +68,6 @@ export default function CustomerListPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // Debounced search → tránh fire query mỗi keystroke
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
@@ -112,8 +109,6 @@ export default function CustomerListPage() {
     [salesReps]
   )
 
-  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
-  const startIndex = (currentPage - 1) * PAGE_SIZE
 
   // ── Helpers
   const handleResetFilters = () => {
@@ -206,6 +201,101 @@ export default function CustomerListPage() {
       alert('Xuất CSV thất bại. Vui lòng thử lại.')
     }
   }
+
+  // ── Cấu hình cột chuẩn cho DataTable ──
+  const customerColumns: DataTableColumn<CustomerSummaryRow>[] = [
+    {
+      key: 'code', header: 'Mã KH', width: 132, noTruncate: true,
+      render: (customer, expanded) => (
+        <span className="inline-flex items-center gap-1.5 text-blue-500 font-bold">
+          <ChevronDown size={15} className={`text-gray-300 transition-transform ${expanded ? 'rotate-180 text-blue-500' : ''}`} />
+          <span className="truncate">{customer.code || 'Đang cấp...'}</span>
+        </span>
+      )
+    },
+    {
+      key: 'name', header: 'Tên khách hàng', flex: true, minWidth: 240, noTruncate: true,
+      render: customer => (
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-gray-700 group-hover:text-blue-500 transition-colors truncate" title={customer.farm_name}>{customer.farm_name}</span>
+            {customer.value_tier === 'vip' && <span className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700 font-semibold text-[10px] shrink-0">VIP</span>}
+            {customer.value_tier === 'high_potential' && <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 font-semibold text-[10px] shrink-0">Tiềm năng</span>}
+          </div>
+          <div className="flex items-center gap-2 text-tiny text-gray-400 mt-1 min-w-0">
+            <MapPin size={12} className="text-gray-300 shrink-0" />
+            <span className="truncate">{[customer.district, customer.province].filter(Boolean).join(', ') || 'Chưa định vị'}</span>
+            {customer.primary_contact?.phone && (
+              <>
+                <span className="text-gray-200 shrink-0">•</span>
+                <span className="shrink-0 whitespace-nowrap">SĐT: {maskData(formatPhone(customer.primary_contact.phone), 'phone')}</span>
+              </>
+            )}
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'type', header: 'Phân loại', width: 150, noTruncate: true,
+      render: customer => (
+        <span className={`px-2.5 py-1 rounded-full border text-tiny font-semibold inline-flex items-center gap-1.5 ${CUSTOMER_TYPE_COLORS[customer.customer_type] || CUSTOMER_TYPE_COLORS.other}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+          {classLabels[customer.customer_type] || customer.customer_type}
+        </span>
+      )
+    },
+    {
+      key: 'owner', header: 'Sales phụ trách', width: 170,
+      render: customer => {
+        const owner = repsById[customer.owner_user_id]
+        return (
+          <div className="flex items-center gap-2 min-w-0">
+            {owner?.avatar_url ? (
+              <img src={owner.avatar_url} alt={owner.full_name} className="w-6 h-6 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-500 border border-blue-100 flex items-center justify-center text-tiny font-semibold uppercase shrink-0">{owner?.full_name?.charAt(0) || 'S'}</div>
+            )}
+            <span className="text-gray-600 font-medium truncate">{owner?.full_name || 'Hệ thống'}</span>
+          </div>
+        )
+      }
+    },
+    {
+      key: 'debt', header: 'Công nợ hiện tại', width: 150, align: 'right',
+      render: customer => {
+        const totalDebt = Number(customer.total_debt || 0)
+        return (
+          <span className={`font-bold tabular-nums ${customer.is_overdue ? 'text-danger-500' : totalDebt > 0 ? 'text-gray-600' : 'text-gray-400'}`}>
+            {totalDebt > 0 ? formatVND(totalDebt) : '0 ₫'}
+            {customer.is_overdue && <span className="block text-[10px] text-danger-500 font-normal mt-0.5">Quá hạn</span>}
+          </span>
+        )
+      }
+    },
+    { key: 'last', header: 'Lần mua cuối', width: 130, render: customer => <span className="text-gray-400">{getLastPurchaseDate(customer)}</span> },
+    {
+      key: 'action', header: '', width: 56, align: 'right', noTruncate: true, hideOnMobile: true,
+      render: customer => {
+        const showDropdown = activeDropdown === customer.id
+        return (
+          <div className="relative inline-block text-left" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setActiveDropdown(showDropdown ? null : customer.id)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+              <MoreVertical size={16} />
+            </button>
+            {showDropdown && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />
+                <div className="absolute right-0 mt-1 w-36 bg-gray-0 border border-gray-100 rounded-lg shadow-lg py-1 z-20">
+                  <button onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}`) }} className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"><Eye size={14} /> Xem chi tiết</button>
+                  <button onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}?edit=true`) }} className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"><Edit2 size={14} /> Chỉnh sửa</button>
+                </div>
+              </>
+            )}
+          </div>
+        )
+      }
+    }
+  ]
 
   return (
     <Layout activeMenu="Khách hàng">
@@ -349,367 +439,37 @@ export default function CustomerListPage() {
           </button>
         </div>
 
-        {/* Table Container */}
-        <div className="bg-gray-0 rounded-xl border border-gray-100 overflow-hidden flex flex-col shadow-sm">
-          {loading ? (
-            <table className="min-w-full"><tbody><Skeleton.TableRows count={8} cols={6} /></tbody></table>
-          ) : rows.length === 0 ? (
-            <div className="py-20 flex flex-col items-center justify-center text-gray-400 px-4">
-              <Users className="text-gray-200 mb-4" size={64} strokeWidth={1} />
-              <h3 className="text-body-lg font-bold text-gray-600">Không tìm thấy khách hàng nào</h3>
-              <p className="text-body-md text-gray-400 mt-1 text-center">Hãy thử điều chỉnh bộ lọc hoặc tạo hồ sơ khách hàng mới.</p>
-              <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="mt-6 px-4 py-2 bg-blue-50 text-blue-500 font-semibold rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-2"
-              >
-                <Plus size={16} strokeWidth={2.5} />
-                Thêm khách hàng đầu tiên
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto hidden md:block">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-25 border-b border-gray-100">
-                    <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Mã KH</th>
-                    <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Tên khách hàng</th>
-                    <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Phân loại</th>
-                    <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Sales phụ trách</th>
-                    <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider text-right">Công nợ hiện tại</th>
-                    <th className="px-6 py-4 text-tiny font-bold text-gray-400 uppercase tracking-wider">Lần mua cuối</th>
-                    <th className="px-6 py-4"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {rows.map((customer) => {
-                    const owner = repsById[customer.owner_user_id]
-                    const primaryContact = customer.primary_contact
-                    const totalDebt = Number(customer.total_debt || 0)
-                    const isOverdue  = customer.is_overdue
-                    const showDropdown = activeDropdown === customer.id
-                    const isExpanded = expandedId === customer.id
 
-                    return (
-                      <Fragment key={customer.id}>
-                      <tr
-                        className={`transition-colors cursor-pointer group ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-25/50'}`}
-                        onClick={() => setExpandedId(prev => prev === customer.id ? null : customer.id)}
-                      >
-                        <td className="px-6 py-5 text-body-md text-blue-500 font-bold font-sans">
-                          <span className="inline-flex items-center gap-1.5">
-                            <ChevronDown size={15} className={`text-gray-300 transition-transform ${isExpanded ? 'rotate-180 text-blue-500' : ''}`} />
-                            {customer.code || 'Đang cấp...'}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span 
-                                  className="text-body-lg font-semibold text-gray-700 group-hover:text-blue-500 transition-colors line-clamp-2 break-words-auto"
-                                  title={customer.farm_name}
-                                >
-                                  {customer.farm_name}
-                                </span>
-                                {customer.value_tier === 'vip' && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700 font-semibold text-[10px] shrink-0">
-                                    VIP
-                                  </span>
-                                )}
-                                {customer.value_tier === 'high_potential' && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 font-semibold text-[10px] shrink-0">
-                                    Tiềm năng
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 text-tiny text-gray-400 mt-1 min-w-0">
-                                <MapPin size={12} className="text-gray-300 shrink-0" />
-                                <span 
-                                  className="truncate max-w-[200px]"
-                                  title={[customer.district, customer.province].filter(Boolean).join(', ') || 'Chưa định vị'}
-                                >
-                                  {[customer.district, customer.province].filter(Boolean).join(', ') || 'Chưa định vị'}
-                                </span>
-                                {primaryContact?.phone && (
-                                  <>
-                                    <span className="text-gray-200 shrink-0">•</span>
-                                    <span className="shrink-0">SĐT: {maskData(formatPhone(primaryContact.phone), 'phone')}</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <span className={`px-2.5 py-1 rounded-full border text-tiny font-semibold inline-flex items-center gap-1.5 ${
-                            CUSTOMER_TYPE_COLORS[customer.customer_type] || CUSTOMER_TYPE_COLORS.other
-                          }`}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                            {classLabels[customer.customer_type] || customer.customer_type}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-2">
-                            {owner?.avatar_url ? (
-                              <img src={owner.avatar_url} alt={owner.full_name} className="w-6 h-6 rounded-full object-cover" />
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-500 border border-blue-100 flex items-center justify-center text-tiny font-semibold uppercase">
-                                {owner?.full_name?.charAt(0) || 'S'}
-                              </div>
-                            )}
-                            <span className="text-body-md text-gray-600 font-medium">
-                              {owner?.full_name || 'Hệ thống'}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td className={`px-6 py-5 text-right text-body-md font-bold tabular-nums ${
-                          isOverdue ? 'text-danger-500' : totalDebt > 0 ? 'text-gray-600' : 'text-gray-400'
-                        }`}>
-                          {totalDebt > 0 ? formatVND(totalDebt) : '0 ₫'}
-                          {isOverdue && (
-                            <span className="block text-[10px] text-danger-500 font-normal mt-0.5">Quá hạn thanh toán</span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-5 text-body-md text-gray-400">
-                          {getLastPurchaseDate(customer)}
-                        </td>
-
-                        <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="relative inline-block text-left">
-                            <button
-                              onClick={() => setActiveDropdown(showDropdown ? null : customer.id)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-
-                            {showDropdown && (
-                              <>
-                                <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />
-                                <div className="absolute right-0 mt-1 w-36 bg-gray-0 border border-gray-100 rounded-lg shadow-lg py-1 z-20 animate-in fade-in slide-in-from-top-1 duration-100">
-                                  <button
-                                    onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}`) }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
-                                  >
-                                    <Eye size={14} /> Xem chi tiết
-                                  </button>
-                                  <button
-                                    onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}?edit=true`) }}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
-                                  >
-                                    <Edit2 size={14} /> Chỉnh sửa
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr className="bg-blue-50/20">
-                          <td colSpan={7} className="px-4 pb-3 pt-0">
-                            <CustomerQuickView
-                              customer={customer}
-                              onClose={() => setExpandedId(null)}
-                              onOpenDetail={() => navigate(`/customers/${customer.id}`)}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                      </Fragment>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Card List View */}
-            <div className="block md:hidden divide-y divide-gray-100">
-              {rows.map((customer) => {
-                const owner = repsById[customer.owner_user_id]
-                const primaryContact = customer.primary_contact
-                const totalDebt = Number(customer.total_debt || 0)
-                const isOverdue  = customer.is_overdue
-                const showDropdown = activeDropdown === customer.id
-                const isExpanded = expandedId === customer.id
-
-                return (
-                  <Fragment key={customer.id}>
-                  <div
-                    className={`p-4 transition-colors cursor-pointer space-y-3 ${isExpanded ? 'bg-blue-50/40' : 'hover:bg-gray-25/50'}`}
-                    onClick={() => setExpandedId(prev => prev === customer.id ? null : customer.id)}
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-body-md text-blue-500 font-bold font-mono">
-                            {customer.code || 'Đang cấp...'}
-                          </span>
-                          {customer.value_tier === 'vip' && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 border border-amber-100 text-amber-700 font-semibold text-[10px]">
-                              VIP
-                            </span>
-                          )}
-                          {customer.value_tier === 'high_potential' && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 font-semibold text-[10px]">
-                              Tiềm năng
-                            </span>
-                          )}
-                        </div>
-                        <h4 className="font-bold text-gray-800 leading-snug break-words mt-1">
-                          {customer.farm_name}
-                        </h4>
-                      </div>
-
-                      <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => setActiveDropdown(showDropdown ? null : customer.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-                        >
-                          <MoreVertical size={16} />
-                        </button>
-
-                        {showDropdown && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setActiveDropdown(null)} />
-                            <div className="absolute right-0 mt-1 w-36 bg-gray-0 border border-gray-100 rounded-lg shadow-lg py-1 z-20">
-                              <button
-                                onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}`) }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
-                              >
-                                <Eye size={14} /> Xem chi tiết
-                              </button>
-                              <button
-                                onClick={() => { setActiveDropdown(null); navigate(`/customers/${customer.id}?edit=true`) }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-body-md text-gray-600 hover:bg-gray-50 text-left font-medium"
-                              >
-                                <Edit2 size={14} /> Chỉnh sửa
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 text-tiny text-gray-400 font-medium">
-                      <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold inline-flex items-center gap-1 ${
-                        CUSTOMER_TYPE_COLORS[customer.customer_type] || CUSTOMER_TYPE_COLORS.other
-                      }`}>
-                        {classLabels[customer.customer_type] || customer.customer_type}
-                      </span>
-                      {primaryContact?.phone && (
-                        <a
-                          href={`tel:${primaryContact.phone}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 hover:bg-blue-100 animate-pulse"
-                        >
-                          Gọi: {maskData(formatPhone(primaryContact.phone), 'phone')}
-                        </a>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-2 border-t border-gray-50 text-tiny text-gray-500">
-                      <div>
-                        <span className="text-gray-400 block mb-0.5">Địa chỉ:</span>
-                        <span className="text-gray-700 font-semibold truncate block" title={[customer.district, customer.province].filter(Boolean).join(', ')}>
-                          {[customer.district, customer.province].filter(Boolean).join(', ') || 'Chưa định vị'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400 block mb-0.5">Phụ trách:</span>
-                        <span className="text-gray-700 font-semibold truncate block">
-                          {owner?.full_name || 'Hệ thống'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400 block mb-0.5">Lần mua cuối:</span>
-                        <span className="text-gray-705 font-semibold">{getLastPurchaseDate(customer)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400 block mb-0.5">Công nợ hiện tại:</span>
-                        <span className={`font-bold tabular-nums block ${
-                          isOverdue ? 'text-danger-500' : totalDebt > 0 ? 'text-gray-700' : 'text-gray-400'
-                        }`}>
-                          {totalDebt > 0 ? formatVND(totalDebt) : '0 ₫'}
-                          {isOverdue && <span className="text-[9px] font-normal text-danger-500 block"> (Quá hạn)</span>}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className="px-3 pb-3 bg-blue-50/20">
-                      <CustomerQuickView
-                        customer={customer}
-                        onClose={() => setExpandedId(null)}
-                        onOpenDetail={() => navigate(`/customers/${customer.id}`)}
-                      />
-                    </div>
-                  )}
-                  </Fragment>
-                )
-              })}
-            </div>
-          </>
+        {/* Empty State (custom có CTA) */}
+        {!loading && rows.length === 0 && (
+          <div className="bg-gray-0 rounded-xl border border-gray-100 shadow-sm py-20 flex flex-col items-center justify-center text-gray-400 px-4">
+            <Users className="text-gray-200 mb-4" size={64} strokeWidth={1} />
+            <h3 className="text-body-lg font-bold text-gray-600">Không tìm thấy khách hàng nào</h3>
+            <p className="text-body-md text-gray-400 mt-1 text-center">Hãy thử điều chỉnh bộ lọc hoặc tạo hồ sơ khách hàng mới.</p>
+            <button onClick={() => setIsAddModalOpen(true)} className="mt-6 px-4 py-2 bg-blue-50 text-blue-500 font-semibold rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-2">
+              <Plus size={16} strokeWidth={2.5} /> Thêm khách hàng đầu tiên
+            </button>
+          </div>
         )}
 
-          {/* Pagination Footer */}
-          {!loading && totalItems > 0 && (
-            <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-0">
-              <div className="text-body-md text-gray-400">
-                Hiển thị <span className="font-semibold text-gray-500">{startIndex + 1}</span> - <span className="font-semibold text-gray-500">{Math.min(startIndex + PAGE_SIZE, totalItems)}</span> trên tổng số <span className="font-semibold text-gray-500">{totalItems}</span> khách hàng
-              </div>
-
-              {totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="w-8 h-8 flex items-center justify-center rounded border border-gray-150 text-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-
-                  {Array.from({ length: totalPages }, (_, idx) => {
-                    const page = idx + 1
-                    if (page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)) {
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => setCurrentPage(page)}
-                          className={`w-8 h-8 rounded text-body-md font-semibold transition-colors ${
-                            currentPage === page
-                              ? 'bg-blue-500 text-gray-0 shadow-sm'
-                              : 'text-gray-500 hover:bg-gray-50 border border-transparent'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      )
-                    }
-                    if (page === 2 || page === totalPages - 1) {
-                      return <span key={page} className="px-1 text-gray-300">...</span>
-                    }
-                    return null
-                  })}
-
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="w-8 h-8 flex items-center justify-center rounded border border-gray-150 text-gray-400 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {/* Bảng khách hàng (layout chuẩn DataTable) */}
+        {(loading || rows.length > 0) && (
+          <DataTable
+            rows={rows}
+            columns={customerColumns}
+            getRowKey={c => c.id}
+            loading={loading}
+            pageSize={PAGE_SIZE}
+            itemLabel="khách hàng"
+            manualPagination
+            page={currentPage}
+            onPageChange={setCurrentPage}
+            totalItems={totalItems}
+            expandedRowRender={(customer, collapse) => (
+              <CustomerQuickView customer={customer} onClose={collapse} onOpenDetail={() => navigate(`/customers/${customer.id}`)} />
+            )}
+          />
+        )}
 
         {/* KPI Footer (tổng toàn bộ DB, không bị filter) */}
         {!loading && (
