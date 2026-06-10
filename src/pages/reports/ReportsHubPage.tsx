@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2
+  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -36,6 +36,21 @@ const REPORT_CARDS = [
       'Cơ cấu vòng đời & nhóm giá',
       'Phân bố quy mô & loài vật nuôi',
       'Bản đồ chi tiêu & nợ quá hạn',
+    ],
+  },
+  {
+    id: 'inventory-valuation',
+    title: 'Báo cáo Kho hàng theo Giá vốn',
+    tag: 'Kho hàng',
+    tagColor: 'bg-amber-100 text-amber-700',
+    dotColor: 'bg-amber-500',
+    icon: Package,
+    iconBg: 'bg-amber-50 text-amber-600',
+    route: '/reports/inventory-valuation',
+    features: [
+      'Giá trị vốn tồn theo SP / thương hiệu / nhóm hàng / kho',
+      'Top 50 tồn nhiều · vòng quay · hàng tồn lâu',
+      'Cảnh báo thiếu giá vốn & hàng sắp hết hạn',
     ],
   },
 ]
@@ -94,7 +109,7 @@ export default function ReportsHubPage() {
               <span className="text-blue-600 font-semibold">Trung tâm Báo cáo</span>
             </nav>
             <h1 className="text-[32px] font-bold text-gray-800 leading-tight">Trung tâm Báo cáo</h1>
-            <p className="text-gray-500 text-body-md mt-1">Phân tích lợi nhuận và chân dung khách hàng.</p>
+            <p className="text-gray-500 text-body-md mt-1">Phân tích lợi nhuận, chân dung khách hàng và giá trị vốn tồn kho.</p>
           </div>
           <div className="flex bg-gray-100 p-1 rounded-lg self-start md:self-auto">
             {(['today', 'month', 'year'] as const).map(p => (
@@ -129,7 +144,7 @@ export default function ReportsHubPage() {
         </div>
 
         {/* Report cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {REPORT_CARDS.map((card) => {
             const Icon = card.icon
             return (

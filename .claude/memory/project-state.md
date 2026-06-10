@@ -226,6 +226,14 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - Convert: Customer (expand QuickView + dropdown), Product (expand + headerSummary tổng + chevron/sao/ảnh), Cashbook (history manualPagination + click→modal; sessions client). Giữ nguyên query/RLS/quyền.
 - **Phase 3 còn:** Báo cáo/Pipeline/Herd + bảng chi tiết/modal.
 
+## 2026-06-10 — Báo cáo Kho hàng theo Giá vốn (admin-only) + vá lộ view báo cáo
+- **Có migration `20260626000000_inventory_valuation_report.sql` (ĐÃ apply remote + smoke-test). `tsc -b` + `vite build` PASS.** Tài liệu: `docs/09-INVENTORY-VALUATION-REPORT.md`.
+- View `v_stock_lot_valuation` + 3 RPC admin-only (`fn_inventory_valuation_summary/_by_product/_by_group`) — giá vốn TB = **bình quân gia quyền theo lô active** (`Σqty×cost/Σqty`); vòng quay từ `stock_movements` sale 90 ngày (turnover = sold_90d/tồn hiện tại — xấp xỉ, có footnote); index mới `idx_stockmov_product_type_created`.
+- Trang `/reports/inventory-valuation` (`InventoryValuationReportPage.tsx`): 4 KPI + banner cảnh báo (SP thiếu giá vốn, lô quá hạn còn active) + 2 chart Recharts + 7 tab DataTable (SP manualPagination 50 / brand / category / warehouse / top50 / vòng quay / tồn lâu-dead stock) + lọc kho-SP-brand-category + CSV. Hook `useInventoryValuation.ts` + `qk.reports.*`. **DataTable Phase 3 đã bắt đầu cho Báo cáo.**
+- **🔒 Lỗ hổng đã vá:** Supabase `ALTER DEFAULT PRIVILEGES` tự GRANT anon/authenticated lên view mới → `v_order_line_profit` (profit report) từng lộ qua PostgREST cho mọi user + anon. Đã REVOKE cả 2 view. **Quy ước: view "chỉ dùng nội bộ RPC" PHẢI REVOKE tường minh trong cùng migration.**
+- **Lưu ý migration:** dự án dùng pseudo-date tăng dần (đã tới `20260626`, VƯỢT ngày thật) — migration mới phải đặt tên sort SAU file mới nhất, KHÔNG theo ngày thật.
+- Smoke-test qua Management API + `set_config('request.jwt.claims', '{"sub":"<admin-id>",...}')` để giả lập admin (RPC check `fn_has_role`). Số liệu khớp 100% SQL trực tiếp.
+
 ## Files quan trọng cần biết
 
 | File | Vai trò |

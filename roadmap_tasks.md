@@ -1453,3 +1453,24 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
   - `CashbookPage` → DataTable cho **tab Lịch sử dòng tiền** (manualPagination, click dòng → modal chi tiết) + **tab Phiên ca** (client). Bỏ import ChevronLeft/Skeleton.
 - **Toàn vẹn/phân quyền/bảo mật KHÔNG đổi:** giữ nguyên server query (useCustomersList/useProductsList/fetchTransactions), RLS, lọc branch, phân quyền, CSV export, modal chi tiết, localStorage sao yêu thích. DataTable chỉ render.
 - **Phase 3 còn lại:** Báo cáo · Pipeline · Herd · các bảng chi tiết/line-item/modal (xét riêng).
+
+---
+
+## 2026-06-10 — Trung tâm Báo cáo: Báo cáo Kho hàng theo Giá vốn (admin-only)
+
+**Bối cảnh:** Xây báo cáo định giá tồn kho theo giá vốn cho `/reports`. 1 SP nhiều lô (mỗi lô `cost_price` riêng) → giá vốn TB = **bình quân gia quyền theo lô**. User chốt phân quyền: **chỉ Admin** (nhất quán khu /reports hiện tại, CEO bị chặn). **Có migration. `tsc -b --noEmit` + `vite build` PASS.**
+
+- **Migration `20260626000000_inventory_valuation_report.sql` (ĐÃ apply remote qua Management API + smoke-test):**
+  - **View `v_stock_lot_valuation`** (lô còn hàng mọi status, `lot_value = qty × cost_price`, join products/warehouses/brands/categories) — KHÔNG cho truy cập trực tiếp, chỉ qua RPC.
+  - **3 RPC** `SECURITY DEFINER` + check `fn_has_role('admin')` (RAISE nếu không) + REVOKE PUBLIC/GRANT authenticated:
+    - `fn_inventory_valuation_summary(p_warehouse_id)` → KPI: tổng tồn/tổng giá trị vốn/số SP/lô/kho (chỉ lô `active`), `missing_cost_products` (SP có lô cost=0), `expiring_90d_value`, `expired_active_lots` (lô active nhưng quá hạn — lỗi dữ liệu), `non_active_value` (giá trị lô cách ly/hỏng).
+    - `fn_inventory_valuation_by_product(search, warehouse, brand, category, sort, limit, offset)` — RPC rộng dùng chung 4 tab; `avg_cost = Σ(qty×cost)/Σqty`; vòng quay từ `stock_movements` sale 90 ngày (`turnover_90d = sold_90d/tồn`, `days_of_stock`, `last_sale_at` → tồn lâu/dead stock); sort whitelist value/qty/avg_cost/turnover/days_of_stock/idle; `total_count` (COUNT OVER) cho phân trang server.
+    - `fn_inventory_valuation_by_group(group_by, ...)` — brand/category/warehouse cùng shape (validate group_by chống injection); `value_share` % qua SUM OVER.
+  - Index mới `idx_stockmov_product_type_created` (product_id, movement_type, created_at DESC) cho scan vòng quay.
+  - **🔒 Vá lỗ hổng phát hiện trong lúc làm:** Supabase `ALTER DEFAULT PRIVILEGES` tự GRANT anon/authenticated lên object mới → view `v_order_line_profit` (báo cáo lợi nhuận cũ) **đang lộ qua PostgREST cho mọi user đăng nhập + cả anon**. Migration REVOKE cả 2 view (`v_stock_lot_valuation` + `v_order_line_profit`) khỏi PUBLIC/anon/authenticated. Đã verify `has_table_privilege = false`; RPC vẫn chạy (owner postgres).
+- **Smoke-test trên DB thật (giả lập JWT admin qua `set_config('request.jwt.claims',...)`):** summary khớp SQL trực tiếp (tồn 12.995,5 · vốn 378.668.954,20₫ · 109 SP · 136 lô); avg_cost gia quyền SP 2 lô khớp tính tay (122.161,26); Σ by_product = Σ by_group(brand) = (category) = (warehouse) = summary; không JWT/JWT non-admin → RAISE "Không có quyền truy cập báo cáo kho hàng". Phát hiện thật: 2 SP thiếu giá vốn + 1 lô quá hạn còn active (báo cáo phơi bày để sửa data).
+- **Frontend:**
+  - `InventoryValuationReportPage.tsx` (MỚI, route `/reports/inventory-valuation` adminOnly): 4 KPI (tổng tồn / tổng giá trị vốn / SP có tồn / giá trị sắp hết hạn ≤90d) + 2 banner cảnh báo toàn vẹn (thiếu giá vốn, lô quá hạn còn active); 2 chart Recharts (Bar top 10 giá trị vốn, Pie cơ cấu theo nhóm hàng); **7 tab**: Theo SP (DataTable `manualPagination` 50/trang) · Thương hiệu · Nhóm hàng · Kho · Top 50 tồn nhiều (toggle SL/giá trị) · Vòng quay nhanh · Tồn lâu/chậm bán (badge Dead stock khi sold_90d=0, sort lâu-chưa-bán lên đầu); lọc kho toàn trang + SmartSearchSelect SP (fetchAllRows)/thương hiệu/nhóm hàng ở tab SP; Xuất CSV per tab (BOM UTF-8); footnote công thức + giới hạn xấp xỉ vòng quay. **DataTable Phase 3 cho Báo cáo: bảng đầu tiên của module reports dùng DataTable chuẩn.**
+  - Hook MỚI `useInventoryValuation.ts` (3 hooks, coerce NUMERIC string→number, `keepPreviousData` chống nháy trang) + `qk.reports.*` trong `queryClient.ts`; card thứ 3 ở `ReportsHubPage` (grid → xl:grid-cols-3); route + lazy import `App.tsx`.
+- **Phân quyền/bảo mật:** 3 tầng — DB (RPC tự check admin), route `adminOnly`, menu sidebar adminOnly sẵn có; view nền không grant; `p_sort`/`p_group_by` whitelist tĩnh (không dynamic SQL). Phương án B tương lai: seed permission `report.view_inventory` nếu cần mở cho CEO/kế toán.
+- ⚠️ **Biên đã biết:** vòng quay dùng tồn HIỆN TẠI làm mẫu số (không có snapshot tồn bình quân kỳ — đã ghi footnote); `non_active_value` chỉ hiển thị tham khảo; KPI chính chỉ tính lô `active` còn hàng.

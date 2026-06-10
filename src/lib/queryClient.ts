@@ -76,6 +76,11 @@ export const qk = {
     overview: ['herd-projects', 'overview'] as const,
     feedback: (limit: number) => ['herd-projects', 'feedback', limit] as const,
   },
+  reports: {
+    invSummary: (params: object) => ['reports', 'inv-valuation', 'summary', params] as const,
+    invByProduct: (params: object) => ['reports', 'inv-valuation', 'by-product', params] as const,
+    invByGroup: (groupBy: string, params: object) => ['reports', 'inv-valuation', 'by-group', groupBy, params] as const,
+  },
   auth: {
     rolePermissions: (userId: string) => ['auth', 'role-permissions', userId] as const,
   },
