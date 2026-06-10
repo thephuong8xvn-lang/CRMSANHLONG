@@ -127,3 +127,40 @@ Thực hiện khi rút tiền mặt nhập quỹ từ ngân hàng hoặc nộp t
    - Tạo bản ghi trong bảng `internal_transfers`.
    - Trigger database tự động sinh **2 bút toán đối ứng** trong sổ quỹ: 1 phiếu chi (`outflow`) ở tài khoản nguồn và 1 phiếu thu (`inflow`) ở tài khoản nhận.
    - Cập nhật đồng thời số dư của cả 2 tài khoản, đảm bảo tính toàn vẹn dữ liệu tuyệt đối (không bao giờ xảy ra tình trạng trừ tài khoản này mà chưa cộng tài khoản kia).
+
+---
+
+## Audit lại 2026-06-10 (re-audit bảo mật) — migration `20260627000000_cashbook_harden.sql`
+
+Sau khi module hoàn thiện (S1–S4), audit lại toàn diện toàn vẹn/phân quyền/bảo mật/UX. Đã chứng minh exploit thật trên prod (trong transaction rollback) rồi vá.
+
+### Lỗ hổng đã vá
+
+| # | Mức | Vấn đề | Cách vá |
+|---|-----|--------|---------|
+| C1 | 🔴 Nghiêm trọng | `fn_apply_fund_delta(uuid,uuid,numeric)` (SECURITY DEFINER, cộng/trừ thẳng số dư quỹ) chưa REVOKE → mọi user đăng nhập gọi `rpc('fn_apply_fund_delta')` sửa số dư tùy ý, không để lại phiếu. **Đã chứng minh**: non-admin đẩy QUY-HCM 30.46M→31.24M. | `REVOKE ALL ... FROM PUBLIC, anon, authenticated` cho `fn_apply_fund_delta` + `fn_default_cash_fund` + `fn_default_bank_account`. Trigger vẫn chạy (Postgres không kiểm EXECUTE caller khi fire trigger). |
+| C2 | 🔴 Cao | Ngưỡng duyệt 10tr chỉ chặn ở client → nhân viên INSERT thẳng phiếu chi `approved` số tiền bất kỳ qua API, né duyệt + cô lập chi nhánh. **Đã chứng minh**: non-admin chèn 50M approved + chèn chéo chi nhánh. | Tạo lại policy `cashbook_insert_staff`: non-admin KHÔNG được INSERT outflow `approved` khi amount > 10tr (phải `pending_approval`); + cô lập chi nhánh (quỹ/TK phải thuộc chi nhánh mình); + whitelist status. |
+| C3 | 🔴 Cao | Policy INSERT có clause hở `flow_type='internal_transfer'` → mọi user active chèn dòng chuyển quỹ rác. | Bỏ clause khỏi `cashbook_insert_staff` (leg chuyển quỹ do trigger SECURITY DEFINER tạo, bypass RLS). |
+| C4 | 🟠 Trung | Không có state machine; sửa amount/quỹ phiếu đã `approved` không re-balance → lệch số dư im lặng. | Trigger BEFORE UPDATE `fn_guard_cashbook_update`: chỉ cho chuyển trạng thái hợp lệ (draft→pending/approved/cancelled, pending→approved/cancelled/draft, approved→cancelled); khóa amount/loại/quỹ khi đã approved (sửa → hủy + tạo mới); cancelled là chung cuộc; tự đóng dấu `cancelled_at`. |
+
+**Cơ chế then chốt**: trigger auto sinh phiếu (order/debt/supplier/advance/transfer) là SECURITY DEFINER owner=postgres, bảng `cashbook_transactions` KHÔNG bật FORCE RLS → các trigger này **bỏ qua RLS**. Nhờ vậy ràng buộc RLS mới CHỈ áp cho phiếu nhập tay từ client, luồng auto (kể cả chi NCC > 10tr) không bị ảnh hưởng — đã verify supplier_payment 20M vẫn ra phiếu `approved`.
+
+### Đã xác nhận LÀNH MẠNH (không cần sửa)
+- Self-approval guard (UPDATE WITH CHECK `created_by ≠ auth.uid()` khi đặt `approved`) hoạt động đúng.
+- DELETE bị chặn (không có policy DELETE → 0 dòng).
+- SELECT cô lập chi nhánh đúng (accountant/branch_manager theo chi nhánh; warehouse_keeper theo ca; sales chỉ phiếu mình).
+- 0 phiếu thiếu, 0 lệch chuyển quỹ, 0 lệch công nợ NCC, sessions không lệch. 4 phiếu "mồ côi" (order_payment đã xóa) đều đã `cancelled` → số dư đã đảo, vô hại.
+
+### ⚠️ Vấn đề DỮ LIỆU VẬN HÀNH cần user xử lý (không tự sửa)
+- **Quỹ QUY-DN (Phù Mỹ) số dư = -580.000₫** — tiền mặt KHÔNG thể âm. Nguyên nhân: phiếu nộp quỹ cuối ca (`CHI-NOP-QUY` 1.150.000₫) vượt tổng tiền thực thu trong kỳ (~994.000₫). Cần kiểm tra lại nghiệp vụ đóng ca/nộp quỹ tại chi nhánh này và điều chỉnh bằng phiếu thu/chi lệch quỹ.
+
+### Runbook đối soát (chạy định kỳ qua Supabase SQL Editor / Management API)
+- **Số dư quỹ**: `balance − Σ(delta phiếu approved)` mỗi quỹ/TK = seed hằng số (số dư đầu kỳ nhập tay). Seed âm bất thường hoặc đổi giữa 2 lần đo = drift → điều tra.
+- **Phiếu mồ côi**: cashbook có `source_table` nhưng source đã xóa → kiểm tra đã `cancelled` chưa.
+- **Self-approval lịch sử**: `outflow > 10tr, approved, source_table IS NULL, created_by = approved_by`.
+- **Lô vi phạm threshold**: đã bị RLS chặn từ 2026-06-10; query giám sát phòng hạng mục is_internal bị lạm dụng để né.
+
+### Việc HOÃN (ghi nợ — không thuộc phạm vi bảo mật)
+- Ngưỡng 10tr cấu hình hóa qua `system_settings` (hiện hardcode ở RLS + frontend `APPROVAL_THRESHOLD`).
+- RPC tất toán tạm ứng NV `fn_settle_employee_advance` (hiện hoàn ứng tạo phiếu thu rời, `employee_advances.settled_amount` không tự cập nhật).
+- RPC `fn_close_cashier_session` (đóng ca + nộp quỹ atomic, chặn nộp vượt tiền thực thu → tránh quỹ âm như QUY-DN).

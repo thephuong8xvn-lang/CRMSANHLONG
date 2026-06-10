@@ -1474,3 +1474,21 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
   - Hook MỚI `useInventoryValuation.ts` (3 hooks, coerce NUMERIC string→number, `keepPreviousData` chống nháy trang) + `qk.reports.*` trong `queryClient.ts`; card thứ 3 ở `ReportsHubPage` (grid → xl:grid-cols-3); route + lazy import `App.tsx`.
 - **Phân quyền/bảo mật:** 3 tầng — DB (RPC tự check admin), route `adminOnly`, menu sidebar adminOnly sẵn có; view nền không grant; `p_sort`/`p_group_by` whitelist tĩnh (không dynamic SQL). Phương án B tương lai: seed permission `report.view_inventory` nếu cần mở cho CEO/kế toán.
 - ⚠️ **Biên đã biết:** vòng quay dùng tồn HIỆN TẠI làm mẫu số (không có snapshot tồn bình quân kỳ — đã ghi footnote); `non_active_value` chỉ hiển thị tham khảo; KPI chính chỉ tính lô `active` còn hàng.
+
+---
+
+## 2026-06-10 (tiếp) — Sổ quỹ: audit lại bảo mật + gia cố (migration 20260627000000)
+
+**Bối cảnh:** User yêu cầu kiểm tra lại toàn diện module Sổ quỹ (đã xây S1–S4) với mô hình mới: toàn vẹn dữ liệu, phân quyền, bảo mật, UX. Đã chứng minh exploit thật trên prod (transaction rollback) rồi vá. **Có migration. `tsc -b` + `vite build` PASS.** Tài liệu: `docs/06-CASHBOOK-PLAYBOOK.md` (mục Audit 2026-06-10).
+
+- **Migration `20260627000000_cashbook_harden.sql` (ĐÃ apply remote + verify exploit bị chặn):**
+  - **C1 (NGHIÊM TRỌNG):** `fn_apply_fund_delta` (SECURITY DEFINER sửa thẳng số dư quỹ) chưa REVOKE → mọi user gọi `rpc()` sửa số dư tùy ý. Chứng minh: non-admin đẩy QUY-HCM 30.46M→31.24M. **Vá:** REVOKE `fn_apply_fund_delta` + `fn_default_cash_fund` + `fn_default_bank_account` khỏi PUBLIC/anon/authenticated.
+  - **C2 (CAO):** ngưỡng duyệt 10tr chỉ chặn client → INSERT thẳng phiếu chi approved bất kỳ qua API (chứng minh: 50M approved + chèn chéo chi nhánh). **Vá:** tạo lại `cashbook_insert_staff` — non-admin không INSERT được outflow approved > 10tr (phải pending_approval) + cô lập chi nhánh (quỹ/TK thuộc chi nhánh mình) + whitelist status.
+  - **C3 (CAO):** clause hở `flow_type='internal_transfer'` cho mọi user chèn dòng rác → bỏ khỏi policy.
+  - **C4 (TRUNG):** không state machine + sửa amount phiếu approved không re-balance → trigger BEFORE UPDATE `fn_guard_cashbook_update` (chỉ cho chuyển trạng thái hợp lệ, khóa amount/quỹ khi approved, cancelled chung cuộc, stamp cancelled_at).
+  - **Cơ chế:** auto-trigger là SECURITY DEFINER owner=postgres, bảng KHÔNG FORCE RLS → bypass RLS → ràng buộc mới chỉ áp phiếu nhập tay; verify supplier_payment 20M auto vẫn ra approved.
+- **Đã verify trên prod (rollback):** sau migration — C1/C2/C3/cross-branch đều BLOCKED; luồng hợp lệ (outflow pending 50M, outflow approved 5M, approved→cancelled, sửa description approved, supplier_payment 20M auto) đều OK; cancelled→approved & sửa amount approved bị chặn đúng.
+- **Đã xác nhận LÀNH MẠNH:** self-approval guard, chặn DELETE, SELECT cô lập chi nhánh, 0 phiếu thiếu/lệch chuyển quỹ/lệch công nợ NCC, sessions không lệch. 4 phiếu mồ côi đều đã cancelled (vô hại).
+- **Frontend:** `CashbookReports.tsx` bảng HTML thủ công → **DataTable chuẩn** (cột Ngày/Loại/Diễn giải/Số tiền/Số dư lũy kế, client paging 20 — số dư lũy kế precompute nên an toàn) + banner lỗi tải; `CashbookPage.tsx` 3 catch nuốt lỗi (loadMetadata/fetchTransactions/loadSessions) → banner `dataError` + nút Thử lại; extract hằng số `APPROVAL_THRESHOLD=10tr` (đồng bộ RLS).
+- ⚠️ **Vấn đề DỮ LIỆU vận hành (báo user, KHÔNG tự sửa):** quỹ **QUY-DN (Phù Mỹ) số dư -580.000₫** — tiền mặt không thể âm; do nộp quỹ cuối ca (1.150.000₫) vượt tổng thực thu (~994.000₫). Cần rà nghiệp vụ đóng ca + điều chỉnh bằng phiếu lệch quỹ.
+- ⚠️ **Hoãn (ghi nợ):** threshold cấu hình qua system_settings; RPC `fn_settle_employee_advance`; RPC `fn_close_cashier_session` (đóng ca atomic chặn nộp vượt → tránh quỹ âm).

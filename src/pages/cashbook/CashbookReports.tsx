@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Download, ArrowUpRight, ArrowDownRight, ArrowLeftRight, TrendingUp, TrendingDown, Wallet } from 'lucide-react'
+import { Download, ArrowUpRight, ArrowDownRight, ArrowLeftRight, TrendingUp, TrendingDown, Wallet, AlertTriangle } from 'lucide-react'
 import { startOfDay, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from 'date-fns'
 import { supabase } from '../../lib/supabase'
+import DataTable, { DataTableColumn } from '../../components/DataTable'
 
 interface FundLite { id: string; name: string; balance: number }
 interface BankLite { id: string; bank_name: string; account_no: string; balance: number }
@@ -89,6 +90,7 @@ export default function CashbookReports({ cashFunds, bankAccounts, formatCurrenc
   const [raw, setRaw] = useState<RawTx[]>([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const fromDate = useMemo(() => presetFrom(preset), [preset])
 
@@ -104,6 +106,7 @@ export default function CashbookReports({ cashFunds, bankAccounts, formatCurrenc
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       if (scope.empty) { setRaw([]); return }
       const parts: string[] = []
@@ -120,8 +123,9 @@ export default function CashbookReports({ cashFunds, bankAccounts, formatCurrenc
         .order('created_at', { ascending: true })
       if (error) throw error
       setRaw((data || []) as unknown as RawTx[])
-    } catch {
+    } catch (e) {
       setRaw([])
+      setLoadError(e instanceof Error ? e.message : 'Không tải được lịch sử dòng tiền')
     } finally {
       setLoading(false)
     }
@@ -156,6 +160,47 @@ export default function CashbookReports({ cashFunds, bankAccounts, formatCurrenc
   // Tổng thu/chi VẬN HÀNH (loại transfer + nội bộ để không thổi phồng)
   const totalThu = visible.filter(r => r.cls === 'thu').reduce((s, r) => s + Number(r.amount), 0)
   const totalChi = visible.filter(r => r.cls === 'chi').reduce((s, r) => s + Number(r.amount), 0)
+
+  // Cột DataTable (kế thừa layout chuẩn). Số dư lũy kế đã precompute → client paging an toàn.
+  const columns = useMemo<DataTableColumn<Row>[]>(() => [
+    {
+      key: 'date', header: 'Ngày', width: 120,
+      render: r => (
+        <div className="tabular-nums text-gray-500">
+          {new Date(r.transaction_date).toLocaleDateString('vi-VN')}
+          <span className="block text-[10px] text-gray-300 font-mono">{r.transaction_code || ''}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'type', header: 'Loại', width: 110, noTruncate: true, mobileHeaderRight: true,
+      render: r => {
+        const meta = CLS_META[r.cls]; const Icon = meta.icon
+        return <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${meta.cls}`}><Icon size={11} />{meta.label}</span>
+      },
+    },
+    {
+      key: 'desc', header: 'Diễn giải / Lý do', flex: true, minWidth: 220,
+      render: r => (
+        <div className="min-w-0">
+          {r.expense_category?.name && <span className="text-[10px] font-bold text-gray-500 block">{r.expense_category.name}</span>}
+          <p className="truncate text-gray-600" title={r.description}>{r.description}</p>
+          {r.reference_no && <span className="text-[10px] text-gray-400">Tham chiếu: {r.reference_no}</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'amount', header: 'Số tiền', width: 140, align: 'right',
+      render: r => {
+        const isUp = r.delta >= 0
+        return <span className={`tabular-nums font-bold ${isUp ? 'text-emerald-600' : 'text-orange-600'}`}>{isUp ? '+' : '−'}{formatCurrency(Number(r.amount))}</span>
+      },
+    },
+    {
+      key: 'running', header: 'Số dư lũy kế', width: 150, align: 'right',
+      render: r => <span className="tabular-nums font-bold text-gray-700">{formatCurrency(r.runningBalance)}</span>,
+    },
+  ], [formatCurrency])
 
   // Tổng theo hạng mục (chỉ thu/chi vận hành) cho kỳ đang chọn
   const byCategory = useMemo(() => {
@@ -260,62 +305,30 @@ export default function CashbookReports({ cashFunds, bankAccounts, formatCurrenc
         <KpiCard label="Số dư hiện tại" value={formatCurrency(scope.balanceNow)} icon={Wallet} tone="blue" />
       </div>
 
-      {/* Danh sách biến động + số dư lũy kế */}
-      <div className="bg-white border border-gray-150 rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                <th className="px-4 py-3">Ngày</th>
-                <th className="px-4 py-3">Loại</th>
-                <th className="px-4 py-3">Diễn giải / Lý do</th>
-                <th className="px-4 py-3 text-right">Số tiền</th>
-                <th className="px-4 py-3 text-right">Số dư lũy kế</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-tiny text-gray-400 italic">Đang tải dữ liệu...</td></tr>
-              ) : visible.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-10 text-center text-tiny text-gray-400 italic">Không có biến động nào khớp bộ lọc.</td></tr>
-              ) : visible.map((r, i) => {
-                const meta = CLS_META[r.cls]
-                const Icon = meta.icon
-                const isUp = r.delta >= 0
-                return (
-                  <tr key={`${r.transaction_code}-${i}`} className="hover:bg-gray-25">
-                    <td className="px-4 py-3 whitespace-nowrap text-tiny tabular-nums text-gray-500">
-                      {new Date(r.transaction_date).toLocaleDateString('vi-VN')}
-                      <span className="block text-[10px] text-gray-300 font-mono">{r.transaction_code || ''}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${meta.cls}`}>
-                        <Icon size={11} />{meta.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-tiny text-gray-600 max-w-[360px]">
-                      {r.expense_category?.name && <span className="text-[10px] font-bold text-gray-500 block">{r.expense_category.name}</span>}
-                      <p className="truncate" title={r.description}>{r.description}</p>
-                      {r.reference_no && <span className="text-[10px] text-gray-400">Tham chiếu: {r.reference_no}</span>}
-                    </td>
-                    <td className={`px-4 py-3 text-right tabular-nums font-bold ${isUp ? 'text-emerald-600' : 'text-orange-600'}`}>
-                      {isUp ? '+' : '−'}{formatCurrency(Number(r.amount))}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-700">
-                      {formatCurrency(r.runningBalance)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+      {/* Lỗi tải dữ liệu */}
+      {loadError && (
+        <div className="bg-red-50 border border-red-100 rounded-lg p-3.5 flex items-start gap-2.5 text-body-md text-red-700">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <span>Không tải được lịch sử dòng tiền: {loadError}</span>
         </div>
-        {visible.length > 0 && (
-          <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 text-[10px] text-gray-400 italic">
-            Số dư lũy kế phản ánh đúng số dư thật của {showCash && showBank ? 'quỹ + tài khoản' : showCash ? 'quỹ tiền mặt' : 'tài khoản ngân hàng'} đang chọn sau mỗi giao dịch — dùng để đối chiếu đóng ca.
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* Danh sách biến động + số dư lũy kế (DataTable chuẩn) */}
+      <DataTable<Row>
+        columns={columns}
+        rows={visible}
+        getRowKey={r => `${r.transaction_code}-${r.created_at}`}
+        loading={loading}
+        emptyText="Không có biến động nào khớp bộ lọc"
+        pageSize={20}
+        itemLabel="giao dịch"
+        resetSignal={`${preset}-${showCash}-${showBank}-${showThu}-${showChi}-${showTransfer}-${showInternal}`}
+      />
+      {visible.length > 0 && (
+        <p className="text-[10px] text-gray-400 italic px-1">
+          Số dư lũy kế phản ánh đúng số dư thật của {showCash && showBank ? 'quỹ + tài khoản' : showCash ? 'quỹ tiền mặt' : 'tài khoản ngân hàng'} đang chọn sau mỗi giao dịch — dùng để đối chiếu đóng ca.
+        </p>
+      )}
     </div>
   )
 }

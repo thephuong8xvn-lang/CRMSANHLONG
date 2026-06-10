@@ -92,6 +92,10 @@ interface ExpenseCategory {
   is_internal?: boolean
 }
 
+// Ngưỡng duyệt phiếu CHI: > mức này phải chờ duyệt (không tự duyệt).
+// PHẢI khớp ràng buộc RLS trong migration 20260627000000_cashbook_harden.sql.
+const APPROVAL_THRESHOLD = 10_000_000
+
 // Hạng mục hệ thống dẫn dắt nghiệp vụ riêng trong form Phiếu thu/chi
 type SpecialKind = 'debt' | 'supplier' | 'advance' | null
 function specialKindOf(code?: string): SpecialKind {
@@ -250,6 +254,9 @@ export default function CashbookPage() {
   const [totalCount, setTotalCount] = useState(0)
   const pageSize = 10
 
+  // Lỗi tải dữ liệu — hiện banner thay vì nuốt im lặng
+  const [dataError, setDataError] = useState<string | null>(null)
+
   // Branch management
   const isAdmin = userRole.code === 'admin' || userRole.code === 'ceo'
   const [branches, setBranches] = useState<any[]>([])
@@ -359,6 +366,7 @@ export default function CashbookPage() {
 
     } catch (err) {
       console.error('Error loading cashbook metadata:', err)
+      setDataError(err instanceof Error ? err.message : 'Không tải được dữ liệu sổ quỹ (quỹ/tài khoản/danh mục).')
     }
   }, [userBranchId, isAdmin, branches.length, selectedBranchId])
 
@@ -400,6 +408,7 @@ export default function CashbookPage() {
       if (data) setSessions(data as unknown as CashierSession[])
     } catch (err) {
       console.error(err)
+      setDataError(err instanceof Error ? err.message : 'Không tải được lịch sử phiên quỹ.')
     }
   }, [cashFunds])
 
@@ -444,6 +453,7 @@ export default function CashbookPage() {
   // Load Cashbook Transactions
   const fetchTransactions = useCallback(async () => {
     setLoading(true)
+    setDataError(null)
     try {
       let query = supabase
         .from('cashbook_transactions')
@@ -518,6 +528,7 @@ export default function CashbookPage() {
       }
     } catch (err) {
       console.error('Error fetching transactions:', err)
+      setDataError(err instanceof Error ? err.message : 'Không tải được danh sách phiếu sổ quỹ.')
     } finally {
       setLoading(false)
     }
@@ -808,7 +819,7 @@ export default function CashbookPage() {
       // Inflows are approved instantly.
       // Outflows: manual outflows above 10,000,000 VND require manager approval (pending_approval), else auto-approved.
       let targetStatus: 'approved' | 'pending_approval' = 'approved'
-      if (formFlowType === 'outflow' && formAmount > 10000000) {
+      if (formFlowType === 'outflow' && formAmount > APPROVAL_THRESHOLD) {
         targetStatus = 'pending_approval'
       }
 
@@ -1409,6 +1420,15 @@ export default function CashbookPage() {
             })}
           </div>
         </div>
+
+        {/* Banner lỗi tải dữ liệu — không nuốt lỗi im lặng */}
+        {dataError && (
+          <div className="mb-4 bg-red-50 border border-red-100 rounded-lg p-3.5 flex items-start gap-2.5 text-body-md text-red-700">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <span className="flex-1">Lỗi tải dữ liệu sổ quỹ: {dataError}</span>
+            <button onClick={() => { setDataError(null); loadMetadata(); fetchTransactions() }} className="shrink-0 font-bold text-red-600 hover:underline">Thử lại</button>
+          </div>
+        )}
 
         {/* Dashboard Summary Cards — 2 khối: Tiền mặt (breakdown theo ca) + Phiên ca */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -2015,7 +2035,7 @@ export default function CashbookPage() {
                   </div>
 
                   {/* Alert if Outflow > 10M */}
-                  {formFlowType === 'outflow' && formAmount > 10000000 && (
+                  {formFlowType === 'outflow' && formAmount > APPROVAL_THRESHOLD && (
                     <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex gap-2 text-tiny text-amber-800 leading-relaxed font-medium">
                       <AlertTriangle size={16} className="shrink-0 text-amber-500" />
                       <span>Phiếu chi &gt; 10,000,000 ₫ sẽ ở trạng thái <b>Chờ duyệt</b> và cần Admin / Giám đốc chi nhánh duyệt để cập nhật số dư.</span>

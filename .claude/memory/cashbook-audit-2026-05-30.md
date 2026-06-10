@@ -209,3 +209,28 @@ Kết luận tổng: **Chỉ 1/5 luồng vận hành đúng** (thu chi tay).
 - Triggers: [supabase/migrations/20260522000001_triggers.sql:474-735](file:///d:/CRMSANHLONGVETCO/supabase/migrations/20260522000001_triggers.sql#L474)
 - Frontend: [src/pages/cashbook/CashbookPage.tsx](file:///d:/CRMSANHLONGVETCO/src/pages/cashbook/CashbookPage.tsx) (2415 dòng — Sprint sau cần tách module)
 - Liên quan: [[project-state]], [[feedback-conventions]], [[dashboard-branch-scope]]
+
+---
+
+# Re-audit 2026-06-10 (mô hình Fable 5) — migration 20260627000000_cashbook_harden.sql
+
+Audit lại sau khi S1–S4 hoàn thiện. Kiểm chứng read-only + exploit (rollback) trên prod `gdotgcrtivjdpkcchrro` qua Management API + JWT simulation. **4 lỗ hổng MỚI phát hiện & đã vá** (khác hẳn 18 phát hiện cũ — những cái cũ đều đã đóng):
+
+- **C1 (NGHIÊM TRỌNG):** `fn_apply_fund_delta` SECURITY DEFINER chưa REVOKE → mọi user `rpc()` sửa số dư quỹ. Chứng minh exploit: non-admin (zendviet) đẩy QUY-HCM 30.46M→31.24M. Vá: REVOKE 3 hàm (apply_fund_delta + default_cash_fund + default_bank_account).
+- **C2 (CAO):** ngưỡng 10tr chỉ ở client → INSERT thẳng approved bất kỳ + chèn chéo chi nhánh. Vá: RLS `cashbook_insert_staff` chặn non-admin outflow approved >10tr + cô lập chi nhánh + whitelist status.
+- **C3 (CAO):** clause hở internal_transfer trong INSERT policy → bỏ.
+- **C4 (TRUNG):** no state machine + sửa amount approved không re-balance → trigger BEFORE UPDATE `fn_guard_cashbook_update`.
+
+**Bài học kỹ thuật quan trọng:**
+- Mọi hàm SECURITY DEFINER **mutate tiền** PHẢI REVOKE PUBLIC/anon/authenticated (Postgres mặc định GRANT EXECUTE PUBLIC). Cùng class với lỗ `v_order_line_profit` (view) đã vá 2026-06-10 sáng. Kiểm: `has_function_privilege('authenticated', oid, 'execute')`.
+- Bảng cashbook KHÔNG bật FORCE RLS + owner postgres → trigger SECURITY DEFINER bypass RLS hoàn toàn. Đây là cách để siết RLS phiếu-nhập-tay mà KHÔNG vỡ luồng auto. Không cần cờ phiên `app.*`.
+- Test RLS qua Management API: `BEGIN; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claims', '{"sub":"<uuid>","role":"authenticated"}', true); ... ROLLBACK;`. **CẨN THẬN:** UPDATE/DELETE khớp 0 dòng dưới RLS KHÔNG raise exception → đừng nhầm "không lỗi" = "cho phép"; phải đếm `GET DIAGNOSTICS ROW_COUNT` hoặc đọc lại trạng thái.
+- `fn_is_admin()` = admin OR ceo (cả 2 bypass RLS trong policy). accountant/branch_manager đều có branch_id thật → branch-scope INSERT không vỡ.
+
+**LÀNH MẠNH (verify):** self-approval guard OK, DELETE chặn, SELECT cô lập chi nhánh, 0 phiếu thiếu/lệch, sessions không lệch, công nợ NCC khớp. 4 phiếu mồ côi đều cancelled.
+
+**⚠️ DỮ LIỆU vận hành:** QUY-DN (Phù Mỹ) số dư **-580.000₫** (âm) — nộp quỹ cuối ca 1.15tr vượt thực thu ~994k. Báo user, không tự sửa.
+
+**HOÃN (roadmap):** threshold→system_settings; RPC fn_settle_employee_advance; RPC fn_close_cashier_session (chặn nộp vượt → tránh quỹ âm).
+
+**Frontend:** CashbookReports→DataTable + banner lỗi; CashbookPage 3 catch→banner dataError+Thử lại; hằng số APPROVAL_THRESHOLD.
