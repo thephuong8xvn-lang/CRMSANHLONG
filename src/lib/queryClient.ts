@@ -80,6 +80,17 @@ export const qk = {
     invSummary: (params: object) => ['reports', 'inv-valuation', 'summary', params] as const,
     invByProduct: (params: object) => ['reports', 'inv-valuation', 'by-product', params] as const,
     invByGroup: (groupBy: string, params: object) => ['reports', 'inv-valuation', 'by-group', groupBy, params] as const,
+    // SP chiến lược — prefix chung ['reports','strategic'] để invalidate 1 phát (realtime)
+    strategicAll: ['reports', 'strategic'] as const,
+    stratSummary: (params: object) => ['reports', 'strategic', 'summary', params] as const,
+    stratProducts: (params: object) => ['reports', 'strategic', 'products', params] as const,
+    stratSuggestions: (params: object) => ['reports', 'strategic', 'suggestions', params] as const,
+    stratAlerts: (params: object) => ['reports', 'strategic', 'alerts', params] as const,
+    stratTrend: (params: object) => ['reports', 'strategic', 'trend', params] as const,
+    stratToday: (params: object) => ['reports', 'strategic', 'today', params] as const,
+    stratTodayOrders: (params: object) => ['reports', 'strategic', 'today-orders', params] as const,
+    stratTargets: (params: object) => ['reports', 'strategic', 'targets', params] as const,
+    stratConfig: ['reports', 'strategic', 'config'] as const,
   },
   auth: {
     rolePermissions: (userId: string) => ['auth', 'role-permissions', userId] as const,

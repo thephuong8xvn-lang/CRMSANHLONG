@@ -7,6 +7,7 @@ import {
   X,
   ExternalLink,
   Package,
+  Pencil,
 } from 'lucide-react'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import {
@@ -24,6 +25,8 @@ interface ProductQuickViewProps {
   branchId?: string | null
   onClose: () => void
   onOpenDetail: () => void
+  /** Mở modal sửa nhanh — chỉ truyền khi user có quyền products.manage (khớp RLS). */
+  onEdit?: () => void
 }
 
 const MOVEMENT_LABELS: Record<string, string> = {
@@ -47,7 +50,7 @@ function Spinner() {
   )
 }
 
-export default function ProductQuickView({ row, branchId, onClose, onOpenDetail }: ProductQuickViewProps) {
+export default function ProductQuickView({ row, branchId, onClose, onOpenDetail, onEdit }: ProductQuickViewProps) {
   const { formatCurrency } = useDisplaySettings()
   const [tab, setTab] = useState<QuickTab>('info')
 
@@ -91,6 +94,15 @@ export default function ProductQuickView({ row, branchId, onClose, onOpenDetail 
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="h-8 px-3 border border-blue-200 bg-blue-50 hover:bg-blue-100 rounded text-tiny font-semibold text-blue-700 flex items-center gap-1.5 transition-all"
+            >
+              <Pencil size={13} />
+              Sửa chi tiết
+            </button>
+          )}
           <button
             onClick={onOpenDetail}
             className="h-8 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-700 flex items-center gap-1.5 transition-all"
@@ -211,16 +223,23 @@ export default function ProductQuickView({ row, branchId, onClose, onOpenDetail 
                       <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] uppercase tracking-wider">
                         <th className="p-2.5">Thời gian</th>
                         <th className="p-2.5">Loại GD</th>
+                        <th className="p-2.5">Đối tượng</th>
                         <th className="p-2.5">Kho</th>
                         <th className="p-2.5">Số lô</th>
                         <th className="p-2.5 text-right">Biến động</th>
-                        <th className="p-2.5 text-right">Giá vốn</th>
+                        <th className="p-2.5 text-right">Giá GD</th>
                         <th className="p-2.5">Thực hiện</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-gray-600">
                       {(movementsQuery.data ?? []).map(m => {
                         const isPositive = m.quantity > 0
+                        // Đơn bán & phiếu nhập NCC có trang chi tiết riêng → link mở tab mới
+                        const refHref = m.ref_id
+                          ? (m.ref_type === 'order' || m.ref_type === 'order_reverse' ? `/orders/${m.ref_id}`
+                            : m.ref_type === 'goods_receipt' ? `/goods-receipts/${m.ref_id}`
+                            : null)
+                          : null
                         return (
                           <tr key={m.id} className="hover:bg-gray-50/50">
                             <td className="p-2.5 whitespace-nowrap tabular-nums text-[11px] text-gray-500">
@@ -233,13 +252,43 @@ export default function ProductQuickView({ row, branchId, onClose, onOpenDetail 
                                 {MOVEMENT_LABELS[m.movement_type] || 'Biến động khác'}
                               </span>
                             </td>
-                            <td className="p-2.5 font-semibold text-gray-700">{m.warehouses?.name || '—'}</td>
-                            <td className="p-2.5 font-mono text-[11px] text-gray-500">{m.stock_lots?.lot_number || '—'}</td>
+                            <td className="p-2.5 max-w-[200px]">
+                              {m.partner_name || m.ref_code ? (
+                                <div className="min-w-0">
+                                  <span className="font-semibold text-gray-700 truncate block" title={m.partner_name || ''}>
+                                    {m.partner_name || '—'}
+                                  </span>
+                                  {m.ref_code && (
+                                    refHref ? (
+                                      <a
+                                        href={refHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={e => e.stopPropagation()}
+                                        className="font-mono text-[10px] text-blue-600 hover:text-blue-700 hover:underline inline-flex items-center gap-0.5"
+                                        title="Mở chứng từ trong tab mới"
+                                      >
+                                        {m.ref_code} <ExternalLink size={9} />
+                                      </a>
+                                    ) : (
+                                      <span className="font-mono text-[10px] text-gray-400">{m.ref_code}</span>
+                                    )
+                                  )}
+                                </div>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="p-2.5 font-semibold text-gray-700">{m.warehouse_name || '—'}</td>
+                            <td className="p-2.5 font-mono text-[11px] text-gray-500">{m.lot_number || '—'}</td>
                             <td className={`p-2.5 text-right font-bold tabular-nums ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
                               {isPositive ? '+' : ''}{m.quantity} {row.unit}
                             </td>
-                            <td className="p-2.5 text-right tabular-nums text-gray-600">{m.unit_cost ? formatCurrency(m.unit_cost) : '—'}</td>
-                            <td className="p-2.5 text-[11px] text-gray-500">{m.profiles?.full_name || 'Hệ thống'}</td>
+                            <td className="p-2.5 text-right whitespace-nowrap">
+                              <span className="tabular-nums text-gray-700 font-semibold">{m.txn_price !== null ? formatCurrency(m.txn_price) : '—'}</span>
+                              {m.price_list_name && (
+                                <span className="block text-[9px] font-bold text-blue-500">{m.price_list_name}</span>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-[11px] text-gray-500">{m.performer_name || 'Hệ thống'}</td>
                           </tr>
                         )
                       })}

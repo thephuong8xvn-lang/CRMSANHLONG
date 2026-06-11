@@ -90,6 +90,27 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Tích hợp các trường thông tin và liên kết hoạt chất này vào luồng Thêm mới (`AddProductModal`), Cập nhật (`EditProductModal`) và hiển thị trực quan thông tin chi tiết trên trang Chi tiết sản phẩm (`ProductDetailPage`).
 - [x] **Thẻ kho (Lịch sử biến động)**: Tích hợp tab Thẻ kho tại trang Chi tiết sản phẩm hiển thị chi tiết lịch sử các lần nhập kho, xuất kho, trả hàng, điều chỉnh chênh lệch hoặc hủy hỏng kèm thông tin số lô, kho hàng, đơn giá vốn và nhân viên thực hiện.
 
+#### 🔍 Kiểm tra toàn diện & nâng cấp tiện ích 2026-06-11 — Product List UX + RPC
+
+**Nâng cấp tiện ích (đã hoàn thành, migration `20260629000000_products_list_rpc.sql` apply remote OK):**
+- [x] **Cột "ĐVT" (Đơn vị tính)**: bổ sung sau cột Tên hàng trên bảng danh sách sản phẩm (CSV export đã có sẵn cột này).
+- [x] **Sort cột Tồn kho**: click header Tồn kho đảo chiều tăng ↔ giảm (icon mũi tên). `DataTable.tsx` mở rộng hỗ trợ sort header opt-in (`sortable` + `sortKey/sortDir/onSortChange` — controlled, không ảnh hưởng các trang khác). Sort thực hiện **server-side đúng theo tồn chi nhánh** của user được phân quyền (RPC `fn_products_list`).
+- [x] **RPC `fn_products_list`** (SECURITY INVOKER, whitelist sort/status, clamp page_size 5000): gộp 1-5 query của `useProductsList` về **1 round-trip** — trang dữ liệu + count + tổng tồn/khách đặt filtered + ghi đè tồn/khách đặt/dự kiến hết theo chi nhánh ngay tại Postgres. Smoke-test remote PASS (tổng tồn Hoài Ân 16.122 khớp truy vấn trực tiếp, sort asc/desc đúng, search ILIKE escape wildcard).
+- [x] **Sửa nhanh sản phẩm**: panel xem nhanh (quick view) thêm nút **"Sửa chi tiết"** mở `EditProductModal` ngay tại danh sách (không cần vào trang chi tiết). Chỉ hiển thị khi user có quyền (`admin` hoặc `products.manage` — khớp RLS).
+- [x] **Cảnh báo tồn thấp bằng màu**: tồn = 0 → đỏ; sắp hết (dự kiến hết ≤ 7 ngày) → cam (cả ô Tồn kho và badge Dự kiến hết).
+
+**Bug & bảo mật phát hiện khi audit (đã vá cùng đợt):**
+- [x] **Bug (data integrity)**: 2 query tính tổng tồn/khách đặt theo chi nhánh trong `useProducts.ts` dùng sai cú pháp PostgREST (`.eq('warehouse:warehouses!inner(branch_id)', ...)`) → dòng "Tổng cộng" của user chi nhánh luôn 0/sai. Đã thay bằng RPC tính đúng tại Postgres.
+- [x] **UX phân quyền**: nút "Thêm mới", "Import", "Quản lý danh mục" trước đây hiển thị cho mọi user dù RLS chặn khi lưu → đã ẩn theo gate `admin || products.manage`.
+- [x] **Export CSV theo chi nhánh**: trước đây user chi nhánh xuất CSV ra tồn toàn hệ thống (lệch số hiển thị) → đã chuyển export sang cùng RPC, xuất đúng tồn chi nhánh.
+- ⚠️ Ghi nhận (chưa làm): `EditProductModal` lưu bảng giá/hoạt chất theo kiểu delete-all + insert không atomic — nên chuyển sang RPC transaction trong sprint sau.
+
+**Thẻ kho nâng cao (cùng đợt 2026-06-11, migration `20260630000000_product_movements_rpc.sql` apply remote OK):**
+- [x] **RPC `fn_product_movements`** (SECURITY INVOKER): thẻ kho enrich đối tượng giao dịch qua `reference_id/reference_type` — bán/hoàn tác (`order`/`order_reverse`) → mã đơn + tên KH + **đơn giá thực bán** (MAX unit_price các dòng cùng SP, bỏ quà 0đ) + **nhóm giá** (bảng giá của đơn); nhập NCC (`goods_receipt`) → mã phiếu + tên NCC; khách trả (`sales_return`) → mã + tên KH qua đơn gốc; chuyển kho → mã phiếu. RLS giữ nguyên (user không đọc được chứng từ → hiện "—").
+- [x] **Cột "Đối tượng"** mới ở tab Thẻ kho (cả quick view + trang chi tiết SP): tên KH/NCC + mã chứng từ là **link mở tab mới** (`/orders/:id`, `/goods-receipts/:id`; loại không có trang riêng chỉ hiện mã).
+- [x] **Gộp cột "Giá vốn" → "Giá GD"**: dòng bán hiện giá bán thật + badge nhóm giá; dòng nhập hiện giá nhập — hết ô trống "—".
+- ⚠️ Phát hiện khi audit: bảng `purchase_returns` (migration `20260524000002`) KHÔNG tồn tại trên remote — migration đó chưa từng apply; reference_type thực tế trên data: `order`, `goods_receipt`, `transfer`, `order_reverse`, `manual_lot`.
+
 ---
 
 ### 4. Phân Hệ Nhập Kho & Nhà Cung Cấp (Purchase & Inventory) - `[HOÀN THÀNH]`
@@ -1492,3 +1513,19 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Frontend:** `CashbookReports.tsx` bảng HTML thủ công → **DataTable chuẩn** (cột Ngày/Loại/Diễn giải/Số tiền/Số dư lũy kế, client paging 20 — số dư lũy kế precompute nên an toàn) + banner lỗi tải; `CashbookPage.tsx` 3 catch nuốt lỗi (loadMetadata/fetchTransactions/loadSessions) → banner `dataError` + nút Thử lại; extract hằng số `APPROVAL_THRESHOLD=10tr` (đồng bộ RLS).
 - ⚠️ **Vấn đề DỮ LIỆU vận hành (báo user, KHÔNG tự sửa):** quỹ **QUY-DN (Phù Mỹ) số dư -580.000₫** — tiền mặt không thể âm; do nộp quỹ cuối ca (1.150.000₫) vượt tổng thực thu (~994.000₫). Cần rà nghiệp vụ đóng ca + điều chỉnh bằng phiếu lệch quỹ.
 - ⚠️ **Hoãn (ghi nợ):** threshold cấu hình qua system_settings; RPC `fn_settle_employee_advance`; RPC `fn_close_cashier_session` (đóng ca atomic chặn nộp vượt → tránh quỹ âm).
+
+---
+
+## 2026-06-11 — Trung tâm Báo cáo: SẢN PHẨM CHIẾN LƯỢC & TỐI ƯU LỢI NHUẬN (admin-only, realtime)
+
+**Bối cảnh:** User vận hành 2 luồng SP: **Nhóm 1 chiến lược** (markup ≥50% trên giá vốn — nguồn lãi chính, BẮT BUỘC ≥30% doanh số mỗi chi nhánh) và **Nhóm 2 hàng nền** (bắt buộc có mặt, quay nhanh, hòa/lỗ — nhóm 1 bù nhóm 2). Xây module theo dõi chặt + cảnh báo khoa học + mục tiêu doanh số tháng + theo dõi LIVE. Doc đầy đủ: `docs/10-STRATEGIC-PRODUCTS-REPORT.md`. **Migration ĐÃ apply remote + smoke test PASS. `tsc -b` + `vite build` PASS.**
+
+- **Migration `20260628000000_strategic_products.sql`:**
+  - Bảng `product_strategy` (product_id PK, class strategic/baseline, note, audit assigned_by/at; không có dòng = hàng thường; RLS read active/write admin) + `branch_month_targets` (UNIQUE branch+year+month, revenue_target, strategic_share_target DEFAULT 0.30; **RLS admin-only cả SELECT** — số nhạy cảm).
+  - Seed `system_settings.strategic_config`: markup_min 0.5 · baseline_loss_floor −0.05 · suggest_min_revenue_90d 5tr · suggest_min_qty_90d 30 · oos_warn_days 7 (đổi qua UI, RPC đọc COALESCE).
+  - **7 RPC admin-only** (template fn_inventory_valuation_*, gate `fn_has_role('admin')` thuần, whitelist sort/class, COUNT OVER, REVOKE+GRANT): `fn_strategic_summary` (1 dòng/CN: revenue/profit 3 nhóm, share, **cross_subsidy**, violation counts, target join, month_elapsed_ratio, **GMROI N1/N2**) · `fn_strategic_products` (manualPagination; markup/margin/sold_30d/tồn/**days_to_oos**/**GMROI**/is_violation/missing_cost) · `fn_strategic_suggestions` (90 ngày, SP chưa gán: markup≥min+rev≥ngưỡng→N1, qty≥ngưỡng+markup<min→N2) · `fn_strategic_alerts` (**7 loại**: share_below_target · strategic_below_markup · baseline_deep_loss · cross_subsidy_negative CRITICAL · pace_behind · strategic_oos_risk · baseline_oos_risk CRITICAL) · `fn_strategic_trend` (≤24 tháng) · `fn_strategic_today` + `fn_strategic_today_orders` (live từ 0h giờ VN).
+  - Múi giờ `Asia/Ho_Chi_Minh` cho ranh giới ngày/tháng; markup NULL khi cogs=0 (missing_cost, không tính vi phạm); index `idx_orders_branch_created`; DO-block guard `orders` vào publication realtime. KHÔNG tạo view mới (tránh lỗ hổng auto-GRANT).
+- **Frontend:** `StrategicProductsReportPage.tsx` (route `/reports/strategic-products` adminOnly, card thứ 4 hub) — **6 tab**: ⓪ **Hôm nay LIVE** (4 KPI + bảng đơn kèm cơ cấu N1/N2 + chấm ● Live) · ① Tổng quan & Cảnh báo (4 KPI pace/share/bù chéo + banner 7 cảnh báo tiếng Việt + stacked bar CN + ComposedChart 12 tháng share%+bù chéo + bảng CN) · ② SP nhóm 1 (markup đỏ khi vi phạm + gợi ý "cần bán ≥ X" + Tồn/Hết sau ~N ngày + GMROI + Gỡ/Chuyển nhóm + modal Gán SP) · ③ SP nhóm 2 (margin vs sàn lỗ) · ④ Gợi ý phân loại (Chấp nhận 1 click) · ⑤ Mục tiêu & Cấu hình (inline edit target từng CN + collapse 5 ngưỡng). CSV per tab.
+  - **Realtime:** `useRealtimeTable('orders')` → useCallback + debounce 2s → invalidate prefix `['reports','strategic']` → toàn trang tự refresh không F5. Tab Hôm nay staleTime 0.
+  - Files mới: `AssignStrategyModal.tsx`, `useStrategicProducts.ts` (9 query + 3 mutation), keys `qk.reports.strat*`.
+- **Nghiệm thu remote (tx-rollback):** tổng trend = Σ summary khớp (179.121.512₫); 7/7 cảnh báo phát đúng với data thử; non-admin bị RAISE cả 7 RPC, RLS chặn SELECT targets + INSERT strategy, view nguồn permission denied; whitelist bogus → exception.

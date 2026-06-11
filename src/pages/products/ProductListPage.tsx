@@ -20,6 +20,7 @@ import { ProductImage } from '../../components/ProductImage'
 import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import ProductQuickView from './ProductQuickView'
 import AddProductModal from './AddProductModal'
+import EditProductModal from './EditProductModal'
 import ManageCategoriesModal from './ManageCategoriesModal'
 import ManageBrandsModal from './ManageBrandsModal'
 import ImportProductsModal from './ImportProductsModal'
@@ -30,6 +31,7 @@ import {
   useProductsList,
   useProductCategories,
   useProductBrands,
+  buildProductsListRpcArgs,
   type ProductStockRow,
 } from '../../hooks/queries/useProducts'
 import { useQueryClient } from '@tanstack/react-query'
@@ -44,7 +46,10 @@ export default function ProductListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { formatCurrency } = useDisplaySettings()
-  const { profile, userRole } = useAuth()
+  const { profile, userRole, hasPermission } = useAuth()
+
+  // Gate khớp RLS (products_insert/update/delete): admin hoặc quyền products.manage
+  const canManageProduct = userRole?.code === 'admin' || hasPermission('products.manage')
 
   // Modal Dialogs States
   const [isAddModalOpen, setIsAddModalOpen]       = useState(false)
@@ -53,6 +58,7 @@ export default function ProductListPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isManageUnitsOpen, setIsManageUnitsOpen] = useState(false)
   const [catMenuOpen, setCatMenuOpen] = useState(false)
+  const [editProductId, setEditProductId] = useState<string | null>(null)
 
   // Filters State
   const [searchTerm, setSearchTerm]           = useState('')
@@ -61,6 +67,8 @@ export default function ProductListPage() {
   const [selectedStatus, setSelectedStatus]   = useState<'active' | 'inactive' | 'all'>('active')
   const [currentPage, setCurrentPage]         = useState(1)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  // Sort tồn kho: null = mặc định (mới tạo trước), asc/desc khi click cột Tồn kho
+  const [stockSort, setStockSort] = useState<'asc' | 'desc' | null>(null)
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
 
   // Starred Products (Favorite) Local State
@@ -69,10 +77,10 @@ export default function ProductListPage() {
     return saved ? JSON.parse(saved) : {}
   })
 
-  // Reset page when filter changes
-  useMemo(() => { setCurrentPage(1) }, [debouncedSearch, selectedCategory, selectedBrand, selectedStatus])
+  // Reset page when filter/sort changes
+  useMemo(() => { setCurrentPage(1) }, [debouncedSearch, selectedCategory, selectedBrand, selectedStatus, stockSort])
 
-  // ── Server-side query qua product_stock_summary_view
+  // ── Server-side query qua RPC fn_products_list (1 round-trip, tồn theo chi nhánh)
   const listParams = useMemo(() => ({
     page: currentPage,
     pageSize: PAGE_SIZE,
@@ -81,7 +89,9 @@ export default function ProductListPage() {
     brandId: selectedBrand || undefined,
     status: selectedStatus,
     branchId: (userRole?.code !== 'admin' && userRole?.code !== 'ceo') ? profile?.branch_id || undefined : undefined,
-  }), [currentPage, debouncedSearch, selectedCategory, selectedBrand, selectedStatus, profile?.branch_id, userRole?.code])
+    sortBy: (stockSort ? 'stock' : 'created_at') as 'stock' | 'created_at',
+    sortDir: stockSort ?? 'desc' as const,
+  }), [currentPage, debouncedSearch, selectedCategory, selectedBrand, selectedStatus, profile?.branch_id, userRole?.code, stockSort])
 
   const productsQuery   = useProductsList(listParams)
   const categoriesQuery = useProductCategories()
@@ -115,27 +125,21 @@ export default function ProductListPage() {
 
   const handleExportCSV = async () => {
     try {
-      let q = supabase
-        .from('product_stock_summary_view')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (selectedCategory)              q = q.eq('category_id', selectedCategory)
-      if (selectedBrand)                 q = q.eq('brand_id', selectedBrand)
-      if (selectedStatus === 'active')   q = q.eq('is_active', true)
-      if (selectedStatus === 'inactive') q = q.eq('is_active', false)
-      if (debouncedSearch) {
-        const term = debouncedSearch.trim().replace(/[%_]/g, '\\$&')
-        q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%`)
-      }
-      const { data, error } = await q
+      // Cùng RPC với danh sách → user chi nhánh xuất đúng tồn chi nhánh mình
+      const { data: rpcData, error } = await supabase.rpc('fn_products_list', buildProductsListRpcArgs({
+        ...listParams,
+        page: 1,
+        pageSize: 5000,
+      }))
       if (error) throw error
+      const data = (rpcData?.rows ?? []) as ProductStockRow[]
 
       const headers = [
         'Mã SKU','Tên sản phẩm','Đơn vị tính','Nhóm sản phẩm','Thương hiệu','Quy cách',
         'Giá bán lẻ','Giá vốn','Tồn kho','Khách đặt','Trạng thái kinh doanh','Thời gian tạo'
       ]
 
-      const exportRows = (data as ProductStockRow[] ?? []).map(prod => [
+      const exportRows = data.map(prod => [
         prod.sku || '',
         prod.name,
         prod.unit || 'lọ',
@@ -196,19 +200,35 @@ export default function ProductListPage() {
         </div>
       )
     },
+    { key: 'unit', header: 'ĐVT', width: 64, render: p => <span className="text-gray-600 font-semibold">{p.unit || '—'}</span> },
     { key: 'price', header: 'Giá bán', width: 110, align: 'right', render: p => <span className="font-bold text-blue-600 tabular-nums">{formatCurrency(p.retail_price)}</span> },
     { key: 'cost', header: 'Giá vốn', width: 110, align: 'right', render: p => <span className="text-gray-500 tabular-nums">{formatCurrency(p.retail_cost)}</span> },
-    { key: 'stock', header: 'Tồn kho', width: 96, align: 'right', render: p => <span className="font-bold text-gray-700 tabular-nums">{p.stock_on_hand.toLocaleString('vi-VN')}</span> },
+    {
+      key: 'stock', header: 'Tồn kho', width: 96, align: 'right', sortable: true,
+      render: p => {
+        // Cảnh báo tồn thấp: hết hàng đỏ, sắp hết (≤7 ngày) cam
+        const tone = p.stock_on_hand <= 0
+          ? 'text-red-600'
+          : (p.days_to_oos !== null && p.days_to_oos <= 7 ? 'text-amber-600' : 'text-gray-700')
+        return <span className={`font-bold tabular-nums ${tone}`}>{p.stock_on_hand.toLocaleString('vi-VN')}</span>
+      }
+    },
     { key: 'order', header: 'Khách đặt', width: 96, align: 'right', render: p => <span className="text-gray-600 tabular-nums">{p.on_order_qty.toLocaleString('vi-VN')}</span> },
     { key: 'created', header: 'Thời gian tạo', width: 130, render: p => <span className="text-gray-400 text-tiny font-mono">{p.created_at ? new Date(p.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</span> },
-    { key: 'days', header: 'Dự kiến hết', width: 110, noTruncate: true, render: p => { const daysLabel = formatDaysToOOS(p.days_to_oos); return <span className={`px-1.5 py-0.5 text-[11px] font-bold rounded ${daysLabel === '0 ngày' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-gray-50 text-gray-600 border border-gray-100'}`}>{daysLabel}</span> } }
+    { key: 'days', header: 'Dự kiến hết', width: 110, noTruncate: true, render: p => {
+      const daysLabel = formatDaysToOOS(p.days_to_oos)
+      const tone = daysLabel === '0 ngày'
+        ? 'bg-red-50 text-red-600 border border-red-100'
+        : (p.days_to_oos !== null && p.days_to_oos <= 7 ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-gray-50 text-gray-600 border border-gray-100')
+      return <span className={`px-1.5 py-0.5 text-[11px] font-bold rounded ${tone}`}>{daysLabel}</span>
+    } }
   ]
 
   const productSummary = (
     <tr className="bg-blue-50/20 border-b border-gray-100 font-bold text-gray-700">
       <td></td><td></td><td></td>
       <td className="px-3 py-2 text-tiny italic text-gray-400 whitespace-nowrap">Tổng cộng:</td>
-      <td></td><td></td><td></td>
+      <td></td><td></td><td></td><td></td>
       <td className="px-3 py-2 text-right font-extrabold text-blue-700 tabular-nums">{totalStockSum.toLocaleString('vi-VN')}</td>
       <td className="px-3 py-2 text-right font-extrabold text-blue-700 tabular-nums">{totalOrderedSum.toLocaleString('vi-VN')}</td>
       <td></td><td></td>
@@ -225,7 +245,8 @@ export default function ProductListPage() {
             <p className="text-body-sm text-gray-500">Quản lý nhóm sản phẩm, giá bán lẻ, giá vốn và định lượng tồn kho</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Quản lý danh mục dropdown */}
+            {/* Quản lý danh mục dropdown — chỉ user có quyền products.manage (khớp RLS) */}
+            {canManageProduct && (
             <div className="relative">
               <button
                 onClick={() => setCatMenuOpen(v => !v)}
@@ -246,12 +267,15 @@ export default function ProductListPage() {
                 </div>
               )}
             </div>
+            )}
+            {canManageProduct && (
             <button
               onClick={() => setIsImportModalOpen(true)}
               className="h-9 px-3 border border-gray-200 rounded text-tiny font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all flex items-center gap-1.5 shadow-sm"
             >
               <Upload size={15} className="text-gray-400" /> Import
             </button>
+            )}
             <button
               onClick={handleExportCSV}
               className="h-9 px-3 border border-gray-200 rounded text-tiny font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all flex items-center gap-1.5 shadow-sm"
@@ -265,6 +289,7 @@ export default function ProductListPage() {
               <FileSpreadsheet size={15} className="text-blue-500" />
               Bảng giá áp dụng
             </button>
+            {canManageProduct && (
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="h-9 px-4 bg-blue-600 text-white rounded text-tiny font-bold flex items-center gap-1.5 hover:bg-blue-700 active:scale-[0.98] transition-all shadow-md"
@@ -272,6 +297,7 @@ export default function ProductListPage() {
               <Plus size={16} />
               Thêm mới
             </button>
+            )}
           </div>
         </div>
 
@@ -343,8 +369,17 @@ export default function ProductListPage() {
                 onPageChange={setCurrentPage}
                 totalItems={totalItems}
                 headerSummary={productSummary}
+                sortKey={stockSort ? 'stock' : null}
+                sortDir={stockSort ?? 'asc'}
+                onSortChange={(_key, dir) => setStockSort(dir)}
                 expandedRowRender={(prod, collapse) => (
-                  <ProductQuickView row={prod} branchId={listParams.branchId} onClose={collapse} onOpenDetail={() => navigate(`/products/${prod.id}`)} />
+                  <ProductQuickView
+                    row={prod}
+                    branchId={listParams.branchId}
+                    onClose={collapse}
+                    onOpenDetail={() => navigate(`/products/${prod.id}`)}
+                    onEdit={canManageProduct ? () => setEditProductId(prod.id) : undefined}
+                  />
                 )}
                 emptyText="Không tìm thấy sản phẩm nào khớp với bộ lọc."
               />
@@ -461,6 +496,14 @@ export default function ProductListPage() {
       <ManageBrandsModal     isOpen={isManageBrandsOpen}   onClose={() => setIsManageBrandsOpen(false)}   onSuccess={invalidate} />
       <ImportProductsModal   isOpen={isImportModalOpen}    onClose={() => setIsImportModalOpen(false)}    onSuccess={invalidate} />
       <ManageUnitsModal      isOpen={isManageUnitsOpen}    onClose={() => setIsManageUnitsOpen(false)}    onSuccess={invalidate} />
+      {editProductId && (
+        <EditProductModal
+          isOpen={!!editProductId}
+          productId={editProductId}
+          onClose={() => setEditProductId(null)}
+          onSuccess={invalidate}
+        />
+      )}
     </Layout>
   )
 }

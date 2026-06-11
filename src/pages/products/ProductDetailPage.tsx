@@ -18,7 +18,8 @@ import {
   Pencil,
   Trash2,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  ExternalLink
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
@@ -27,6 +28,7 @@ import { logger } from '../../lib/logger'
 import EditProductModal from './EditProductModal'
 import ProductPromotionModal from './ProductPromotionModal'
 import { promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
+import { type ProductMovementRow } from '../../hooks/queries/useProducts'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -93,26 +95,7 @@ interface StockLot {
   warehouses?: WarehouseData | null
 }
 
-interface StockMovement {
-  id: string
-  created_at: string
-  movement_type: string
-  quantity: number
-  unit_cost: number | null
-  reference_id: string | null
-  reference_type: string | null
-  notes: string | null
-  stock_lots?: {
-    lot_number: string
-  } | null
-  warehouses?: {
-    code: string
-    name: string
-  } | null
-  profiles?: {
-    full_name: string
-  } | null
-}
+type StockMovement = ProductMovementRow
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -288,32 +271,22 @@ export default function ProductDetailPage() {
         setPriceListItems(pliData)
       }
 
-      // 5. Fetch stock movements (Thẻ kho)
-      let moveQuery = supabase
-        .from('stock_movements')
-        .select(`
-          id,
-          created_at,
-          movement_type,
-          quantity,
-          unit_cost,
-          reference_id,
-          reference_type,
-          notes,
-          stock_lots:lot_id(lot_number),
-          warehouses:warehouse_id!inner(code, name, branch_id),
-          profiles:performed_by(full_name)
-        `)
-        .eq('product_id', id)
-
-      if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
-        moveQuery = moveQuery.eq('warehouses.branch_id', profile.branch_id)
-      }
-
-      const { data: moveData } = await moveQuery.order('created_at', { ascending: false })
+      // 5. Fetch stock movements (Thẻ kho) — RPC enrich đối tượng GD + giá GD + nhóm giá
+      const moveBranchId = (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id)
+        ? profile.branch_id
+        : null
+      const { data: moveData } = await supabase.rpc('fn_product_movements', {
+        p_product_id: id,
+        p_branch_id: moveBranchId,
+        p_limit: 500,
+      })
 
       if (moveData) {
-        setMovements(moveData as unknown as StockMovement[])
+        setMovements((moveData as StockMovement[]).map(m => ({
+          ...m,
+          quantity: Number(m.quantity ?? 0),
+          txn_price: m.txn_price !== null ? Number(m.txn_price) : null,
+        })))
       }
     } catch (err) {
       logger.error('Error loading product details:', err)
@@ -895,10 +868,11 @@ export default function ProductDetailPage() {
                                <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold">
                                  <th className="p-4">Thời gian</th>
                                  <th className="p-4">Loại giao dịch</th>
+                                 <th className="p-4">Đối tượng</th>
                                  <th className="p-4">Kho hàng</th>
                                  <th className="p-4">Số lô</th>
                                  <th className="p-4 text-right">Biến động</th>
-                                 <th className="p-4 text-right">Giá vốn</th>
+                                 <th className="p-4 text-right">Giá GD</th>
                                  <th className="p-4">Thực hiện</th>
                                  <th className="p-4">Mô tả / Ghi chú</th>
                                </tr>
@@ -906,6 +880,11 @@ export default function ProductDetailPage() {
                              <tbody className="divide-y divide-gray-100 text-gray-600">
                                {movements.map((move) => {
                                  const isPositive = move.quantity > 0
+                                 const refHref = move.ref_id
+                                   ? (move.ref_type === 'order' || move.ref_type === 'order_reverse' ? `/orders/${move.ref_id}`
+                                     : move.ref_type === 'goods_receipt' ? `/goods-receipts/${move.ref_id}`
+                                     : null)
+                                   : null
                                  return (
                                    <tr key={move.id} className="hover:bg-gray-50/50 transition-colors">
                                      <td className="p-4 whitespace-nowrap tabular-nums text-tiny text-gray-500">
@@ -920,22 +899,51 @@ export default function ProductDetailPage() {
                                          {getMovementTypeLabel(move.movement_type)}
                                        </span>
                                      </td>
+                                     <td className="p-4 max-w-[220px]">
+                                       {move.partner_name || move.ref_code ? (
+                                         <div className="min-w-0">
+                                           <span className="font-semibold text-gray-700 truncate block" title={move.partner_name || ''}>
+                                             {move.partner_name || '—'}
+                                           </span>
+                                           {move.ref_code && (
+                                             refHref ? (
+                                               <a
+                                                 href={refHref}
+                                                 target="_blank"
+                                                 rel="noopener noreferrer"
+                                                 className="font-mono text-tiny text-blue-600 hover:text-blue-700 hover:underline inline-flex items-center gap-0.5"
+                                                 title="Mở chứng từ trong tab mới"
+                                               >
+                                                 {move.ref_code} <ExternalLink size={11} />
+                                               </a>
+                                             ) : (
+                                               <span className="font-mono text-tiny text-gray-400">{move.ref_code}</span>
+                                             )
+                                           )}
+                                         </div>
+                                       ) : <span className="text-gray-300">—</span>}
+                                     </td>
                                      <td className="p-4 font-semibold text-gray-700">
-                                       {move.warehouses?.name || 'Kho mặc định'}
+                                       {move.warehouse_name || 'Kho mặc định'}
                                      </td>
                                      <td className="p-4 font-mono font-bold text-tiny text-gray-500">
-                                       {move.stock_lots?.lot_number || '---'}
+                                       {move.lot_number || '---'}
                                      </td>
                                      <td className={`p-4 text-right font-bold tabular-nums text-body-md ${
                                        isPositive ? 'text-emerald-600' : 'text-red-600'
                                      }`}>
                                        {isPositive ? '+' : ''}{move.quantity} {product.unit}
                                      </td>
-                                     <td className="p-4 text-right font-semibold text-gray-700 tabular-nums">
-                                       {move.unit_cost ? formatCurrency(move.unit_cost) : '---'}
+                                     <td className="p-4 text-right whitespace-nowrap">
+                                       <span className="font-semibold text-gray-700 tabular-nums">
+                                         {move.txn_price !== null ? formatCurrency(move.txn_price) : '---'}
+                                       </span>
+                                       {move.price_list_name && (
+                                         <span className="block text-[10px] font-bold text-blue-500">{move.price_list_name}</span>
+                                       )}
                                      </td>
                                      <td className="p-4 text-body-sm font-medium text-gray-500">
-                                       {move.profiles?.full_name || 'Hệ thống'}
+                                       {move.performer_name || 'Hệ thống'}
                                      </td>
                                      <td className="p-4 text-tiny text-gray-400 max-w-xs truncate" title={move.notes || ''}>
                                        {move.notes || 'Không có ghi chú'}

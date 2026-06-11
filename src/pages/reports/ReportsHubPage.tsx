@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package
+  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -51,6 +51,21 @@ const REPORT_CARDS = [
       'Giá trị vốn tồn theo SP / thương hiệu / nhóm hàng / kho',
       'Top 50 tồn nhiều · vòng quay · hàng tồn lâu',
       'Cảnh báo thiếu giá vốn & hàng sắp hết hạn',
+    ],
+  },
+  {
+    id: 'strategic-products',
+    title: 'Sản phẩm chiến lược & Tối ưu lợi nhuận',
+    tag: 'Chiến lược',
+    tagColor: 'bg-purple-100 text-purple-700',
+    dotColor: 'bg-purple-500',
+    icon: Target,
+    iconBg: 'bg-purple-50 text-purple-600',
+    route: '/reports/strategic-products',
+    features: [
+      'Nhóm 1 markup ≥50% (mục tiêu ≥30% doanh số) · nhóm 2 hàng nền',
+      'Theo dõi LIVE hôm nay · cảnh báo 7 loại · GMROI · bù chéo',
+      'Mục tiêu doanh số tháng theo chi nhánh + gợi ý phân loại',
     ],
   },
 ]

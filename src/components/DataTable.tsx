@@ -1,4 +1,5 @@
 import { useEffect, useState, Fragment, type ReactNode } from 'react'
+import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { Skeleton } from './Skeleton'
 import Pagination from './Pagination'
 
@@ -45,6 +46,8 @@ export interface DataTableColumn<T> {
   hideOnMobile?: boolean
   /** Hiện cột này ở góc phải-trên card mobile (vd badge trạng thái). */
   mobileHeaderRight?: boolean
+  /** Cho phép click header để sort (controlled — cần sortKey/onSortChange ở props bảng). */
+  sortable?: boolean
 }
 
 export interface DataTableProps<T> {
@@ -80,6 +83,14 @@ export interface DataTableProps<T> {
   expandedRowRender?: (row: T, collapse: () => void) => ReactNode
   /** 1 dòng <tr> tổng hợp render ngay dưới header (desktop). */
   headerSummary?: ReactNode
+
+  // ── Sort header (controlled, server-side — chỉ tác dụng với cột sortable) ──
+  /** Key cột đang sort (null = không sort). */
+  sortKey?: string | null
+  /** Chiều sort hiện tại. */
+  sortDir?: 'asc' | 'desc'
+  /** Click header cột sortable: asc ↔ desc (bắt đầu asc). Parent tự fetch lại. */
+  onSortChange?: (key: string, dir: 'asc' | 'desc') => void
 }
 
 const PAD = 'px-3 py-2.5'
@@ -106,7 +117,10 @@ export default function DataTable<T>({
   onPageChange,
   totalItems,
   expandedRowRender,
-  headerSummary
+  headerSummary,
+  sortKey = null,
+  sortDir = 'asc',
+  onSortChange
 }: DataTableProps<T>) {
   const [internalPage, setInternalPage] = useState(1)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
@@ -144,11 +158,27 @@ export default function DataTable<T>({
         </colgroup>
         <thead>
           <tr className="bg-gray-25 text-gray-400 font-semibold text-tiny uppercase tracking-wider border-b border-gray-100">
-            {columns.map(c => (
-              <th key={c.key} className={`${PAD} whitespace-nowrap ${alignClass(c.align)}`}>
-                {c.header}
-              </th>
-            ))}
+            {columns.map(c => {
+              const isSortable = !!c.sortable && !!onSortChange
+              const isActive = isSortable && sortKey === c.key
+              return (
+                <th
+                  key={c.key}
+                  onClick={isSortable ? () => onSortChange(c.key, isActive && sortDir === 'asc' ? 'desc' : 'asc') : undefined}
+                  className={`${PAD} whitespace-nowrap ${alignClass(c.align)} ${isSortable ? 'cursor-pointer select-none hover:text-gray-600 transition-colors' : ''}`}
+                  title={isSortable ? 'Bấm để sắp xếp' : undefined}
+                >
+                  <span className={`inline-flex items-center gap-1 ${isActive ? 'text-blue-600' : ''}`}>
+                    {c.header}
+                    {isSortable && (
+                      isActive
+                        ? (sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)
+                        : <ArrowUpDown size={12} className="text-gray-300" />
+                    )}
+                  </span>
+                </th>
+              )
+            })}
           </tr>
           {headerSummary && !loading && displayTotal > 0 && headerSummary}
         </thead>

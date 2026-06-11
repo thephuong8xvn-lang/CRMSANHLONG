@@ -45,6 +45,7 @@ const ReportsHubPage             = lazy(() => import('./pages/reports/ReportsHub
 const ProfitReportPage           = lazy(() => import('./pages/reports/ProfitReportPage'))
 const CustomerProfileReportPage  = lazy(() => import('./pages/reports/CustomerProfileReportPage'))
 const InventoryValuationReportPage = lazy(() => import('./pages/reports/InventoryValuationReportPage'))
+const StrategicProductsReportPage = lazy(() => import('./pages/reports/StrategicProductsReportPage'))
 const HerdProjectListPage        = lazy(() => import('./pages/herd-projects/HerdProjectListPage'))
 const HerdProjectFormPage        = lazy(() => import('./pages/herd-projects/HerdProjectFormPage'))
 const HerdProjectDetailPage      = lazy(() => import('./pages/herd-projects/HerdProjectDetailPage'))
@@ -187,6 +188,7 @@ function AppRoutes() {
       <Route path="/reports/profit" element={<ProtectedRoute adminOnly><ProfitReportPage /></ProtectedRoute>} />
       <Route path="/reports/customer-profile" element={<ProtectedRoute adminOnly><CustomerProfileReportPage /></ProtectedRoute>} />
       <Route path="/reports/inventory-valuation" element={<ProtectedRoute adminOnly><InventoryValuationReportPage /></ProtectedRoute>} />
+      <Route path="/reports/strategic-products" element={<ProtectedRoute adminOnly><StrategicProductsReportPage /></ProtectedRoute>} />
       <Route path="/herd-projects" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><HerdProjectListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /herd-projects/:id */}
       <Route path="/herd-projects/new" element={<ProtectedRoute perms={['herd_projects.create']}><HerdProjectFormPage /></ProtectedRoute>} />
