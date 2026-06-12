@@ -36,6 +36,7 @@ const PurchaseOrderFormPage      = lazy(() => import('./pages/purchase-orders/Pu
 const GoodsReceiptFormPage       = lazy(() => import('./pages/goods-receipts/GoodsReceiptFormPage'))
 const GoodsReceiptDetailPage     = lazy(() => import('./pages/goods-receipts/GoodsReceiptDetailPage'))
 const OrderListPage              = lazy(() => import('./pages/orders/OrderListPage'))
+const ReturnListPage             = lazy(() => import('./pages/returns/ReturnListPage'))
 const OrderDetailPage            = lazy(() => import('./pages/orders/OrderDetailPage'))
 const POSPage                    = lazy(() => import('./pages/orders/POSPage'))
 const MobileOrderPage            = lazy(() => import('./pages/orders/MobileOrderPage'))
@@ -182,6 +183,7 @@ function AppRoutes() {
       <Route path="/orders/pos" element={<ProtectedRoute perms={['orders.create']}><POSPage /></ProtectedRoute>} />
       <Route path="/orders/mobile" element={<ProtectedRoute perms={['orders.create']}><MobileOrderPage /></ProtectedRoute>} />
       <Route path="/orders/:id" element={<ProtectedRoute perms={['orders.view_own', 'orders.view_team', 'orders.view_all']}><OrderDetailPage /></ProtectedRoute>} />
+      <Route path="/returns" element={<ProtectedRoute perms={['orders.view_own', 'orders.view_team', 'orders.view_all']}><ReturnListPage /></ProtectedRoute>} />
       <Route path="/pipeline" element={<ProtectedRoute perms={['opportunities.view_all', 'opportunities.create']}><PipelinePage /></ProtectedRoute>} />
       <Route path="/cashbook" element={<ProtectedRoute perms={['cashbook.view', 'cashbook.create', 'cashbook.approve']}><CashbookPage /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute adminOnly><ReportsHubPage /></ProtectedRoute>} />

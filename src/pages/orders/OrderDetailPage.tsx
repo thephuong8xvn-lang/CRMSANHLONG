@@ -240,50 +240,30 @@ export default function OrderDetailPage() {
 
     setSubmitting(true)
     try {
-      const totalAmount = activeLines.reduce((sum, line) => sum + (line.currentReturnQty * line.unitPrice), 0)
+      // RPC atomic: validate SL/đơn giá server-side, hồi kho, trừ công nợ
+      // (credit_note), cập nhật trạng thái đơn trong 1 transaction.
+      const { data, error } = await supabase.rpc('fn_create_sales_return', {
+        p_order_id: order.id,
+        p_warehouse_id: returnWarehouseId || order.warehouse_id,
+        p_reason_code: returnReasonCode,
+        p_reason_detail: returnReasonDetail,
+        p_refund_method: returnRefundMethod,
+        p_lines: activeLines.map(line => ({
+          order_line_id: line.lineId,
+          quantity: line.currentReturnQty,
+          unit_price: line.unitPrice,
+          lot_id: line.lotId
+        }))
+      })
 
-      // 1. Insert as pending
-      const { data: returnData, error: insertError } = await supabase
-        .from('sales_returns')
-        .insert([{
-          order_id: order.id,
-          reason: `[${returnReasonCode}] ${returnReasonDetail}`,
-          refund_method: returnRefundMethod,
-          total_amount: totalAmount,
-          created_by: profile?.id,
-          status: 'pending'
-        }])
-        .select()
-        .single()
+      if (error) throw error
 
-      if (insertError) throw insertError
-
-      // 2. Insert return lines
-      const linesToInsert = activeLines.map(line => ({
-        return_id: returnData.id,
-        order_line_id: line.lineId,
-        product_id: line.productId,
-        quantity: line.currentReturnQty,
-        unit_price: line.unitPrice,
-        lot_id: line.lotId,
-        return_to_warehouse_id: returnWarehouseId || null
-      }))
-
-      const { error: linesError } = await supabase
-        .from('sales_return_lines')
-        .insert(linesToInsert)
-
-      if (linesError) throw linesError
-
-      // 3. Confirm return (status change to completed triggers DB stock function)
-      const { error: statusError } = await supabase
-        .from('sales_returns')
-        .update({ status: 'completed' })
-        .eq('id', returnData.id)
-
-      if (statusError) throw statusError
-
-      setAlertMsg({ type: 'success', text: 'Khách hàng trả hàng thành công!' })
+      const debtOffset = Number(data?.debt_offset || 0)
+      setAlertMsg({
+        type: 'success',
+        text: `Đã nhận hàng trả (phiếu ${data?.return_code || ''}).`
+          + (debtOffset > 0 ? ` Đã trừ ${debtOffset.toLocaleString('vi-VN')} ₫ công nợ.` : '')
+      })
       setShowReturnModal(false)
       loadOrderDetails()
     } catch (err: any) {

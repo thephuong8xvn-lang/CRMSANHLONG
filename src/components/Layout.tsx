@@ -26,7 +26,8 @@ import {
   Tag,
   MapPin,
   CalendarClock,
-  TrendingUp
+  TrendingUp,
+  RotateCcw
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -81,7 +82,8 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
         { label: 'Cấu hình KH', icon: Settings, path: '/customers/settings', perms: ['users.manage'] },
         { label: 'Chăn nuôi', icon: PawPrint, path: '/herd-projects', perms: ['herd_projects.view_all', 'herd_projects.create'] },
         { label: 'Pipeline', icon: Stethoscope, path: '/pipeline', perms: ['opportunities.view_all', 'opportunities.create'] },
-        { label: 'Đơn hàng', icon: Receipt, path: '/orders', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create'] }
+        { label: 'Đơn hàng', icon: Receipt, path: '/orders', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create'] },
+        { label: 'Trả hàng', icon: RotateCcw, path: '/returns', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all'] }
       ]
     },
     {
