@@ -234,6 +234,13 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - **Lưu ý migration:** dự án dùng pseudo-date tăng dần (đã tới `20260626`, VƯỢT ngày thật) — migration mới phải đặt tên sort SAU file mới nhất, KHÔNG theo ngày thật.
 - Smoke-test qua Management API + `set_config('request.jwt.claims', '{"sub":"<admin-id>",...}')` để giả lập admin (RPC check `fn_has_role`). Số liệu khớp 100% SQL trực tiếp.
 
+## 2026-06-12 — Khách hàng: sort công nợ + cột Tuổi nợ + Tần suất mua/tháng
+- **Có migration `20260701000000_customer_list_sort_metrics.sql` (ĐÃ apply remote qua Management API + ghi history + verify dữ liệu). `tsc --noEmit` PASS.**
+- View `customer_summary_view` recreate (giữ `security_invoker`) thêm 2 cột: `debt_age_days` (ngày từ khoản nợ chưa thanh toán cũ nhất, `amount > 0`, NULL nếu không nợ) + `orders_per_month` (số đơn 90 ngày ÷ 3, loại đơn hủy — định nghĩa user đã duyệt). Thêm partial index `idx_customer_debts_customer_unsettled` (bảng này trước đó KHÔNG có index theo customer_id).
+- `useCustomersList` nhận `sortKey`/`sortDir` (`total_debt | debt_age_days | orders_per_month`) → `.order(key, { nullsFirst: false })` + created_at phụ. `CustomerListPage`: 3 cột sortable (key cột = tên cột DB), cột Tuổi nợ màu ≤10 xám / 11–20 vàng / **>20 đỏ**, sort reset trang 1 + reset trong Bỏ lọc; export CSV thêm 2 cột + áp sort + **vá CSV formula injection** (prefix `'` cho ô bắt đầu `=+-@`, bỏ qua số hợp lệ như nợ âm).
+- **Lưu ý migration history remote:** các file `20260610(thứ 2)→20260627` đã chạy trên DB nhưng KHÔNG có trong `supabase_migrations.schema_migrations` (chỉ 20260628/29/30 được ghi) → `supabase db push` đòi `--include-all` (NGUY HIỂM, sẽ chạy lại file cũ). **Quy ước: apply migration lẻ qua Management API `POST /v1/projects/gdotgcrtivjdpkcchrro/database/query` rồi INSERT version vào `supabase_migrations.schema_migrations`.** Trùng version cần tránh: đã có 2 file `20260610000000*` và lúc đầu suýt trùng `20260630000000_product_movements_rpc.sql`.
+- **Audit phân quyền (ghi nhận, không đổi hành vi):** RLS `customers` SELECT mở cho mọi user, nhưng `customer_debts`/`orders` lọc theo owner/team → role sales thấy nợ 0 / tuổi nợ `—` / tần suất 0 với KH người khác (an toàn, không rò rỉ, nhưng "0 đ" có thể gây hiểu lầm). Export CSV xuất SĐT đầy đủ (bỏ qua maskData) — chấp nhận, cân nhắc permission riêng sau.
+
 ## Files quan trọng cần biết
 
 | File | Vai trò |

@@ -31,6 +31,7 @@ import {
   useCustomerTiers,
   useCustomerKPIs,
   type CustomerSummaryRow,
+  type CustomerSortKey,
 } from '../../hooks/queries/useCustomers'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../lib/queryClient'
@@ -63,6 +64,7 @@ export default function CustomerListPage() {
   const [selectedTier, setSelectedTier]     = useState('')
   const [selectedOwner, setSelectedOwner]   = useState('')
   const [filterOverdueOnly, setFilterOverdueOnly] = useState(false)
+  const [sort, setSort] = useState<{ key: CustomerSortKey; dir: 'asc' | 'desc' } | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [isAddModalOpen, setIsAddModalOpen]       = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
@@ -81,7 +83,9 @@ export default function CustomerListPage() {
     valueTier: selectedTier || undefined,
     ownerId: selectedOwner || undefined,
     overdueOnly: filterOverdueOnly || undefined,
-  }), [currentPage, debouncedSearch, selectedType, selectedTier, selectedOwner, filterOverdueOnly])
+    sortKey: sort?.key,
+    sortDir: sort?.dir,
+  }), [currentPage, debouncedSearch, selectedType, selectedTier, selectedOwner, filterOverdueOnly, sort])
 
   const customersQuery   = useCustomersList(listParams)
   const salesRepsQuery   = useSalesReps()
@@ -113,7 +117,7 @@ export default function CustomerListPage() {
   // ── Helpers
   const handleResetFilters = () => {
     setSearchTerm(''); setSelectedType(''); setSelectedTier('')
-    setSelectedOwner(''); setFilterOverdueOnly(false); setCurrentPage(1)
+    setSelectedOwner(''); setFilterOverdueOnly(false); setSort(null); setCurrentPage(1)
   }
 
   const handleAddSuccess = (newCustomerId?: string) => {
@@ -135,13 +139,21 @@ export default function CustomerListPage() {
   const getLastPurchaseDate = (row: CustomerSummaryRow) =>
     row.last_order_at ? new Date(row.last_order_at).toLocaleDateString('vi-VN') : 'Chưa giao dịch'
 
+  // Màu tuổi nợ theo ngưỡng: ≤10 xám · 11–20 vàng · >20 đỏ (cảnh báo)
+  const debtAgeClass = (days: number) =>
+    days > 20 ? 'text-danger-500 font-bold'
+    : days > 10 ? 'text-amber-600 font-semibold'
+    : 'text-gray-500'
+
   // ── Export CSV: lấy toàn bộ filtered set (không paginate), không động trang hiện tại
   const handleExportCSV = async () => {
     try {
       let q = supabase
         .from('customer_summary_view')
         .select('*')
-        .order('created_at', { ascending: false })
+      // Áp dụng sort hiện tại của bảng cho file xuất (nhất quán với màn hình)
+      if (sort) q = q.order(sort.key, { ascending: sort.dir !== 'desc', nullsFirst: false })
+      q = q.order('created_at', { ascending: false })
       if (selectedType)  q = q.eq('customer_type', selectedType)
       if (selectedTier)  q = q.eq('value_tier', selectedTier)
       if (selectedOwner) q = q.eq('owner_user_id', selectedOwner)
@@ -156,6 +168,7 @@ export default function CustomerListPage() {
       const headers = [
         'Mã khách hàng','Tên trang trại/Doanh nghiệp','Phân loại','Hạng khách hàng',
         'Tỉnh/Thành phố','Quận/Huyện','Địa chỉ','Hạn mức công nợ (VND)','Tổng nợ hiện tại (VND)',
+        'Tuổi nợ (ngày)','Tần suất mua/tháng',
         'Người liên hệ chính','Số điện thoại chính','Nhân viên phụ trách','Trạng thái hoạt động','Ngày tạo'
       ]
 
@@ -169,6 +182,8 @@ export default function CustomerListPage() {
         cust.address || '',
         cust.credit_limit,
         cust.total_debt,
+        cust.debt_age_days ?? '',
+        cust.orders_per_month ?? 0,
         cust.primary_contact?.full_name || '',
         cust.primary_contact?.phone || '',
         repsById[cust.owner_user_id]?.full_name || 'Hệ thống',
@@ -180,7 +195,10 @@ export default function CustomerListPage() {
         headers.join(','),
         ...exportRows.map(row =>
           row.map(val => {
-            const text = String(val ?? '').replace(/"/g, '""')
+            let text = String(val ?? '').replace(/"/g, '""')
+            // Chống CSV formula injection: Excel thực thi ô bắt đầu bằng = + - @
+            // (bỏ qua số hợp lệ, vd nợ âm -500000 của khách trả trước)
+            if (/^[=+\-@]/.test(text) && Number.isNaN(Number(text))) text = `'${text}`
             return text.includes(',') || text.includes('\n') || text.includes('"') ? `"${text}"` : text
           }).join(',')
         )
@@ -205,7 +223,7 @@ export default function CustomerListPage() {
   // ── Cấu hình cột chuẩn cho DataTable ──
   const customerColumns: DataTableColumn<CustomerSummaryRow>[] = [
     {
-      key: 'code', header: 'Mã KH', width: 132, noTruncate: true,
+      key: 'code', header: 'Mã KH', width: 110, noTruncate: true,
       render: (customer, expanded) => (
         <span className="inline-flex items-center gap-1.5 text-blue-500 font-bold">
           <ChevronDown size={15} className={`text-gray-300 transition-transform ${expanded ? 'rotate-180 text-blue-500' : ''}`} />
@@ -214,7 +232,7 @@ export default function CustomerListPage() {
       )
     },
     {
-      key: 'name', header: 'Tên khách hàng', flex: true, minWidth: 240, noTruncate: true,
+      key: 'name', header: 'Tên khách hàng', flex: true, minWidth: 200, noTruncate: true,
       render: customer => (
         <div className="min-w-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -236,7 +254,7 @@ export default function CustomerListPage() {
       )
     },
     {
-      key: 'type', header: 'Phân loại', width: 150, noTruncate: true,
+      key: 'type', header: 'Phân loại', width: 128, noTruncate: true,
       render: customer => (
         <span className={`px-2.5 py-1 rounded-full border text-tiny font-semibold inline-flex items-center gap-1.5 ${CUSTOMER_TYPE_COLORS[customer.customer_type] || CUSTOMER_TYPE_COLORS.other}`}>
           <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
@@ -245,7 +263,7 @@ export default function CustomerListPage() {
       )
     },
     {
-      key: 'owner', header: 'Sales phụ trách', width: 170,
+      key: 'owner', header: 'Sales phụ trách', width: 150,
       render: customer => {
         const owner = repsById[customer.owner_user_id]
         return (
@@ -261,7 +279,8 @@ export default function CustomerListPage() {
       }
     },
     {
-      key: 'debt', header: 'Công nợ hiện tại', width: 150, align: 'right',
+      // key = tên cột thật trên view để truyền thẳng vào .order() khi sort
+      key: 'total_debt', header: 'Công nợ hiện tại', width: 140, align: 'right', sortable: true,
       render: customer => {
         const totalDebt = Number(customer.total_debt || 0)
         return (
@@ -272,7 +291,24 @@ export default function CustomerListPage() {
         )
       }
     },
-    { key: 'last', header: 'Lần mua cuối', width: 130, render: customer => <span className="text-gray-400">{getLastPurchaseDate(customer)}</span> },
+    {
+      key: 'debt_age_days', header: 'Tuổi nợ', width: 96, align: 'right', sortable: true,
+      render: customer => customer.debt_age_days == null
+        ? <span className="text-gray-300">—</span>
+        : <span className={`tabular-nums ${debtAgeClass(customer.debt_age_days)}`}>{customer.debt_age_days} ngày</span>
+    },
+    {
+      key: 'orders_per_month', header: 'TS mua/tháng', width: 110, align: 'right', sortable: true,
+      render: customer => {
+        const freq = Number(customer.orders_per_month || 0)
+        return (
+          <span className={`tabular-nums ${freq > 0 ? 'text-gray-600 font-semibold' : 'text-gray-300'}`}>
+            {freq > 0 ? `${freq.toLocaleString('vi-VN')} đơn` : '0 đơn'}
+          </span>
+        )
+      }
+    },
+    { key: 'last', header: 'Lần mua cuối', width: 104, render: customer => <span className="text-gray-400">{getLastPurchaseDate(customer)}</span> },
     {
       key: 'action', header: '', width: 56, align: 'right', noTruncate: true, hideOnMobile: true,
       render: customer => {
@@ -465,6 +501,9 @@ export default function CustomerListPage() {
             page={currentPage}
             onPageChange={setCurrentPage}
             totalItems={totalItems}
+            sortKey={sort?.key ?? null}
+            sortDir={sort?.dir ?? 'asc'}
+            onSortChange={(key, dir) => { setSort({ key: key as CustomerSortKey, dir }); setCurrentPage(1) }}
             expandedRowRender={(customer, collapse) => (
               <CustomerQuickView customer={customer} onClose={collapse} onOpenDetail={() => navigate(`/customers/${customer.id}`)} />
             )}

@@ -18,6 +18,10 @@ export interface CustomerSummaryRow {
   created_at: string
   total_debt: number
   is_overdue: boolean
+  /** Tuổi nợ: số ngày từ khoản nợ chưa thanh toán cũ nhất. NULL = không có nợ. */
+  debt_age_days: number | null
+  /** Tần suất mua: số đơn 90 ngày gần nhất / 3 (không tính đơn hủy). */
+  orders_per_month: number
   last_order_at: string | null
   orders_count: number
   primary_contact: {
@@ -27,6 +31,9 @@ export interface CustomerSummaryRow {
   } | null
 }
 
+/** Các cột được phép sort server-side (tên cột thật trên customer_summary_view). */
+export type CustomerSortKey = 'total_debt' | 'debt_age_days' | 'orders_per_month'
+
 export interface CustomerListParams {
   page: number          // 1-based
   pageSize: number
@@ -35,6 +42,8 @@ export interface CustomerListParams {
   valueTier?: string
   ownerId?: string
   overdueOnly?: boolean
+  sortKey?: CustomerSortKey
+  sortDir?: 'asc' | 'desc'
 }
 
 export interface CustomerListResult {
@@ -58,8 +67,14 @@ export function useCustomersList(params: CustomerListParams) {
       let q = supabase
         .from('customer_summary_view')
         .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(from, to)
+
+      // Sort chính theo cột người dùng chọn (NULL luôn xuống cuối —
+      // khách chưa có nợ không chen lên đầu khi sort tuổi nợ),
+      // created_at làm tiêu chí phụ để thứ tự ổn định.
+      if (params.sortKey) {
+        q = q.order(params.sortKey, { ascending: params.sortDir !== 'desc', nullsFirst: false })
+      }
+      q = q.order('created_at', { ascending: false }).range(from, to)
 
       if (params.customerType)  q = q.eq('customer_type', params.customerType)
       if (params.valueTier)     q = q.eq('value_tier', params.valueTier)
