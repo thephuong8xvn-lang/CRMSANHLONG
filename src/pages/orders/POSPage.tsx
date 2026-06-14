@@ -32,6 +32,8 @@ import { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
 import { useProductPromotions, evaluateProductPromo, promoShortLabel } from '../../hooks/useProductPromotions'
+import { posTabsKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
+import { genId } from '../../lib/cartUtils'
 
 interface Customer {
   id: string
@@ -226,11 +228,19 @@ export default function POSPage() {
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [focusedSearchIndex, setFocusedSearchIndex] = useState(-1)
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
+  // Tùy chọn hiển thị POS — nhớ lựa chọn của thu ngân giữa các lần mở (localStorage).
+  const readPref = (k: string, def: boolean) => {
+    try { const v = localStorage.getItem(k); return v === null ? def : v === '1' } catch { return def }
+  }
   // Mặc định ẩn danh mục để tăng diện tích thao tác (bật/tắt bất kỳ lúc nào)
-  const [showGrid, setShowGrid] = useState(false)
-  const [showProductImages, setShowProductImages] = useState(true)
+  const [showGrid, setShowGrid] = useState(() => readPref('pos-pref:showGrid', false))
+  const [showProductImages, setShowProductImages] = useState(() => readPref('pos-pref:showProductImages', true))
   // Mặc định KHÔNG tự in sau thanh toán; có thể bật bất kỳ lúc nào
-  const [autoPrint, setAutoPrint] = useState(false)
+  const [autoPrint, setAutoPrint] = useState(() => readPref('pos-pref:autoPrint', false))
+
+  useEffect(() => { try { localStorage.setItem('pos-pref:showGrid', showGrid ? '1' : '0') } catch { /* noop */ } }, [showGrid])
+  useEffect(() => { try { localStorage.setItem('pos-pref:showProductImages', showProductImages ? '1' : '0') } catch { /* noop */ } }, [showProductImages])
+  useEffect(() => { try { localStorage.setItem('pos-pref:autoPrint', autoPrint ? '1' : '0') } catch { /* noop */ } }, [autoPrint])
 
   // Promotion / voucher (lọc theo chi nhánh của nhân viên đăng nhập)
   const branchId = profile?.branch_id ?? null
@@ -249,9 +259,30 @@ export default function POSPage() {
 
   // Focus search input
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // Container ô chọn khách — để đóng dropdown khi bấm ra ngoài
+  const customerBoxRef = useRef<HTMLDivElement>(null)
+
+  // Đóng dropdown khách khi click ngoài vùng chọn khách
+  useEffect(() => {
+    if (!showCustomerDropdown) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (customerBoxRef.current && !customerBoxRef.current.contains(e.target as Node)) {
+        setShowCustomerDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showCustomerDropdown])
 
   // Active Tab Proxy Calculations
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0]
+
+  // Ref luôn trỏ tab đang mở (cập nhật đồng bộ mỗi render). Các callback memoized
+  // (addToCart/adjustQuantity/...) "đóng băng" activeTabId trong closure → khi 2 tab
+  // cùng bảng giá, addToCart không tái tạo và ghi nhầm vào tab cũ. Đọc qua ref để
+  // setCart/updateActiveTab luôn ghi đúng tab hiện tại.
+  const activeTabIdRef = useRef(activeTabId)
+  activeTabIdRef.current = activeTabId
 
   const cart = activeTab.cart
   const invoiceDiscount = activeTab.invoiceDiscount
@@ -267,12 +298,14 @@ export default function POSPage() {
   const deliveryAddress = activeTab.deliveryAddress || ''
 
   const updateActiveTab = (fields: Partial<InvoiceTab>) => {
-    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, ...fields } : t))
+    const id = activeTabIdRef.current
+    setTabs(prev => prev.map(t => t.id === id ? { ...t, ...fields } : t))
   }
 
   const setCart = (newCart: CartItem[] | ((prev: CartItem[]) => CartItem[])) => {
+    const id = activeTabIdRef.current
     setTabs(prev => prev.map(t => {
-      if (t.id === activeTabId) {
+      if (t.id === id) {
         const updatedCart = typeof newCart === 'function' ? newCart(t.cart) : newCart
         return { ...t, cart: updatedCart }
       }
@@ -323,6 +356,41 @@ export default function POSPage() {
   const setNotes = (notesText: string) => {
     updateActiveTab({ notes: notesText })
   }
+
+  // ── Bền hóa nháp đơn: khôi phục khi mở lại, auto-save khi thay đổi ──
+  // Khóa theo từng nhân viên (máy quầy dùng chung) → không lẫn nháp giữa các ca.
+  const draftKey = profile?.id ? posTabsKey(profile.id) : null
+  // Gate: chỉ auto-save SAU khi đã thử khôi phục, tránh ghi đè nháp cũ bằng tab rỗng mặc định.
+  const draftRestoredRef = useRef(false)
+
+  useEffect(() => {
+    if (!draftKey || draftRestoredRef.current) return
+    const saved = loadDraft<{ tabs: InvoiceTab[]; activeTabId: string }>(
+      draftKey,
+      d => Array.isArray(d?.tabs) && d.tabs.length > 0 && d.tabs.every(t => t && typeof t.id === 'string')
+    )
+    if (saved) {
+      setTabs(saved.tabs)
+      const activeExists = saved.tabs.some(t => t.id === saved.activeTabId)
+      setActiveTabId(activeExists ? saved.activeTabId : saved.tabs[0].id)
+      const nNonEmpty = saved.tabs.filter(t => t.cart.length > 0).length
+      if (nNonEmpty > 0) {
+        setAlertMsg({ type: 'success', text: `Đã khôi phục ${nNonEmpty} hóa đơn nháp chưa thanh toán.` })
+      }
+    }
+    draftRestoredRef.current = true
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftKey || !draftRestoredRef.current) return
+    // Mọi hóa đơn đều trống (không hàng, không khách) → dọn nháp cho sạch.
+    const hasContent = tabs.some(t => t.cart.length > 0 || t.selectedCustomerId || t.notes.trim())
+    if (hasContent) {
+      saveDraft(draftKey, { tabs, activeTabId })
+    } else {
+      clearDraft(draftKey)
+    }
+  }, [tabs, activeTabId, draftKey])
 
   // Keyboard navigation & payment hotkeys
   useEffect(() => {
@@ -414,7 +482,9 @@ export default function POSPage() {
                       plData.find((pl: any) => pl.code === 'GIA-LE') ||
                       plData[0]
           if (def) {
-            setTabs(prev => prev.map(t => t.id === '1' ? { ...t, selectedPriceListId: def.id } : t))
+            // Chỉ gán bảng giá mặc định khi tab còn trống — tránh đè bảng giá
+            // người dùng đã chọn ở nháp vừa khôi phục.
+            setTabs(prev => prev.map(t => t.id === '1' ? { ...t, selectedPriceListId: t.selectedPriceListId || def.id } : t))
           }
         }
 
@@ -534,6 +604,25 @@ export default function POSPage() {
       fetchStockData()
     }
   }, [products, fetchStockData])
+
+  // Làm tươi tồn kho khi máy/ca khác cùng bán SP (tồn hiển thị không bị cũ).
+  // Refetch khi tab được focus/hiện lại + định kỳ 60s lúc đang hiển thị.
+  // (Chọn polling nhẹ thay realtime: chắc chắn chạy, không phụ thuộc publication,
+  //  chi phí ~1 query nhỏ/phút/máy — server vẫn là chân lý cuối khi xác nhận đơn.)
+  useEffect(() => {
+    if (products.length === 0) return
+    const refetchIfVisible = () => {
+      if (document.visibilityState === 'visible') fetchStockData()
+    }
+    window.addEventListener('focus', refetchIfVisible)
+    document.addEventListener('visibilitychange', refetchIfVisible)
+    const intervalId = window.setInterval(refetchIfVisible, 60000)
+    return () => {
+      window.removeEventListener('focus', refetchIfVisible)
+      document.removeEventListener('visibilitychange', refetchIfVisible)
+      window.clearInterval(intervalId)
+    }
+  }, [products.length, fetchStockData])
 
   // Fetch customer debt
   useEffect(() => {
@@ -743,7 +832,7 @@ export default function POSPage() {
       }
       return [
         ...prev,
-        { id: crypto.randomUUID(), product, quantity: 1, unitPrice: price, discountPercent: 0, isPriceOverridden: false }
+        { id: genId(), product, quantity: 1, unitPrice: price, discountPercent: 0, isPriceOverridden: false }
       ]
     })
   }, [selectedPriceListId])
@@ -767,7 +856,8 @@ export default function POSPage() {
       const index = prev.findIndex(item => item.id === rowId)
       if (index === -1) return prev
       const updated = [...prev]
-      updated[index] = { ...updated[index], quantity: Math.max(0, qty) }
+      // Tối thiểu 1 (xóa dòng dùng nút thùng rác) — tránh submit dòng số lượng 0.
+      updated[index] = { ...updated[index], quantity: Math.max(1, qty) }
       return updated
     })
   }, [])
@@ -787,7 +877,7 @@ export default function POSPage() {
   const addPromoLine = useCallback((product: Product) => {
     setCart(prev => [
       ...prev,
-      { id: crypto.randomUUID(), product, quantity: 1, unitPrice: 0, discountPercent: 0, isPriceOverridden: true, isGift: true }
+      { id: genId(), product, quantity: 1, unitPrice: 0, discountPercent: 0, isPriceOverridden: true, isGift: true }
     ])
   }, [])
 
@@ -803,7 +893,7 @@ export default function POSPage() {
       }
       return [
         ...prev,
-        { id: crypto.randomUUID(), product: giftProduct, quantity: giftQty, unitPrice: price, discountPercent: 0, isPriceOverridden: true, isGift: true }
+        { id: genId(), product: giftProduct, quantity: giftQty, unitPrice: price, discountPercent: 0, isPriceOverridden: true, isGift: true }
       ]
     })
   }, [])
@@ -960,7 +1050,7 @@ export default function POSPage() {
     while (tabs.some(t => t.name === `Hóa đơn ${nextNum}`)) {
       nextNum++
     }
-    const newId = crypto.randomUUID()
+    const newId = genId()
     const def = priceLists.find(pl => pl.id === branchDefaultPriceListId) ||
                 priceLists.find(pl => pl.is_default) ||
                 priceLists.find(pl => pl.code === 'GIA-LE') ||
@@ -989,6 +1079,12 @@ export default function POSPage() {
 
   const handleCloseTab = (idToClose: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    // Đóng tab = xóa vĩnh viễn hóa đơn này (cả trong nháp đã lưu) → hỏi nếu còn hàng.
+    const closing = tabs.find(t => t.id === idToClose)
+    if (closing && closing.cart.length > 0 &&
+        !window.confirm(`Hóa đơn "${closing.name}" còn ${closing.cart.length} sản phẩm chưa thanh toán. Vẫn đóng và xóa?`)) {
+      return
+    }
     if (tabs.length === 1) {
       const def = priceLists.find(pl => pl.id === branchDefaultPriceListId) ||
                   priceLists.find(pl => pl.is_default) ||
@@ -1687,7 +1783,7 @@ export default function POSPage() {
             <div className="flex-1 overflow-y-auto p-3.5 space-y-4">
               
               {/* Customer Selector */}
-              <div className="relative">
+              <div className="relative" ref={customerBoxRef}>
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Khách hàng</label>
                 <div className="relative">
                   <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />

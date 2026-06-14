@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -26,6 +26,7 @@ import { fetchAllRows } from '../../lib/fetchAllRows'
 import { roundQty } from '../../lib/parseQty'
 import DecimalInput from '../../components/DecimalInput'
 import { useAuth } from '../../contexts/AuthContext'
+import { goodsReceiptDraftKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
 
 interface Supplier {
   id: string
@@ -140,6 +141,69 @@ export default function GoodsReceiptFormPage() {
   const [submitting, setSubmitting] = useState(false)
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
+  // ── Bền hóa nháp form Phiếu nhập (chỉ TẠO MỚI chế độ nhập trực tiếp) ──
+  // Bỏ qua: sửa phiếu (?id= load từ DB) và nhập-từ-PO (?po_id= dựng lại từ PO).
+  // Lý do giới hạn 'direct': chế độ 'po' tự nạp dòng từ PO → tránh xung đột khôi phục.
+  interface ReceiptDraft {
+    receiptMode: 'po' | 'direct'
+    selectedSupplierId: string
+    selectedWarehouseId: string
+    selectedPOId: string
+    selectedPO: PurchaseOrder | null
+    receiptDate: string
+    notes: string
+    vatOption: 'none' | '5' | '10'
+    verificationItems: ReceiptVerificationState[]
+  }
+  const draftKey = (profile?.id && !idParam && !poIdParam) ? goodsReceiptDraftKey(profile.id) : null
+  const draftRestoredRef = useRef(false)
+
+  useEffect(() => {
+    if (!draftKey || draftRestoredRef.current) return
+    const saved = loadDraft<ReceiptDraft>(
+      draftKey,
+      d => d?.receiptMode === 'direct' && Array.isArray(d?.verificationItems) && d.verificationItems.length > 0
+    )
+    if (saved) {
+      draftRestoredRef.current = true  // set TRƯỚC khi setState để gate auto-save & skip reset
+      setReceiptMode('direct')
+      setSelectedSupplierId(saved.selectedSupplierId || '')
+      if (saved.selectedWarehouseId) setSelectedWarehouseId(saved.selectedWarehouseId)
+      setReceiptDate(saved.receiptDate || new Date().toISOString().split('T')[0])
+      setNotes(saved.notes || '')
+      setVatOption(saved.vatOption || '5')
+      setVerificationItems(saved.verificationItems)
+      // Khôi phục cờ phiên nhập (selectedPO) → vào thẳng bảng nhập, không kẹt ở màn Cấu hình.
+      // Nháp cũ (lưu trước khi thêm trường này) thiếu selectedPO → dựng lại để không kẹt.
+      const restoredPOId = saved.selectedPOId || `direct-${Date.now()}`
+      const restoredPO = saved.selectedPO || (saved.selectedSupplierId ? {
+        id: restoredPOId,
+        po_code: 'DIRECT-GR',
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        supplier: { id: saved.selectedSupplierId, name: '' },
+        warehouse_id: saved.selectedWarehouseId || ''
+      } as PurchaseOrder : null)
+      setSelectedPOId(restoredPOId)
+      setSelectedPO(restoredPO)
+      setAlertMsg({ type: 'success', text: `Đã khôi phục phiếu nhập nháp (${saved.verificationItems.length} sản phẩm) chưa lưu.` })
+    } else {
+      draftRestoredRef.current = true
+    }
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftKey || !draftRestoredRef.current) return
+    if (receiptMode === 'direct' && verificationItems.length > 0) {
+      saveDraft<ReceiptDraft>(draftKey, {
+        receiptMode, selectedSupplierId, selectedWarehouseId, selectedPOId, selectedPO,
+        receiptDate, notes, vatOption, verificationItems
+      })
+    } else if (receiptMode === 'direct' && verificationItems.length === 0 && !selectedSupplierId) {
+      clearDraft(draftKey)
+    }
+  }, [draftKey, receiptMode, selectedSupplierId, selectedWarehouseId, selectedPOId, selectedPO, receiptDate, notes, vatOption, verificationItems])
+
   // Fetch initial lookups (warehouses, pending POs, suppliers, products)
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -153,7 +217,8 @@ export default function GoodsReceiptFormPage() {
         if (whData) {
           setWarehouses(whData)
           if (whData.length > 0) {
-            setSelectedWarehouseId(whData[0].id)
+            // Chỉ đặt kho mặc định khi chưa chọn — tránh đè kho từ nháp vừa khôi phục.
+            setSelectedWarehouseId(prev => prev || whData[0].id)
           }
         }
 
@@ -367,9 +432,15 @@ export default function GoodsReceiptFormPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPOId, receiptMode])
 
-  // Reset lines when mode changes (bỏ qua khi đang sửa phiếu nháp)
+  // Reset lines when mode changes (bỏ qua khi đang sửa phiếu nháp).
+  // So sánh GIÁ TRỊ thật của receiptMode (không dùng cờ một-lần) → bền với
+  // StrictMode double-invoke + lần set lại cùng giá trị lúc khôi phục nháp:
+  // chỉ reset khi mode THỰC SỰ đổi, tránh xóa nhầm item vừa khôi phục.
+  const prevModeRef = useRef(receiptMode)
   useEffect(() => {
     if (idParam) return
+    if (prevModeRef.current === receiptMode) return
+    prevModeRef.current = receiptMode
     setVerificationItems([])
     setSelectedItemIndex(0)
     setSelectedPOId('')
@@ -739,6 +810,7 @@ export default function GoodsReceiptFormPage() {
         if (grLinesErr) throw grLinesErr
 
         targetReceiptId = gr.id
+        if (draftKey) clearDraft(draftKey)  // đã lưu vào DB → dọn nháp tạm
         setAlertMsg({ type: 'success', text: `Đã tạo phiếu nháp ${receiptCode}. Chờ Admin duyệt trước khi nhập kho.` })
       }
 

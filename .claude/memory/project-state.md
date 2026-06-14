@@ -241,6 +241,20 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - **Lưu ý migration history remote:** các file `20260610(thứ 2)→20260627` đã chạy trên DB nhưng KHÔNG có trong `supabase_migrations.schema_migrations` (chỉ 20260628/29/30 được ghi) → `supabase db push` đòi `--include-all` (NGUY HIỂM, sẽ chạy lại file cũ). **Quy ước: apply migration lẻ qua Management API `POST /v1/projects/gdotgcrtivjdpkcchrro/database/query` rồi INSERT version vào `supabase_migrations.schema_migrations`.** Trùng version cần tránh: đã có 2 file `20260610000000*` và lúc đầu suýt trùng `20260630000000_product_movements_rpc.sql`.
 - **Audit phân quyền (ghi nhận, không đổi hành vi):** RLS `customers` SELECT mở cho mọi user, nhưng `customer_debts`/`orders` lọc theo owner/team → role sales thấy nợ 0 / tuổi nợ `—` / tần suất 0 với KH người khác (an toàn, không rò rỉ, nhưng "0 đ" có thể gây hiểu lầm). Export CSV xuất SĐT đầy đủ (bỏ qua maskData) — chấp nhận, cân nhắc permission riêng sau.
 
+## 2026-06-14 — Kho: nén & gọn hóa 5 modal (chi tiết + tạo phiếu), 1 màn hình — thuần UI
+- **Frontend-only, KHÔNG migration. `tsc -b` + `vite build` PASS.** Chỉ `src/pages/inventory/InventoryPage.tsx`. Cần user commit + deploy.
+- User báo modal "Chi tiết chuyển kho" (và các modal kho) bố trí dư thừa: khối thông tin chiếm quá nhiều chiều cao → phải cuộn mới thấy bảng sản phẩm; chữ to, dòng thưa, dễ đè.
+- **Gốc rễ:** class `text-body-md/body-lg/tiny/mono` **không được định nghĩa** (no-op → render ~16px). Xem [[ui-undefined-font-tokens]]. Đã fix bằng class cỡ thật kế thừa `DataTable.tsx`.
+- **Đã làm (phạm vi user duyệt = 3 modal chi tiết + 2 modal tạo phiếu):** khung `max-w-5xl→6xl` + `max-h-85/90vh→92vh`; thân `p-6 space-y-6→p-4 sm:p-5 space-y-4`; khối metadata `grid-cols-2 gap-y-4→grid-cols-2 sm:3 xl:4 gap-x-5 gap-y-2.5 p-3` (nhãn `text-[11px]`, giá trị `text-[13px]`, ghi chú `col-span-full`); bảng SP header `text-[11px]` + ô `text-[13px]` + padding `px-4 py-3 / px-4 py-2.5 → px-3 py-2.5`; SKU/badge/mã phiếu/tiêu đề/label form thu nhỏ tương ứng.
+- KHÔNG đụng handler/điều kiện hiển thị theo `status`/RLS/query.
+
+## 2026-06-14 (tiếp) — TRỊ TẬN GỐC type scale toàn app trong tailwind.config.js
+- **Frontend-only, KHÔNG migration. `tsc -b` + `vite build` PASS** (verify token đã vào CSS build). Chỉ `tailwind.config.js`. Cần user commit + deploy.
+- User duyệt fix tận gốc. Khảo sát: class chữ tuỳ biến dùng **~2.760 lần** nhưng KHÔNG định nghĩa → Tailwind v3 bỏ qua → mọi chữ ~16px mặc định. Xem [[ui-undefined-font-tokens]].
+- **Thêm `theme.extend.fontSize`** (MERGE, `text-sm/base/lg` chuẩn vẫn chạy): `tiny` 11/15 · `body-sm` 12/16 · `label-md` 13/18 · **`body-md` 14/20** · `body-lg` 16/24 · `headline-sm` 18/26 · `headline-md` 20/28 · `headline-lg` 24/30 · `display-xs` 28/34 · `display-sm` 32/38. Calib theo px thật (241× `text-[11px]`, 35× `text-[13px]`).
+- Tác động lớn nhất: `body-md` 16→14 (1251 chỗ) và `tiny` 16→11 (979 chỗ) → app gọn lại đúng thiết kế. `body-lg` giữ 16.
+- ⚠️ Màu tuỳ biến `gray-755/850/550`, `red-650/750` vẫn no-op (chữ inherit màu) — task nhỏ riêng nếu cần.
+
 ## Files quan trọng cần biết
 
 | File | Vai trò |

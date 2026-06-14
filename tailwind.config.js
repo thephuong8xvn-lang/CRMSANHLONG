@@ -40,6 +40,27 @@ export default {
       fontFamily: {
         sans: ['Be Vietnam Pro', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
+      // ──────────────────────────────────────────────────────────────
+      // Thang chữ (type scale) CHUẨN của hệ thống.
+      // Trước đây các class text-tiny/body-*/headline-*/display-* được
+      // DÙNG KHẮP app (~2.5k lần) nhưng KHÔNG hề được định nghĩa ở đâu →
+      // Tailwind v3 bỏ qua → mọi chữ rơi về cỡ kế thừa mặc định ~16px
+      // (chật, to, đè chữ). Định nghĩa tại đây để hiện thực đúng thiết kế.
+      // `extend.fontSize` MERGE với mặc định Tailwind → text-sm/base/lg…
+      // tiêu chuẩn vẫn hoạt động bình thường.
+      // Cú pháp: ['<size>', { lineHeight, letterSpacing? }].
+      fontSize: {
+        'tiny': ['11px', { lineHeight: '15px' }],          // nhãn phụ, caption, SKU, badge
+        'body-sm': ['12px', { lineHeight: '16px' }],        // chú thích, meta phụ
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0.005em' }], // nhãn form/bảng
+        'body-md': ['14px', { lineHeight: '20px' }],        // CHỮ THÂN cơ bản (workhorse)
+        'body-lg': ['16px', { lineHeight: '24px' }],        // nhấn mạnh / tiêu đề nhỏ
+        'headline-sm': ['18px', { lineHeight: '26px' }],
+        'headline-md': ['20px', { lineHeight: '28px' }],
+        'headline-lg': ['24px', { lineHeight: '30px' }],
+        'display-xs': ['28px', { lineHeight: '34px' }],
+        'display-sm': ['32px', { lineHeight: '38px' }],
+      },
       borderRadius: {
         sm: '4px',
         md: '6px',

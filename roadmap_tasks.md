@@ -149,6 +149,39 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
   - Đồng bộ định dạng giá trị trống thành `-` hoặc `N/A` tránh vỡ layout.
   - Hoàn thiện luồng thanh toán giao dịch ghi nhận Supabase cho đa hóa đơn một cách độc lập và ổn định.
 
+#### 💾 Bền hóa nháp đơn POS + rà soát toàn diện /pos — 2026-06-14 `[HOÀN THÀNH]`
+
+**Bối cảnh:** Toàn bộ dữ liệu đang soạn trên `/pos` (và `/orders/mobile`) sống trong React state → F5 / đóng tab / mất điện làm mất sạch (user báo: soạn sẵn 5 hóa đơn cho khách bị mất khi mất điện). Frontend-only, KHÔNG migration. `npm run build` (tsc + vite) PASS.
+
+- [x] **Mới `src/lib/posDraftStorage.ts`**: helper `loadDraft/saveDraft/clearDraft` qua localStorage — envelope `{v, savedAt, data}`, **TTL 7 ngày** (bỏ qua nháp quá cũ → tránh khôi phục giá lỗi thời), validate cấu trúc, bọc try/catch chống lỗi quota.
+- [x] **`POSPage.tsx`** (đa hóa đơn): khóa `pos-draft-tabs:<profile.id>` (theo từng nhân viên — máy quầy dùng chung, không lẫn nháp giữa ca). Khôi phục `tabs`+`activeTabId` 1 lần (gate `useRef`) + toast "Đã khôi phục N hóa đơn nháp"; auto-save khi tabs đổi (mọi tab trống → `clearDraft`). Sửa `loadData` gán bảng giá mặc định `|| t.selectedPriceListId` (không đè bảng giá khôi phục). `handleCloseTab` hỏi xác nhận khi tab còn hàng (đóng tab = xóa vĩnh viễn).
+- [x] **`MobileOrderPage.tsx`** (1 nháp): khóa `pos-draft-mobile:<profile.id>`; gom nhóm draft (cart, customer, paymentMethod, delivery*, notes, manualDiscount, step) → khôi phục + auto-save; `clearDraft` khi lên đơn thành công.
+- [x] **🐞 Vá bug stale-closure ghi nhầm tab (phát hiện khi test):** Tab 2 không thêm được sản phẩm khi **cùng bảng giá** với Tab 1 — `addToCart` (`useCallback` deps `[selectedPriceListId]`) và `adjustQuantity/updateQuantity/updateUnitPrice/addPromoLine/applyProductGift/setRowDiscount` (deps `[]`) "đóng băng" `activeTabId` trong closure qua `setCart`. Bảng giá giống nhau → callback không tái tạo → ghi vào Tab 1, Tab 2 luôn trống. **Fix:** thêm `activeTabIdRef` (cập nhật đồng bộ mỗi render); `setCart`/`updateActiveTab` đọc `activeTabIdRef.current` → mọi callback luôn ghi đúng tab đang mở.
+- **Rà soát (giữ nguyên — đã tốt):** RPC `fn_pos_quick_sale` atomic draft→confirmed→completed (thiếu kho RAISE rollback); hạn mức nợ kiểm server-side trong `fn_pos_settle_payment`; quyền `orders.create` check trong RPC; chặn bán âm kho cả client (`oversellLines`) + server (FEFO). **Ghi nhận (không đổi — user duyệt):** user có `orders.create` gửi được `unit_price` tùy ý — đúng bản chất POS cho sửa giá.
+
+#### 🔒 Vá an ninh + UX /pos sau rà soát toàn diện — 2026-06-14 (tiếp) `[HOÀN THÀNH]`
+- [x] **#1 Kho xuất phải thuộc chi nhánh (migration `20260703000000_pos_warehouse_branch_guard.sql` — ĐÃ apply remote + verify `has_guard=true` + ghi history):** `fn_pos_build_draft` trước nhận `warehouse_id` thẳng từ client → vì SECURITY DEFINER (bỏ RLS), client tự chế request trừ được kho chi nhánh khác. Nay RAISE nếu kho không thuộc `branch_id` của người tạo (miễn trừ admin/CEO — vẫn yêu cầu kho active). Giữ nguyên logic chặn oversell.
+- [x] **#3 Fallback UUID (`cartUtils.genId()`):** `crypto.randomUUID()` chỉ chạy ở secure context (https/localhost) → deploy http qua IP LAN sẽ undefined làm văng thêm hàng. Thêm `genId()` fallback; thay mọi `crypto.randomUUID()` trong `POSPage.tsx` + `cartUtils.ts`.
+- [x] **UX (thuần frontend):** #4 số lượng nhập tay min 1 (`updateQuantity` Math.max(1)) tránh dòng qty 0; #5 dropdown khách đóng khi click ra ngoài (mousedown listener + `customerBoxRef`); #8 nhớ toggle `showGrid/showProductImages/autoPrint` qua localStorage (`pos-pref:*`).
+- [x] **#2 Sàn giá bán — GIỮ NGUYÊN** (user duyệt): POS cho sửa giá tự do, chấp nhận rủi ro.
+- [x] **#7 Tồn kho tươi giữa các máy (thuần frontend):** `POSPage` refetch `fetchStockData` khi tab focus/visible + interval 60s lúc đang hiển thị (chọn polling nhẹ thay realtime — chắc chắn chạy, không phụ thuộc publication, chi phí ~1 query/phút/máy). Server vẫn là chân lý cuối khi xác nhận đơn.
+- [x] **#6 Oversell đơn giao hàng — GIỮ CHẶN CỨNG cả 2 luồng** (user duyệt lại): không đổi, đúng quyết định migration `20260625`. `npm run build` PASS.
+
+#### 💾 Bền hóa nháp 3 form Kho (phiếu nhập · chuyển kho · trả NCC) — 2026-06-14 (tiếp) `[HOÀN THÀNH]`
+- **Bối cảnh:** form nhập kho/chuyển kho/trả NCC mất dữ liệu khi thoát tab/mất điện (giống POS). Thuần frontend, KHÔNG migration. `npm run build` PASS. Tái dùng `posDraftStorage.ts` (TTL 7 ngày, khóa theo `profile.id`).
+- [x] **Phiếu nhập** (`GoodsReceiptFormPage.tsx`): auto-save/khôi phục khi **tạo mới chế độ nhập trực tiếp** (`direct`); BỎ QUA sửa phiếu (`?id=` load DB) & nhập-từ-PO (`?po_id=` dựng lại từ PO → tránh xung đột). Khôi phục header + `verificationItems` + toast; `clearDraft` sau khi tạo phiếu thành công. Sửa default kho thành functional `prev => prev || whData[0].id` (không đè kho khôi phục). Khóa `inv-draft-receipt:<uid>`.
+  - **🐞 Vá khôi phục (phát hiện khi test):** (1) restore thiếu `selectedPOId`+`selectedPO` (cờ gating phiên nhập) → kẹt màn "Cấu hình" → nay persist + khôi phục cả 2 (kèm fallback dựng lại PO cho nháp cũ) để vào thẳng bảng nhập; (2) **ROOT CAUSE: React StrictMode double-invoke** đánh bại cờ skip-một-lần (`modeInitRef`) → effect reset theo `receiptMode` chạy lần 2 xóa item + selectedPO. **Fix:** đổi sang so sánh GIÁ TRỊ thật `prevModeRef.current === receiptMode` (bền với StrictMode + set-lại-cùng-giá-trị lúc khôi phục). **Bài học: mọi effect "reset khi X đổi" phải so prev-value, KHÔNG dùng cờ boolean một-lần (StrictMode sẽ phá).**
+- [x] **Chuyển kho** (modal `InventoryPage.tsx`): auto-save/khôi phục `newTransfer` (lưu khi có dòng/kho); khóa `inv-draft-transfer:<uid>`.
+- [x] **Trả NCC** (modal `InventoryPage.tsx`): auto-save/khôi phục `newReturn` (lưu khi có dòng/NCC); khóa `inv-draft-return:<uid>`.
+- Cơ chế dọn: tạo thành công reset form rỗng → effect auto-save tự `clearDraft`; bấm Hủy reset rỗng → tự dọn; bấm X (đóng) giữ nháp → mở lại khôi phục. Lines giữ snapshot (tên/SKU/SL/giá) nên hiển thị ngay trước khi dropdown lô nạp lại.
+#### 🔒 Phần B — Rà soát toàn diện Kho + vá bảo mật/toàn vẹn — 2026-06-14 (tiếp) `[HOÀN THÀNH]`
+**Migration `20260704000000_harden_inventory_transfers_returns.sql` — ĐÃ apply remote + verify + ghi history. Không đổi frontend** (giữ signature RPC, `created_by` FE đã = auth.uid()).
+- [x] **#1 (NGHIÊM TRỌNG) RPC chuyển kho không kiểm quyền + nhận user_id client:** `fn_start/receive/cancel_transfer` là SECURITY DEFINER, GRANT authenticated, KHÔNG check quyền + `performed_by`/`received_by` lấy `p_user_id` client → mọi user đăng nhập thao túng tồn kho + giả mạo audit. **Vá:** thêm guard `fn_is_admin() OR fn_has_role('warehouse_keeper')` + dùng `auth.uid()` (giữ signature, bỏ qua p_user_id). Giữ nguyên logic giá vốn bình quân.
+- [x] **#2 Trả NCC trừ kho 2 lần + không hoàn kho khi hủy:** trigger `fn_auto_stock_on_purchase_return_confirm` cũ trừ kho mỗi lần status→confirmed/completed (draft→confirmed→completed = trừ 2 lần). **Vá:** trừ MỘT LẦN khi rời 'draft' + HOÀN kho khi confirmed/completed→cancelled + guard chuyển trạng thái hợp lệ. (Đồng thời xử #5 hoàn kho khi hủy.)
+- [x] **#4 RLS WITH CHECK + chi nhánh:** tách `*_manage` → insert/update/delete cho `stock_transfers` & `purchase_returns`; INSERT ràng `created_by = auth.uid()` + kho thuộc chi nhánh người tạo (admin miễn trừ).
+- [x] **#3 Mặt tài chính trả NCC — HOÀN THÀNH** (migration `20260705000000_purchase_return_finance.sql`, ĐÃ apply remote + verify + **smoke-test rollback PASS**). Hạch toán chuẩn kế toán (user duyệt): trigger `fn_finance_on_purchase_return` (AFTER UPDATE) ghi khi rời 'draft'→confirmed/completed: `credit_note`/`next_po_offset` → giảm `suppliers.current_debt_payable`; `cash_refund` → ghi THU sổ quỹ (cashbook inflow, quỹ mặc định chi nhánh, **không gắn session**, danh mục THU-HOAN-NCC), không đụng công nợ. Hủy phiếu đã ghi → đảo ngược (cộng lại nợ / ghi CHI-HOAN-NCC). Smoke-test: credit_note debt −1000 + lô −1; cash_refund 1 dòng inflow 1000 + debt delta 0.
+- ✅ Đã tốt giữ nguyên: phiếu nhập (status guard `20260622` + công nợ `20260623`); transfer chống race (FOR UPDATE); kiểm tồn khả dụng trước xuất.
+
 #### 🔍 Kiểm tra toàn diện 2026-05-29 — Order Module Bugfix
 
 **Đã phát hiện & fix (migration `20260529000016_fix_orders_rls_and_relations.sql`):**
@@ -1568,3 +1601,25 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **`InventoryPage.tsx` — nới rộng modal:** Tạo chuyển kho + Tạo trả NCC `max-w-3xl→5xl`; Chi tiết chuyển/trả/nhập kho `max-w-4xl→5xl`; Drawer cài đặt định mức tồn `max-w-md→xl`. (Hộp xác nhận hủy lô giữ `max-w-md` vì là confirm nhỏ.)
 - **`GoodsReceiptFormPage.tsx`:** dropdown tìm sản phẩm (chế độ nhập trực tiếp) bỏ `truncate` tên SP → hiển thị đầy đủ (wrap), căn `items-start`.
 - **Phạm vi:** chỉ CSS độ rộng + bỏ truncate, không đụng logic/RPC/phân quyền/dữ liệu.
+
+### 2026-06-14 (bổ sung 2) — Nén & gọn hóa toàn bộ modal kho (1 màn hình, không cuộn) — thuần UI
+
+**Bối cảnh:** User báo modal **Chi tiết chuyển kho** (và các modal kho khác) bố trí dư thừa: khối thông tin (kho nguồn/đích/ngày/trạng thái…) chiếm quá nhiều chiều cao → phải cuộn mới thấy bảng "Sản phẩm luân chuyển"; chữ to, dòng thưa, dữ liệu dễ đè. **Gốc rễ phát hiện:** các class `text-body-md/body-lg/tiny/mono` **không hề được định nghĩa** trong `tailwind.config.js` lẫn `index.css` (verify cả CSS đã build trong `dist`) → mọi chữ dùng các class này render ở cỡ mặc định ~16px. DataTable.tsx né được vì dùng class thật (`text-[13px]`, `px-3 py-2.5`, header `text-[11px]`). `tsc -b` + `vite build` PASS. **Thuần UI, KHÔNG migration, không đụng logic/handler/điều kiện hiển thị theo `status`/RLS.**
+
+- **Phạm vi (đã duyệt):** 3 modal chi tiết (chuyển kho · xuất trả NCC · nhập kho) + 2 modal tạo phiếu (chuyển kho · trả NCC). KHÔNG sửa token font toàn cục (để tránh ảnh hưởng list view ngoài phạm vi).
+- **`InventoryPage.tsx`** — kế thừa mật độ DataTable.tsx:
+  - Khung modal: `max-w-5xl→6xl`, `max-h-[85/90vh]→92vh` (rộng & cao hơn, thao tác trong 1 màn hình).
+  - Thân modal: `p-6 space-y-6 → p-4 sm:p-5 space-y-4`.
+  - **Khối metadata ("phần tô vàng"):** `grid-cols-2 gap-y-4 gap-x-6 p-4` → `grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-2.5 p-3`; nhãn `text-[11px] leading-none mb-0.5`, giá trị `text-[13px]` → dồn 6–8 trường về ~2 dòng. Ghi chú/Chi tiết lý do `col-span-2→col-span-full`.
+  - **Bảng sản phẩm:** header `text-tiny→[11px]`, ô `text-body-md→[13px]`, padding `px-4 py-3 / px-4 py-2.5 → px-3 py-2.5` (chuẩn DataTable). SKU & badge trạng thái & mã phiếu `text-tiny→[11px]`. Tiêu đề modal `text-body-lg→text-base`. Label form tạo phiếu `text-tiny→[11px]`.
+- **Còn lại (chưa làm, chờ duyệt riêng):** định nghĩa token font toàn cục để trị tận gốc cho cả app; nếu duyệt sẽ tách task riêng có test rộng.
+
+### 2026-06-14 (bổ sung 3) — TRỊ TẬN GỐC: định nghĩa type scale toàn cục trong tailwind.config.js
+
+**Bối cảnh:** User duyệt fix tận gốc. Khảo sát toàn `src/`: các class chữ tuỳ biến được dùng **~2.760 lần** nhưng KHÔNG hề định nghĩa → Tailwind v3 bỏ qua → mọi chữ rơi về cỡ mặc định ~16px. Đếm: `text-body-md` 1251 · `text-tiny` 979 · `text-body-lg` 216 · `text-body-sm` 73 · `text-headline-md` 12 · `text-headline-lg` 11 · `text-display-xs` 6 · `text-display-sm` 5 · `text-label-md` 3 · `text-headline-sm` 1. (`text-mono` đã hết sau bổ sung 2.) `tsc -b` + `vite build` PASS, verify token đã vào CSS build.
+
+- **`tailwind.config.js` → `theme.extend.fontSize`** (MERGE với mặc định, `text-sm/base/lg` chuẩn vẫn chạy). Thang calib theo px thật đang dùng (241× `text-[11px]`, 35× `text-[13px]`, 11× `text-[28px]`):
+  - `tiny` 11/15 · `body-sm` 12/16 · `label-md` 13/18 (+letter-spacing) · **`body-md` 14/20 (chữ thân workhorse)** · `body-lg` 16/24 · `headline-sm` 18/26 · `headline-md` 20/28 · `headline-lg` 24/30 · `display-xs` 28/34 · `display-sm` 32/38.
+- **Tác động:** toàn app gọn lại đúng thiết kế — đáng kể nhất là `body-md` 16→14 và `tiny` 16→11 (caption/SKU/badge). `body-lg` giữ 16 nên các tiêu đề nhấn không đổi.
+- **Phạm vi:** CHỈ thêm fontSize tokens, KHÔNG đổi màu/spacing/logic. Các sửa hardcode `text-[13px]/[11px]` ở 5 modal kho (bổ sung 1–2) giữ nguyên — vẫn khớp thang mới (13≈label-md, 11=tiny).
+- **⚠️ Chưa làm:** màu tuỳ biến chưa định nghĩa (`gray-755/850/550`, `red-650/750`) cũng là no-op → chữ inherit màu; là task nhỏ riêng nếu user muốn (không gấp).

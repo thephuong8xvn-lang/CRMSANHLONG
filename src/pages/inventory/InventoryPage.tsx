@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import {
@@ -26,6 +26,7 @@ import { fetchAllRows } from '../../lib/fetchAllRows'
 import DecimalInput from '../../components/DecimalInput'
 import { useAuth } from '../../contexts/AuthContext'
 import LotEditModal, { type EditableLot } from './LotEditModal'
+import { stockTransferDraftKey, purchaseReturnDraftKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
 
 interface StockLot {
   id: string
@@ -217,6 +218,45 @@ export default function InventoryPage() {
     refundMethod: 'credit_note',
     lines: []
   })
+
+  // ── Bền hóa nháp 2 modal kho (chuyển kho + trả NCC) theo nhân viên ──
+  // Lưu khi còn nội dung → thoát tab/F5/mất điện mở lại vẫn còn. Dọn khi tạo
+  // thành công hoặc form rỗng (bấm Hủy reset → tự dọn).
+  const transferDraftKey = profile?.id ? stockTransferDraftKey(profile.id) : null
+  const returnDraftKey = profile?.id ? purchaseReturnDraftKey(profile.id) : null
+  const invDraftRestoredRef = useRef(false)
+
+  useEffect(() => {
+    if (invDraftRestoredRef.current) return
+    if (!transferDraftKey && !returnDraftKey) return
+    if (transferDraftKey) {
+      const t = loadDraft<typeof newTransfer>(transferDraftKey, d => Array.isArray(d?.lines) && d.lines.length > 0)
+      if (t) setNewTransfer(t)
+    }
+    if (returnDraftKey) {
+      const r = loadDraft<typeof newReturn>(returnDraftKey, d => Array.isArray(d?.lines) && d.lines.length > 0)
+      if (r) setNewReturn(r)
+    }
+    invDraftRestoredRef.current = true
+  }, [transferDraftKey, returnDraftKey])
+
+  useEffect(() => {
+    if (!transferDraftKey || !invDraftRestoredRef.current) return
+    if (newTransfer.lines.length > 0 || newTransfer.fromWarehouse || newTransfer.toWarehouse) {
+      saveDraft(transferDraftKey, newTransfer)
+    } else {
+      clearDraft(transferDraftKey)
+    }
+  }, [transferDraftKey, newTransfer])
+
+  useEffect(() => {
+    if (!returnDraftKey || !invDraftRestoredRef.current) return
+    if (newReturn.lines.length > 0 || newReturn.supplierId) {
+      saveDraft(returnDraftKey, newReturn)
+    } else {
+      clearDraft(returnDraftKey)
+    }
+  }, [returnDraftKey, newReturn])
 
   // Options cho SmartSearchSelect chọn SP ở tab Cài đặt (productList đã fetchAllRows → đủ 1001+)
   const productListOptions = useMemo(
@@ -1462,14 +1502,14 @@ export default function InventoryPage() {
           <div className="flex gap-3">
             <button
               onClick={() => navigate('/purchase-orders/new')}
-              className="bg-white text-gray-600 border border-gray-100 px-4 py-2.5 rounded-lg font-semibold text-body-md hover:bg-gray-50 flex items-center justify-center gap-2 shadow-sm"
+              className="bg-white text-gray-600 border border-gray-100 px-3 py-2.5 rounded-lg font-semibold text-body-md hover:bg-gray-50 flex items-center justify-center gap-2 shadow-sm"
             >
               <Plus size={16} />
               <span>Tạo đơn PO</span>
             </button>
             <button
               onClick={() => navigate('/goods-receipts/new')}
-              className="bg-blue-500 text-white px-4 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+              className="bg-blue-500 text-white px-3 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
             >
               <WarehouseIcon size={16} />
               <span>Nhập kho thực tế</span>
@@ -1555,7 +1595,7 @@ export default function InventoryPage() {
 
           {/* Lỗi tải dữ liệu — không nuốt lỗi im lặng */}
           {fetchError && !loading && (
-            <div className="mx-6 mt-4 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+            <div className="mx-6 mt-4 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-red-700">
               <AlertTriangle size={18} className="mt-0.5 shrink-0" />
               <div className="text-body-md">
                 <p className="font-semibold">Không tải được dữ liệu</p>
@@ -1750,7 +1790,7 @@ export default function InventoryPage() {
                 </div>
                 <button
                   onClick={() => setShowTransferModal(true)}
-                  className="bg-blue-505 bg-blue-500 text-white px-4 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all w-full md:w-auto"
+                  className="bg-blue-505 bg-blue-500 text-white px-3 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all w-full md:w-auto"
                 >
                   <ArrowRightLeft size={16} />
                   <span>Tạo yêu cầu chuyển kho</span>
@@ -1791,7 +1831,7 @@ export default function InventoryPage() {
                 </div>
                 <button
                   onClick={() => setShowReturnModal(true)}
-                  className="bg-blue-500 text-white px-4 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all w-full md:w-auto"
+                  className="bg-blue-500 text-white px-3 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all w-full md:w-auto"
                 >
                   <RotateCcw size={16} />
                   <span>Tạo phiếu trả hàng NCC</span>
@@ -1859,7 +1899,7 @@ export default function InventoryPage() {
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
               <div>
-                <h3 className="text-body-lg font-bold text-gray-800">
+                <h3 className="text-base font-bold text-gray-800">
                   {editingSettingId ? 'Cập nhật định mức tồn kho' : 'Cấu hình định mức tồn kho'}
                 </h3>
                 <p className="text-tiny text-gray-400">Thiết lập ngưỡng cảnh báo an toàn cho sản phẩm</p>
@@ -1975,11 +2015,11 @@ export default function InventoryPage() {
       {/* Modal Tạo yêu cầu chuyển kho */}
       {showTransferModal && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-6xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
-                <h3 className="text-body-lg font-bold text-gray-800">Tạo yêu cầu chuyển kho</h3>
+                <h3 className="text-base font-bold text-gray-800">Tạo yêu cầu chuyển kho</h3>
                 <p className="text-tiny text-gray-400">Luân chuyển hàng hóa giữa các kho/chi nhánh</p>
               </div>
               <button
@@ -1991,7 +2031,7 @@ export default function InventoryPage() {
             </div>
 
             {/* Content */}
-            <form onSubmit={handleCreateTransfer} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <form onSubmit={handleCreateTransfer} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
               {/* Warehouse Selection */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -2042,7 +2082,7 @@ export default function InventoryPage() {
                   <h4 className="text-body-md font-bold text-gray-700">Thêm sản phẩm từ kho nguồn</h4>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="block text-tiny font-semibold text-gray-600">Chọn lô hàng</label>
+                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Chọn lô hàng</label>
                       <SmartSearchSelect
                         options={transferLotOptions}
                         value={modalLotId}
@@ -2057,7 +2097,7 @@ export default function InventoryPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="block text-tiny font-semibold text-gray-600">Số lượng chuyển</label>
+                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Số lượng chuyển</label>
                       <DecimalInput
                         value={modalQty}
                         onChange={(v) => setModalQty(v)}
@@ -2066,7 +2106,7 @@ export default function InventoryPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="block text-tiny font-semibold text-gray-600">Đơn giá chuyển (₫)</label>
+                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Đơn giá chuyển (₫)</label>
                       <div className="flex gap-2">
                         <input
                           type="number"
@@ -2127,7 +2167,7 @@ export default function InventoryPage() {
                 <div className="border border-gray-100 rounded-lg overflow-hidden">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-550 text-gray-500 font-bold text-tiny uppercase">
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-500 font-bold text-[11px] uppercase">
                         <th className="px-4 py-2">Sản phẩm / SKU</th>
                         <th className="px-4 py-2">Số lô</th>
                         <th className="px-4 py-2 text-center w-24">Số lượng</th>
@@ -2136,7 +2176,7 @@ export default function InventoryPage() {
                         <th className="px-4 py-2 w-12"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
+                    <tbody className="divide-y divide-gray-50 text-[13px] text-gray-600">
                       {newTransfer.lines.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-4 py-6 text-center text-gray-400 italic">Chưa chọn sản phẩm nào. Vui lòng thêm từ form ở trên.</td>
@@ -2144,7 +2184,7 @@ export default function InventoryPage() {
                       ) : (
                         newTransfer.lines.map((line, idx) => (
                           <tr key={idx} className="hover:bg-gray-25/30">
-                            <td className="px-4 py-2.5">
+                            <td className="px-3 py-2.5">
                               <p className="font-bold text-gray-700">{line.name}</p>
                               <div className="flex gap-2 items-center text-tiny">
                                 <span className="text-gray-455 font-mono">SKU: {line.sku}</span>
@@ -2152,8 +2192,8 @@ export default function InventoryPage() {
                                 <span className="text-amber-600 font-medium">Vốn: {line.costPrice?.toLocaleString('vi-VN')} ₫</span>
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
-                            <td className="px-4 py-2.5 text-center">
+                            <td className="px-3 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
+                            <td className="px-3 py-2.5 text-center">
                               <DecimalInput
                                 value={line.quantity}
                                 max={line.maxQty}
@@ -2165,7 +2205,7 @@ export default function InventoryPage() {
                                 className="w-20 text-center h-8 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-800"
                               />
                             </td>
-                            <td className="px-4 py-2.5 text-right">
+                            <td className="px-3 py-2.5 text-right">
                               <input
                                 type="number"
                                 min="0"
@@ -2179,10 +2219,10 @@ export default function InventoryPage() {
                                 className="w-28 text-right h-8 px-2 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-850"
                               />
                             </td>
-                            <td className="px-4 py-2.5 text-right font-bold text-gray-800">
+                            <td className="px-3 py-2.5 text-right font-bold text-gray-800">
                               {(line.quantity * (line.unitPrice || 0)).toLocaleString('vi-VN')} ₫
                             </td>
-                            <td className="px-4 py-2.5 text-center">
+                            <td className="px-3 py-2.5 text-center">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2242,12 +2282,12 @@ export default function InventoryPage() {
       {/* Modal Chi tiết chuyển kho */}
       {showTransferDetailModal && selectedTransfer && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-6xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
-                <h3 className="text-body-lg font-bold text-gray-800">Chi tiết yêu cầu chuyển kho</h3>
-                <p className="text-mono text-tiny text-blue-500 font-bold">{selectedTransfer.transfer_code}</p>
+                <h3 className="text-base font-bold text-gray-800">Chi tiết yêu cầu chuyển kho</h3>
+                <p className="text-[11px] text-blue-500 font-bold font-mono">{selectedTransfer.transfer_code}</p>
               </div>
               <button
                 onClick={() => setShowTransferDetailModal(false)}
@@ -2258,24 +2298,24 @@ export default function InventoryPage() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
               {/* Metadata details */}
-              <div className="grid grid-cols-2 gap-y-4 gap-x-6 bg-gray-25/55 border border-gray-100 rounded-lg p-4 text-body-md text-gray-600">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-2.5 bg-gray-25/55 border border-gray-100 rounded-lg p-3 text-[13px] text-gray-600">
                 <div>
-                  <span className="text-gray-400 block text-tiny">Kho nguồn</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Kho nguồn</span>
                   <span className="font-semibold text-gray-800">{selectedTransfer.from_wh?.name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Kho đích</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Kho đích</span>
                   <span className="font-semibold text-gray-800">{selectedTransfer.to_wh?.name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Ngày tạo</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Ngày tạo</span>
                   <span className="font-medium">{new Date(selectedTransfer.transfer_date).toLocaleDateString('vi-VN')}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Trạng thái</span>
-                  <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase ${
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Trạng thái</span>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
                     selectedTransfer.status === 'received' 
                       ? 'bg-emerald-50 text-emerald-700' 
                       : selectedTransfer.status === 'in_transit' 
@@ -2290,17 +2330,17 @@ export default function InventoryPage() {
                   </span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Người lập phiếu</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Người lập phiếu</span>
                   <span className="font-medium text-gray-700">{selectedTransfer.creator?.full_name || 'Hệ thống'}</span>
                 </div>
                 {selectedTransfer.received_by && (
                   <div>
-                    <span className="text-gray-400 block text-tiny">Người nhận hàng</span>
+                    <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Người nhận hàng</span>
                     <span className="font-medium text-gray-700">{selectedTransfer.receiver?.full_name || 'Hệ thống'}</span>
                   </div>
                 )}
-                <div className="col-span-2 border-t border-gray-100/50 pt-2">
-                  <span className="text-gray-400 block text-tiny">Ghi chú</span>
+                <div className="col-span-full border-t border-gray-100/50 pt-2 mt-0.5">
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Ghi chú</span>
                   <span className="text-gray-700 italic">{selectedTransfer.notes || 'Không có ghi chú'}</span>
                 </div>
               </div>
@@ -2311,32 +2351,32 @@ export default function InventoryPage() {
                 <div className="border border-gray-100 rounded-lg overflow-x-auto">
                   <table className="w-full min-w-[680px] text-left border-collapse">
                     <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase">
-                        <th className="px-4 py-3 min-w-[200px]">Sản phẩm / SKU</th>
-                        <th className="px-4 py-3 whitespace-nowrap">Số lô</th>
-                        <th className="px-4 py-3 text-center whitespace-nowrap">Hạn sử dụng</th>
-                        <th className="px-4 py-3 text-center whitespace-nowrap">Số lượng</th>
-                        <th className="px-4 py-3 text-right whitespace-nowrap">Đơn giá chuyển</th>
-                        <th className="px-4 py-3 text-right whitespace-nowrap">Thành tiền</th>
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-[11px] uppercase">
+                        <th className="px-3 py-2.5 min-w-[200px]">Sản phẩm / SKU</th>
+                        <th className="px-3 py-2.5 whitespace-nowrap">Số lô</th>
+                        <th className="px-3 py-2.5 text-center whitespace-nowrap">Hạn sử dụng</th>
+                        <th className="px-3 py-2.5 text-center whitespace-nowrap">Số lượng</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap">Đơn giá chuyển</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap">Thành tiền</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
+                    <tbody className="divide-y divide-gray-50 text-[13px] text-gray-600">
                       {selectedTransferLines.map((line) => {
                         const costPrice = line.lot?.cost_price;
                         return (
                           <tr key={line.id} className="hover:bg-gray-25/30">
-                            <td className="px-4 py-3 min-w-[200px]">
+                            <td className="px-3 py-2.5 min-w-[200px]">
                               <p className="font-bold text-gray-700 break-words">{line.product?.name}</p>
-                              <span className="text-tiny text-gray-400 font-mono">SKU: {line.product?.sku}</span>
+                              <span className="text-[11px] text-gray-400 font-mono">SKU: {line.product?.sku}</span>
                             </td>
-                            <td className="px-4 py-3 font-mono text-blue-500 font-semibold whitespace-nowrap">{line.lot?.lot_number || 'N/A'}</td>
-                            <td className="px-4 py-3 text-center text-gray-500 whitespace-nowrap">
+                            <td className="px-3 py-2.5 font-mono text-blue-500 font-semibold whitespace-nowrap">{line.lot?.lot_number || 'N/A'}</td>
+                            <td className="px-3 py-2.5 text-center text-gray-500 whitespace-nowrap">
                               {line.lot?.expiry_date ? new Date(line.lot.expiry_date).toLocaleDateString('vi-VN') : '---'}
                             </td>
-                            <td className="px-4 py-3 text-center font-bold text-gray-800 whitespace-nowrap">
+                            <td className="px-3 py-2.5 text-center font-bold text-gray-800 whitespace-nowrap">
                               {line.quantity} {line.product?.unit}
                             </td>
-                            <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
+                            <td className="px-3 py-2.5 text-right text-gray-700 whitespace-nowrap">
                               <div>
                                 <span>{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</span>
                                 {costPrice !== undefined && (
@@ -2344,7 +2384,7 @@ export default function InventoryPage() {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-right font-bold text-gray-800 whitespace-nowrap">
+                            <td className="px-3 py-2.5 text-right font-bold text-gray-800 whitespace-nowrap">
                               {Number((line.unit_price || 0) * line.quantity).toLocaleString('vi-VN')} ₫
                             </td>
                           </tr>
@@ -2419,11 +2459,11 @@ export default function InventoryPage() {
       {/* Modal Tạo phiếu trả hàng NCC */}
       {showReturnModal && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-6xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
-                <h3 className="text-body-lg font-bold text-gray-800">Tạo phiếu xuất trả nhà cung cấp</h3>
+                <h3 className="text-base font-bold text-gray-800">Tạo phiếu xuất trả nhà cung cấp</h3>
                 <p className="text-tiny text-gray-400">Trả hàng cận date, lỗi hỏng hoặc do thu hồi của nhà cung cấp</p>
               </div>
               <button
@@ -2435,7 +2475,7 @@ export default function InventoryPage() {
             </div>
 
             {/* Content */}
-            <form onSubmit={handleCreateReturn} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <form onSubmit={handleCreateReturn} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
               {/* Partner and Warehouse */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -2524,7 +2564,7 @@ export default function InventoryPage() {
                   <h4 className="text-body-md font-bold text-gray-700">Thêm sản phẩm xuất trả</h4>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div className="space-y-1.5 md:col-span-2">
-                      <label className="block text-tiny font-semibold text-gray-600">Chọn lô hàng trong kho</label>
+                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Chọn lô hàng trong kho</label>
                       <SmartSearchSelect
                         options={returnLotOptions}
                         value={modalLotId}
@@ -2539,7 +2579,7 @@ export default function InventoryPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="block text-tiny font-semibold text-gray-600">Số lượng trả</label>
+                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Số lượng trả</label>
                       <DecimalInput
                         value={modalQty}
                         onChange={(v) => setModalQty(v)}
@@ -2548,7 +2588,7 @@ export default function InventoryPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="block text-tiny font-semibold text-gray-600">Đơn giá trả (₫)</label>
+                      <label className="block text-[11px] font-semibold text-gray-600 mb-1">Đơn giá trả (₫)</label>
                       <div className="flex gap-2">
                         <input
                           type="number"
@@ -2609,7 +2649,7 @@ export default function InventoryPage() {
                 <div className="border border-gray-100 rounded-lg overflow-hidden">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-500 font-bold text-tiny uppercase">
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-500 font-bold text-[11px] uppercase">
                         <th className="px-4 py-2">Sản phẩm / SKU</th>
                         <th className="px-4 py-2">Số lô</th>
                         <th className="px-4 py-2 text-center">Số lượng</th>
@@ -2618,7 +2658,7 @@ export default function InventoryPage() {
                         <th className="px-4 py-2 w-12"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
+                    <tbody className="divide-y divide-gray-50 text-[13px] text-gray-600">
                       {newReturn.lines.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-4 py-6 text-center text-gray-400 italic">Chưa chọn sản phẩm nào. Vui lòng thêm từ form ở trên.</td>
@@ -2626,7 +2666,7 @@ export default function InventoryPage() {
                       ) : (
                         newReturn.lines.map((line, idx) => (
                           <tr key={idx} className="hover:bg-gray-25/30">
-                            <td className="px-4 py-2.5">
+                            <td className="px-3 py-2.5">
                               <p className="font-bold text-gray-700">{line.name}</p>
                               <div className="flex gap-2 items-center text-tiny">
                                 <span className="text-gray-455 font-mono">SKU: {line.sku}</span>
@@ -2634,8 +2674,8 @@ export default function InventoryPage() {
                                 <span className="text-amber-600 font-medium">Gốc: {line.costPrice?.toLocaleString('vi-VN')} ₫</span>
                               </div>
                             </td>
-                            <td className="px-4 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
-                            <td className="px-4 py-2.5 text-center">
+                            <td className="px-3 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
+                            <td className="px-3 py-2.5 text-center">
                               <DecimalInput
                                 value={line.quantity}
                                 max={line.maxQty}
@@ -2647,7 +2687,7 @@ export default function InventoryPage() {
                                 className="w-20 text-center h-8 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-800"
                               />
                             </td>
-                            <td className="px-4 py-2.5 text-right">
+                            <td className="px-3 py-2.5 text-right">
                               <input
                                 type="number"
                                 min="0"
@@ -2661,10 +2701,10 @@ export default function InventoryPage() {
                                 className="w-28 text-right h-8 px-2 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-850"
                               />
                             </td>
-                            <td className="px-4 py-2.5 text-right font-bold text-gray-800">
+                            <td className="px-3 py-2.5 text-right font-bold text-gray-800">
                               {(line.quantity * line.unitPrice).toLocaleString('vi-VN')} ₫
                             </td>
-                            <td className="px-4 py-2.5 text-center">
+                            <td className="px-3 py-2.5 text-center">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2720,12 +2760,12 @@ export default function InventoryPage() {
       {/* Modal Chi tiết trả hàng NCC */}
       {showReturnDetailModal && selectedReturn && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-6xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
-                <h3 className="text-body-lg font-bold text-gray-800">Chi tiết phiếu xuất trả NCC</h3>
-                <p className="text-mono text-tiny text-blue-500 font-bold">{selectedReturn.return_code}</p>
+                <h3 className="text-base font-bold text-gray-800">Chi tiết phiếu xuất trả NCC</h3>
+                <p className="text-[11px] text-blue-500 font-bold font-mono">{selectedReturn.return_code}</p>
               </div>
               <button
                 onClick={() => setShowReturnDetailModal(false)}
@@ -2736,24 +2776,24 @@ export default function InventoryPage() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
               {/* Metadata details */}
-              <div className="grid grid-cols-2 gap-y-4 gap-x-6 bg-gray-25/55 border border-gray-100 rounded-lg p-4 text-body-md text-gray-600">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-2.5 bg-gray-25/55 border border-gray-100 rounded-lg p-3 text-[13px] text-gray-600">
                 <div>
-                  <span className="text-gray-400 block text-tiny">Nhà cung cấp</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Nhà cung cấp</span>
                   <span className="font-semibold text-gray-800">{selectedReturn.supplier?.name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Kho xuất hàng</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Kho xuất hàng</span>
                   <span className="font-semibold text-gray-800">{selectedReturn.warehouse?.name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Ngày lập</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Ngày lập</span>
                   <span className="font-medium">{new Date(selectedReturn.created_at).toLocaleString('vi-VN')}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Trạng thái</span>
-                  <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase ${
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Trạng thái</span>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
                     selectedReturn.status === 'completed' 
                       ? 'bg-emerald-50 text-emerald-700' 
                       : selectedReturn.status === 'confirmed'
@@ -2768,7 +2808,7 @@ export default function InventoryPage() {
                   </span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Lý do trả hàng</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Lý do trả hàng</span>
                   <span className="font-medium text-gray-800">
                     {selectedReturn.reason_code === 'damage' ? 'Hàng hỏng / Lỗi' :
                      selectedReturn.reason_code === 'wrong_product' ? 'Sai sản phẩm' :
@@ -2778,22 +2818,22 @@ export default function InventoryPage() {
                   </span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Hoàn tiền</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Hoàn tiền</span>
                   <span className="font-medium text-gray-800">
                     {selectedReturn.refund_method === 'cash_refund' ? 'Tiền mặt' :
                      selectedReturn.refund_method === 'credit_note' ? 'Cấn trừ công nợ' : 'Trừ đơn hàng sau'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Người lập phiếu</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Người lập phiếu</span>
                   <span className="font-medium text-gray-700">{selectedReturn.creator?.full_name || 'Hệ thống'}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Tổng tiền hoàn</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Tổng tiền hoàn</span>
                   <span className="font-bold text-gray-850">{Number(selectedReturn.total_amount || 0).toLocaleString('vi-VN')} ₫</span>
                 </div>
-                <div className="col-span-2 border-t border-gray-100/50 pt-2">
-                  <span className="text-gray-400 block text-tiny">Chi tiết lý do</span>
+                <div className="col-span-full border-t border-gray-100/50 pt-2 mt-0.5">
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Chi tiết lý do</span>
                   <span className="text-gray-700 italic">{selectedReturn.reason_detail || 'Không có chi tiết'}</span>
                 </div>
               </div>
@@ -2804,25 +2844,25 @@ export default function InventoryPage() {
                 <div className="border border-gray-150 rounded-lg overflow-x-auto">
                   <table className="w-full min-w-[620px] text-left border-collapse">
                     <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase">
-                        <th className="px-4 py-3 min-w-[200px]">Sản phẩm / SKU</th>
-                        <th className="px-4 py-3 whitespace-nowrap">Số lô</th>
-                        <th className="px-4 py-3 text-center whitespace-nowrap">Số lượng</th>
-                        <th className="px-4 py-3 text-right whitespace-nowrap">Đơn giá trả</th>
-                        <th className="px-4 py-3 text-right whitespace-nowrap">Thành tiền</th>
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-[11px] uppercase">
+                        <th className="px-3 py-2.5 min-w-[200px]">Sản phẩm / SKU</th>
+                        <th className="px-3 py-2.5 whitespace-nowrap">Số lô</th>
+                        <th className="px-3 py-2.5 text-center whitespace-nowrap">Số lượng</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap">Đơn giá trả</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap">Thành tiền</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
+                    <tbody className="divide-y divide-gray-50 text-[13px] text-gray-600">
                       {selectedReturnLines.map((line) => (
                         <tr key={line.id} className="hover:bg-gray-25/30">
-                          <td className="px-4 py-3 min-w-[200px]">
+                          <td className="px-3 py-2.5 min-w-[200px]">
                             <p className="font-bold text-gray-700 break-words">{line.product?.name}</p>
-                            <span className="text-tiny text-gray-400 font-mono">SKU: {line.product?.sku}</span>
+                            <span className="text-[11px] text-gray-400 font-mono">SKU: {line.product?.sku}</span>
                           </td>
-                          <td className="px-4 py-3 font-mono text-blue-500 font-semibold whitespace-nowrap">{line.lot?.lot_number || 'N/A'}</td>
-                          <td className="px-4 py-3 text-center font-medium text-gray-800 whitespace-nowrap">{line.quantity} {line.product?.unit}</td>
-                          <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</td>
-                          <td className="px-4 py-3 text-right font-bold text-gray-800 whitespace-nowrap">
+                          <td className="px-3 py-2.5 font-mono text-blue-500 font-semibold whitespace-nowrap">{line.lot?.lot_number || 'N/A'}</td>
+                          <td className="px-3 py-2.5 text-center font-medium text-gray-800 whitespace-nowrap">{line.quantity} {line.product?.unit}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-700 whitespace-nowrap">{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-gray-800 whitespace-nowrap">
                             {Number(line.line_total || (line.unit_price * line.quantity)).toLocaleString('vi-VN')} ₫
                           </td>
                         </tr>
@@ -2868,12 +2908,12 @@ export default function InventoryPage() {
       {/* Modal Chi tiết phiếu nhập kho */}
       {showReceiptDetailModal && selectedReceipt && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-6xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
-                <h3 className="text-body-lg font-bold text-gray-800">Chi tiết phiếu nhập kho</h3>
-                <p className="text-mono text-tiny text-blue-500 font-bold">{selectedReceipt.receipt_code}</p>
+                <h3 className="text-base font-bold text-gray-800">Chi tiết phiếu nhập kho</h3>
+                <p className="text-[11px] text-blue-500 font-bold font-mono">{selectedReceipt.receipt_code}</p>
               </div>
               <button
                 onClick={() => setShowReceiptDetailModal(false)}
@@ -2884,31 +2924,31 @@ export default function InventoryPage() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
               {/* Metadata details */}
-              <div className="grid grid-cols-2 gap-y-4 gap-x-6 bg-gray-25/55 border border-gray-100 rounded-lg p-4 text-body-md text-gray-600">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-x-5 gap-y-2.5 bg-gray-25/55 border border-gray-100 rounded-lg p-3 text-[13px] text-gray-600">
                 <div>
-                  <span className="text-gray-400 block text-tiny">Nhà cung cấp</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Nhà cung cấp</span>
                   <span className="font-semibold text-gray-800">{selectedReceipt.supplier?.name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Kho nhận hàng</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Kho nhận hàng</span>
                   <span className="font-semibold text-gray-800">{selectedReceipt.warehouse?.name}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Ngày nhập</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Ngày nhập</span>
                   <span className="font-medium">{new Date(selectedReceipt.receipt_date).toLocaleDateString('vi-VN')}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400 block text-tiny">Người nhận</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Người nhận</span>
                   <span className="font-medium text-gray-700">{selectedReceipt.profile?.full_name || 'Hệ thống'}</span>
                 </div>
                 <div className="col-span-2">
-                  <span className="text-gray-400 block text-tiny">Tổng giá trị</span>
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Tổng giá trị</span>
                   <span className="font-bold text-gray-850">{Number(selectedReceipt.total_amount || 0).toLocaleString('vi-VN')} ₫</span>
                 </div>
-                <div className="col-span-2 border-t border-gray-100/50 pt-2">
-                  <span className="text-gray-400 block text-tiny">Ghi chú</span>
+                <div className="col-span-full border-t border-gray-100/50 pt-2 mt-0.5">
+                  <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Ghi chú</span>
                   <span className="text-gray-700 italic">{selectedReceipt.notes || 'Không có ghi chú'}</span>
                 </div>
               </div>
@@ -2919,29 +2959,29 @@ export default function InventoryPage() {
                 <div className="border border-gray-150 rounded-lg overflow-x-auto">
                   <table className="w-full min-w-[680px] text-left border-collapse">
                     <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase">
-                        <th className="px-4 py-3 min-w-[200px]">Sản phẩm / SKU</th>
-                        <th className="px-4 py-3 whitespace-nowrap">Số lô</th>
-                        <th className="px-4 py-3 text-center whitespace-nowrap">Hạn sử dụng</th>
-                        <th className="px-4 py-3 text-center whitespace-nowrap">Số lượng</th>
-                        <th className="px-4 py-3 text-right whitespace-nowrap">Đơn giá nhập</th>
-                        <th className="px-4 py-3 text-right whitespace-nowrap">Thành tiền</th>
+                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-[11px] uppercase">
+                        <th className="px-3 py-2.5 min-w-[200px]">Sản phẩm / SKU</th>
+                        <th className="px-3 py-2.5 whitespace-nowrap">Số lô</th>
+                        <th className="px-3 py-2.5 text-center whitespace-nowrap">Hạn sử dụng</th>
+                        <th className="px-3 py-2.5 text-center whitespace-nowrap">Số lượng</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap">Đơn giá nhập</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap">Thành tiền</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-600">
+                    <tbody className="divide-y divide-gray-50 text-[13px] text-gray-600">
                       {selectedReceiptLines.map((line) => (
                         <tr key={line.id} className="hover:bg-gray-25/30">
-                          <td className="px-4 py-3 min-w-[200px]">
+                          <td className="px-3 py-2.5 min-w-[200px]">
                             <p className="font-bold text-gray-700 break-words">{line.product?.name}</p>
-                            <span className="text-tiny text-gray-400 font-mono">SKU: {line.product?.sku}</span>
+                            <span className="text-[11px] text-gray-400 font-mono">SKU: {line.product?.sku}</span>
                           </td>
-                          <td className="px-4 py-3 font-mono text-blue-500 font-semibold whitespace-nowrap">{line.lot_number || 'N/A'}</td>
-                          <td className="px-4 py-3 text-center text-gray-500 whitespace-nowrap">
+                          <td className="px-3 py-2.5 font-mono text-blue-500 font-semibold whitespace-nowrap">{line.lot_number || 'N/A'}</td>
+                          <td className="px-3 py-2.5 text-center text-gray-500 whitespace-nowrap">
                             {line.expiry_date ? new Date(line.expiry_date).toLocaleDateString('vi-VN') : '---'}
                           </td>
-                          <td className="px-4 py-3 text-center font-medium text-gray-800 whitespace-nowrap">{line.quantity} {line.product?.unit}</td>
-                          <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</td>
-                          <td className="px-4 py-3 text-right font-bold text-gray-850 whitespace-nowrap">
+                          <td className="px-3 py-2.5 text-center font-medium text-gray-800 whitespace-nowrap">{line.quantity} {line.product?.unit}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-700 whitespace-nowrap">{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-gray-850 whitespace-nowrap">
                             {Number(line.unit_price * line.quantity).toLocaleString('vi-VN')} ₫
                           </td>
                         </tr>

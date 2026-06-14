@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -18,6 +18,7 @@ import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
+import { posMobileKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
 
 interface Customer {
   id: string
@@ -87,6 +88,54 @@ export default function MobileOrderPage() {
   // Kho xuất + tồn khả dụng (theo chi nhánh của nhân viên)
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null)
   const [productStock, setProductStock] = useState<Record<string, number>>({})
+
+  // ── Bền hóa nháp đơn (khôi phục khi F5/đóng tab/mất điện), theo nhân viên ──
+  interface MobileDraft {
+    cart: CartItem[]
+    selectedCustomerId: string
+    customerSearchQuery: string
+    paymentMethod: 'cash' | 'bank_transfer' | 'credit'
+    deliveryDate: string
+    deliveryAddress: string
+    deliveryPartner: string
+    notes: string
+    manualDiscount: number
+    step: number
+  }
+  const draftKey = profile?.id ? posMobileKey(profile.id) : null
+  const draftRestoredRef = useRef(false)
+
+  useEffect(() => {
+    if (!draftKey || draftRestoredRef.current) return
+    const saved = loadDraft<MobileDraft>(draftKey, d => Array.isArray(d?.cart))
+    if (saved && saved.cart.length > 0) {
+      setCart(saved.cart)
+      setSelectedCustomerId(saved.selectedCustomerId || '')
+      setCustomerSearchQuery(saved.customerSearchQuery || '')
+      setPaymentMethod(saved.paymentMethod || 'cash')
+      setDeliveryDate(saved.deliveryDate || '')
+      setDeliveryAddress(saved.deliveryAddress || '')
+      setDeliveryPartner(saved.deliveryPartner || 'Tự giao')
+      setNotes(saved.notes || '')
+      setManualDiscount(saved.manualDiscount || 0)
+      setStep(saved.step || 1)
+      setAlertMsg({ type: 'success', text: 'Đã khôi phục đơn nháp chưa hoàn tất.' })
+    }
+    draftRestoredRef.current = true
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftKey || !draftRestoredRef.current) return
+    if (cart.length > 0 || selectedCustomerId) {
+      saveDraft<MobileDraft>(draftKey, {
+        cart, selectedCustomerId, customerSearchQuery, paymentMethod,
+        deliveryDate, deliveryAddress, deliveryPartner, notes, manualDiscount, step
+      })
+    } else {
+      clearDraft(draftKey)
+    }
+  }, [draftKey, cart, selectedCustomerId, customerSearchQuery, paymentMethod,
+      deliveryDate, deliveryAddress, deliveryPartner, notes, manualDiscount, step])
 
   // Fetch data
   useEffect(() => {
@@ -305,6 +354,7 @@ export default function MobileOrderPage() {
       if (error) throw error
 
       const orderCode = (data as any)?.order_code || ''
+      if (draftKey) clearDraft(draftKey)
       setAlertMsg({ type: 'success', text: `Đã tạo nháp đơn giao ${orderCode}. Chờ Admin xác nhận.` })
       setTimeout(() => {
         navigate('/orders')

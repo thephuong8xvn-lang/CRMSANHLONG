@@ -1,3 +1,16 @@
+/**
+ * Sinh id duy nhất cho dòng giỏ / tab. `crypto.randomUUID()` chỉ tồn tại trong
+ * secure context (https/localhost) → khi POS deploy qua http (IP LAN) hàm đó
+ * undefined và làm văng thao tác thêm hàng. Fallback chuỗi ngẫu nhiên đủ duy nhất
+ * cho phạm vi 1 phiên POS.
+ */
+export function genId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10)
+}
+
 export interface CartRow {
   id: string
   product: { id: string; name: string }
@@ -28,7 +41,7 @@ export function cartAddProduct(
   }
   return [
     ...cart,
-    { id: crypto.randomUUID(), product, quantity: 1, unitPrice: price, discountPercent: 0, isPriceOverridden: false },
+    { id: genId(), product, quantity: 1, unitPrice: price, discountPercent: 0, isPriceOverridden: false },
   ]
 }
 
