@@ -23,6 +23,7 @@ import SmartSearchSelect from '../../components/SmartSearchSelect'
 import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
+import DecimalInput from '../../components/DecimalInput'
 import { useAuth } from '../../contexts/AuthContext'
 import LotEditModal, { type EditableLot } from './LotEditModal'
 
@@ -1854,7 +1855,7 @@ export default function InventoryPage() {
       {/* Drawer Cài đặt định mức tồn kho */}
       {isEditingSetting && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex justify-end animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-300">
+          <div className="bg-white w-full max-w-xl h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-300">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-25">
               <div>
@@ -1907,22 +1908,18 @@ export default function InventoryPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="block text-body-md font-semibold text-gray-700">Tồn tối thiểu (Min)</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <DecimalInput
                     value={newSetting.minStock}
-                    onChange={(e) => setNewSetting({ ...newSetting, minStock: parseInt(e.target.value) || 0 })}
+                    onChange={(v) => setNewSetting({ ...newSetting, minStock: v })}
                     className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="block text-body-md font-semibold text-gray-700">Tồn tối đa (Max)</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <DecimalInput
                     value={newSetting.maxStock}
-                    onChange={(e) => setNewSetting({ ...newSetting, maxStock: parseInt(e.target.value) || 0 })}
+                    onChange={(v) => setNewSetting({ ...newSetting, maxStock: v })}
                     className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -1931,23 +1928,20 @@ export default function InventoryPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="block text-body-md font-semibold text-gray-700">Điểm đặt hàng lại</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <DecimalInput
                     value={newSetting.reorderPoint}
-                    onChange={(e) => setNewSetting({ ...newSetting, reorderPoint: parseInt(e.target.value) || 0 })}
+                    onChange={(v) => setNewSetting({ ...newSetting, reorderPoint: v })}
                     className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="block text-body-md font-semibold text-gray-700">SL đặt lại gợi ý</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={newSetting.reorderQty ?? ''}
+                  <DecimalInput
+                    value={newSetting.reorderQty ?? 0}
+                    blankZero
                     placeholder="Tùy chọn"
-                    onChange={(e) => setNewSetting({ ...newSetting, reorderQty: e.target.value ? parseInt(e.target.value) : null })}
+                    onChange={(v) => setNewSetting({ ...newSetting, reorderQty: v > 0 ? v : null })}
                     className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -1981,7 +1975,7 @@ export default function InventoryPage() {
       {/* Modal Tạo yêu cầu chuyển kho */}
       {showTransferModal && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
@@ -2064,11 +2058,9 @@ export default function InventoryPage() {
 
                     <div className="space-y-1.5">
                       <label className="block text-tiny font-semibold text-gray-600">Số lượng chuyển</label>
-                      <input
-                        type="number"
-                        min="1"
+                      <DecimalInput
                         value={modalQty}
-                        onChange={(e) => setModalQty(Math.max(1, parseInt(e.target.value) || 0))}
+                        onChange={(v) => setModalQty(v)}
                         className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -2090,6 +2082,10 @@ export default function InventoryPage() {
                             const lot = lotsForTransfer.find((l: any) => l.id === modalLotId);
                             if (!lot) return;
                             const avail = lot.quantity_on_hand - lot.quantity_reserved;
+                            if (modalQty <= 0) {
+                              setAlertMsg({ type: 'error', text: 'Số lượng chuyển phải lớn hơn 0.' });
+                              return;
+                            }
                             if (modalQty > avail) {
                               setAlertMsg({ type: 'error', text: `Số lượng chuyển (${modalQty}) vượt quá tồn khả dụng (${avail})` });
                               return;
@@ -2158,13 +2154,10 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-4 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
                             <td className="px-4 py-2.5 text-center">
-                              <input
-                                type="number"
-                                min="1"
-                                max={line.maxQty}
+                              <DecimalInput
                                 value={line.quantity}
-                                onChange={(e) => {
-                                  const val = Math.min(line.maxQty, Math.max(1, parseInt(e.target.value) || 1))
+                                max={line.maxQty}
+                                onChange={(val) => {
                                   const updated = [...newTransfer.lines]
                                   updated[idx] = { ...line, quantity: val }
                                   setNewTransfer({ ...newTransfer, lines: updated })
@@ -2249,7 +2242,7 @@ export default function InventoryPage() {
       {/* Modal Chi tiết chuyển kho */}
       {showTransferDetailModal && selectedTransfer && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-4xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-150 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
@@ -2426,7 +2419,7 @@ export default function InventoryPage() {
       {/* Modal Tạo phiếu trả hàng NCC */}
       {showReturnModal && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
@@ -2547,11 +2540,9 @@ export default function InventoryPage() {
 
                     <div className="space-y-1.5">
                       <label className="block text-tiny font-semibold text-gray-600">Số lượng trả</label>
-                      <input
-                        type="number"
-                        min="1"
+                      <DecimalInput
                         value={modalQty}
-                        onChange={(e) => setModalQty(Math.max(1, parseInt(e.target.value) || 0))}
+                        onChange={(v) => setModalQty(v)}
                         className="w-full h-11 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -2573,6 +2564,10 @@ export default function InventoryPage() {
                             const lot = lotsForReturn.find((l: any) => l.id === modalLotId);
                             if (!lot) return;
                             const avail = lot.quantity_on_hand - lot.quantity_reserved;
+                            if (modalQty <= 0) {
+                              setAlertMsg({ type: 'error', text: 'Số lượng trả phải lớn hơn 0.' });
+                              return;
+                            }
                             if (modalQty > avail) {
                               setAlertMsg({ type: 'error', text: `Số lượng trả (${modalQty}) vượt quá tồn khả dụng (${avail})` });
                               return;
@@ -2641,13 +2636,10 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-4 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
                             <td className="px-4 py-2.5 text-center">
-                              <input
-                                type="number"
-                                min="1"
-                                max={line.maxQty}
+                              <DecimalInput
                                 value={line.quantity}
-                                onChange={(e) => {
-                                  const val = Math.min(line.maxQty, Math.max(1, parseInt(e.target.value) || 1))
+                                max={line.maxQty}
+                                onChange={(val) => {
                                   const updated = [...newReturn.lines]
                                   updated[idx] = { ...line, quantity: val }
                                   setNewReturn({ ...newReturn, lines: updated })
@@ -2728,7 +2720,7 @@ export default function InventoryPage() {
       {/* Modal Chi tiết trả hàng NCC */}
       {showReturnDetailModal && selectedReturn && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-4xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>
@@ -2876,7 +2868,7 @@ export default function InventoryPage() {
       {/* Modal Chi tiết phiếu nhập kho */}
       {showReceiptDetailModal && selectedReceipt && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-4xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
+          <div className="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85vh] animate-in slide-in-from-bottom duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-gray-155 flex justify-between items-center bg-gray-25 rounded-t-2xl sm:rounded-t-2xl">
               <div>

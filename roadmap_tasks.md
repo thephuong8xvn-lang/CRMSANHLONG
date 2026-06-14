@@ -1547,3 +1547,24 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Verify remote:** 12 movements sales_return; tồn ZGR-Multiveto 11→12; nợ Chị Vân 250₫; paid DH-00085 = 4.020.000. **Test guard** (5/5 BLOCKED): đổi status/total/dòng hàng trực tiếp, RPC không quyền. **E2E tx-rollback giả lập JWT admin:** tạo phiếu giá gian lận 999.999.999 → ép về 16.250; kho 479→480→479 sau hủy; nợ 250→−16.000 (settle+advance)→250 sau hủy.
 - **Frontend:** `OrderDetailPage.handleCreateReturn` → 1 call `rpc('fn_create_sales_return')` (hiện debt_offset trong toast). **Trang MỚI `ReturnListPage.tsx`** (route `/returns`, menu Kinh doanh → Trả hàng, perms orders.view_*): DataTable + expandedRowRender (dòng hàng/SKU/lô/kho/giá), 3 summary card, filter mã/KH/status/hình thức hoàn/thời gian, realtime sales_returns; admin: Sửa lý do (guard cho phép field này) + Hủy phiếu (modal confirm, disable với cash/CK kèm tooltip). Lưu ý: `sales_return_lines.lot_id` KHÔNG có FK → số lô nạp bằng query phụ, không embed được.
 - ⚠️ **Bài học hạ tầng:** migration file tồn tại local ≠ đã apply remote — PHẢI verify schema remote (pg_trigger/pg_proc/to_regclass) sau mỗi migration. Phát hiện vì user thấy số liệu sai.
+
+---
+
+## 2026-06-14 — NHẬP KHO & HÀNG HÓA THEO SỐ THẬP PHÂN (18,5 · 0,5 · 12,8)
+
+**Bối cảnh:** User yêu cầu kho (goods-receipts + các luồng hàng hóa) nhập được số lượng thập phân (bán theo cân/lít/liều). **Kết quả kiểm tra:** tầng DB + RPC ĐÃ sẵn sàng từ migration `20260529000012` — verify remote: `goods_receipt_lines/purchase_order_lines/stock_lots/stock_movements/stock_transfer_lines/order_lines/order_line_allocations/sales_return_lines.quantity` đều `numeric(15,3)`; các RPC (fefo/transfer/admin_edit_lot/check_alerts) đã `NUMERIC`. **Khoảng trống nằm hoàn toàn ở UI:** nhiều ô dùng `parseInt` (cắt thập phân) + thiếu `step`/nút +/- bước 1. `tsc --noEmit` PASS.
+
+- **Migration `20260703000000_inventory_settings_decimal.sql` (ĐÃ apply remote qua Management API + verify):** nới `inventory_settings.{min_stock_level, max_stock_level, reorder_point, reorder_quantity}` từ INTEGER → `NUMERIC(15,3)` (ngưỡng tồn cho hàng cân/lít). Không view nào phụ thuộc 4 cột này (`product_reorder_view` tham chiếu `products.min_stock_level` — cột khác); `fn_check_stock_alerts` đọc động nên không cần sửa hàm.
+- **Helper mới `src/lib/parseQty.ts`:** `parseQtyInput` (chấp nhận cả `,` và `.`, bỏ ký tự rác, clamp ≥0, **làm tròn 3 chữ số thập phân khớp scale DB** → chống rounding ngầm), `roundQty`, `formatQty`. Verify toàn vẹn (temp-table generated column): 0,5/12,8/18,5 lưu đúng; 18,5555 → 18,556 cả UI lẫn DB (khớp nhau).
+- **Component mới `src/components/DecimalInput.tsx`:** input thập phân tái sử dụng, **giữ chuỗi nháp nội bộ khi gõ** để không nuốt dấu phân tách (vấn đề controlled numeric input — nếu chỉ parseInt/parseFloat trực tiếp trên state số thì gõ "18," bị ép về 18, không gõ tiếp được). Sync lại từ prop khi nguồn ngoài đổi (nút +/-, điền nhanh). Prop `blankZero`, `max`, `disabled`.
+- **Các ô đã chuyển sang DecimalInput:** GoodsReceiptFormPage (Thực nhận — cả 2 chế độ Bảng + Chi tiết, nút +/- giữ bước 1 nhưng dùng `roundQty`); PurchaseOrderFormPage (SL đặt mua, validation `<=0` cho phép 0,5); InventoryPage (SL chuyển kho, SL xuất trả NCC + guard `<=0`, và cài đặt tồn min/max/điểm đặt lại/SL đặt lại); OrderDetailPage (SL trả hàng). **Đã đúng sẵn (không đụng):** POSPage (`step=any`+parseFloat), LotEditModal (`step=any`+Number), OrderEditModal (`step=any`+Number).
+- **Phân quyền/bảo mật:** KHÔNG đổi — chỉ sửa cách parse số ở UI; RLS + luồng duyệt phiếu (draft→duyệt→hoàn thành) + ràng buộc DB nguyên vẹn. Giá tiền (₫, VND) giữ số nguyên như cũ.
+
+### 2026-06-14 (bổ sung) — Mở rộng & hiển thị đầy đủ nội dung các modal kho
+
+**Bối cảnh:** User báo modal Chuyển kho quá hẹp, tên sản phẩm trong dropdown chọn lô bị cắt ("Mavin-SK100 - 21%(7 ngày tuổi - 8k...") dù màn hình còn dư nhiều chỗ. `tsc --noEmit` PASS.
+
+- **`SmartSearchSelect.tsx` (component dùng chung — sửa gốc):** bỏ `truncate` ở label trong danh sách dropdown → cho tên xuống dòng đầy đủ (`whitespace-normal break-words`), căn lề trên (`items-start`); thêm `title` tooltip trên nút trigger (giữ truncate ở nút gọn). Cải thiện cho mọi nơi dùng (NCC, tỉnh/huyện…).
+- **`InventoryPage.tsx` — nới rộng modal:** Tạo chuyển kho + Tạo trả NCC `max-w-3xl→5xl`; Chi tiết chuyển/trả/nhập kho `max-w-4xl→5xl`; Drawer cài đặt định mức tồn `max-w-md→xl`. (Hộp xác nhận hủy lô giữ `max-w-md` vì là confirm nhỏ.)
+- **`GoodsReceiptFormPage.tsx`:** dropdown tìm sản phẩm (chế độ nhập trực tiếp) bỏ `truncate` tên SP → hiển thị đầy đủ (wrap), căn `items-start`.
+- **Phạm vi:** chỉ CSS độ rộng + bỏ truncate, không đụng logic/RPC/phân quyền/dữ liệu.

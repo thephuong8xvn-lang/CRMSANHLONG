@@ -20,6 +20,8 @@ import {
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
+import { roundQty } from '../../lib/parseQty'
+import DecimalInput from '../../components/DecimalInput'
 import { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -430,21 +432,19 @@ export default function PurchaseOrderFormPage() {
                           <div className="flex items-center justify-center border border-gray-100 rounded-lg overflow-hidden w-28 mx-auto h-8 bg-white shadow-sm">
                             <button
                               type="button"
-                              onClick={() => handleUpdateItem(index, { quantity: Math.max(1, item.quantity - 1) })}
+                              onClick={() => handleUpdateItem(index, { quantity: roundQty(Math.max(0, item.quantity - 1)) })}
                               className="w-8 h-full flex items-center justify-center hover:bg-gray-50 transition-colors border-r border-gray-100 text-gray-500"
                             >
                               <Minus size={14} />
                             </button>
-                            <input
-                              type="number"
-                              min="1"
+                            <DecimalInput
                               value={item.quantity}
-                              onChange={(e) => handleUpdateItem(index, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                              onChange={(v) => handleUpdateItem(index, { quantity: v })}
                               className="w-12 text-center border-none focus:ring-0 p-0 text-body-md font-bold"
                             />
                             <button
                               type="button"
-                              onClick={() => handleUpdateItem(index, { quantity: item.quantity + 1 })}
+                              onClick={() => handleUpdateItem(index, { quantity: roundQty(item.quantity + 1) })}
                               className="w-8 h-full flex items-center justify-center hover:bg-gray-50 transition-colors border-l border-gray-100 text-gray-500"
                             >
                               <Plus size={14} />

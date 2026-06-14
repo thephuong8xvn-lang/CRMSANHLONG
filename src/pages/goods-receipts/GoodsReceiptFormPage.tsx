@@ -23,6 +23,8 @@ import Layout from '../../components/Layout'
 import SmartSearchSelect, { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
+import { roundQty } from '../../lib/parseQty'
+import DecimalInput from '../../components/DecimalInput'
 import { useAuth } from '../../contexts/AuthContext'
 
 interface Supplier {
@@ -1031,11 +1033,11 @@ export default function GoodsReceiptFormPage() {
                             key={prod.id}
                             type="button"
                             onClick={() => handleAddProductDirect(prod)}
-                            className="w-full text-left px-4 py-2.5 hover:bg-gray-25 text-body-md flex items-center justify-between transition-colors"
+                            className="w-full text-left px-4 py-2.5 hover:bg-gray-25 text-body-md flex items-start justify-between gap-2 transition-colors"
                           >
                             <div className="min-w-0 flex-1">
-                              <span className="font-bold text-gray-700 truncate block">{prod.name}</span>
-                              <span className="block text-[11px] text-gray-400 font-mono">SKU: {prod.sku} | Nhóm: {prod.categoryName}</span>
+                              <span className="font-bold text-gray-700 block whitespace-normal break-words leading-snug">{prod.name}</span>
+                              <span className="block text-[11px] text-gray-400 font-mono whitespace-normal break-words">SKU: {prod.sku} | Nhóm: {prod.categoryName}</span>
                             </div>
                             {prod.is_lot_managed && (
                               <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase flex-shrink-0">Lô</span>
@@ -1145,28 +1147,26 @@ export default function GoodsReceiptFormPage() {
                                   <div className="flex items-center border border-gray-100 rounded-lg overflow-hidden h-8 w-28 bg-white shadow-sm mx-auto">
                                     <button
                                       type="button"
-                                      onClick={() => updateItemAtIndex(index, { 
-                                        quantityReceived: Math.max(0, item.quantityReceived - 1),
+                                      onClick={() => updateItemAtIndex(index, {
+                                        quantityReceived: roundQty(Math.max(0, item.quantityReceived - 1)),
                                         isVerified: false
                                       })}
                                       className="w-8 h-full flex items-center justify-center hover:bg-gray-50 border-r border-gray-100 text-gray-400"
                                     >
                                       <Minus size={12} />
                                     </button>
-                                    <input
-                                      type="number"
-                                      min="0"
+                                    <DecimalInput
                                       value={item.quantityReceived}
-                                      onChange={(e) => updateItemAtIndex(index, { 
-                                        quantityReceived: Math.max(0, parseInt(e.target.value) || 0),
+                                      onChange={(v) => updateItemAtIndex(index, {
+                                        quantityReceived: v,
                                         isVerified: false
                                       })}
                                       className="w-12 text-center border-none p-0 text-body-md font-bold focus:ring-0"
                                     />
                                     <button
                                       type="button"
-                                      onClick={() => updateItemAtIndex(index, { 
-                                        quantityReceived: item.quantityReceived + 1,
+                                      onClick={() => updateItemAtIndex(index, {
+                                        quantityReceived: roundQty(item.quantityReceived + 1),
                                         isVerified: false
                                       })}
                                       className="w-8 h-full flex items-center justify-center hover:bg-gray-50 border-l border-gray-100 text-gray-400"
@@ -1465,28 +1465,26 @@ export default function GoodsReceiptFormPage() {
                               <div className="flex items-center border border-gray-100 rounded-lg overflow-hidden h-10 bg-white shadow-sm">
                                 <button
                                   type="button"
-                                  onClick={() => updateItemAtIndex(selectedItemIndex, { 
-                                    quantityReceived: Math.max(0, currentItem.quantityReceived - 1),
+                                  onClick={() => updateItemAtIndex(selectedItemIndex, {
+                                    quantityReceived: roundQty(Math.max(0, currentItem.quantityReceived - 1)),
                                     isVerified: false
                                   })}
                                   className="w-10 h-full flex items-center justify-center hover:bg-gray-50 border-r border-gray-100 text-gray-500"
                                 >
                                   <Minus size={16} />
                                 </button>
-                                <input
-                                  type="number"
-                                  min="0"
+                                <DecimalInput
                                   value={currentItem.quantityReceived}
-                                  onChange={(e) => updateItemAtIndex(selectedItemIndex, { 
-                                    quantityReceived: Math.max(0, parseInt(e.target.value) || 0),
+                                  onChange={(v) => updateItemAtIndex(selectedItemIndex, {
+                                    quantityReceived: v,
                                     isVerified: false
                                   })}
                                   className="flex-1 text-center border-none p-0 text-body-md font-bold focus:ring-0"
                                 />
                                 <button
                                   type="button"
-                                  onClick={() => updateItemAtIndex(selectedItemIndex, { 
-                                    quantityReceived: currentItem.quantityReceived + 1,
+                                  onClick={() => updateItemAtIndex(selectedItemIndex, {
+                                    quantityReceived: roundQty(currentItem.quantityReceived + 1),
                                     isVerified: false
                                   })}
                                   className="w-10 h-full flex items-center justify-center hover:bg-gray-50 border-l border-gray-100 text-gray-500"

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
+import DecimalInput from '../../components/DecimalInput'
 import { useAuth } from '../../contexts/AuthContext'
 import OrderEditModal from './OrderEditModal'
 
@@ -1188,13 +1189,11 @@ export default function OrderDetailPage() {
                             <td className="px-4 py-3 text-center text-gray-600 font-medium">{line.orderedQty}</td>
                             <td className="px-4 py-3 text-center text-gray-400">{line.returnedQty}</td>
                             <td className="px-4 py-3 text-center">
-                              <input
-                                type="number"
-                                min="0"
+                              <DecimalInput
+                                value={line.currentReturnQty}
                                 max={maxAvail}
-                                value={line.currentReturnQty === 0 ? '' : line.currentReturnQty}
-                                onChange={(e) => {
-                                  const val = Math.min(maxAvail, Math.max(0, parseInt(e.target.value) || 0));
+                                blankZero
+                                onChange={(val) => {
                                   const updated = [...returnLines];
                                   updated[idx].currentReturnQty = val;
                                   setReturnLines(updated);

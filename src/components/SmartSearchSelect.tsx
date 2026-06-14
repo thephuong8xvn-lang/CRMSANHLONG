@@ -120,6 +120,7 @@ export default function SmartSearchSelect({
             icon ? 'pl-10' : 'pl-3'
           } pr-3 ${disabled ? 'bg-gray-50 cursor-not-allowed opacity-60' : 'cursor-pointer'} ${className}`}
           disabled={disabled}
+          title={selectedOption ? selectedOption.label : undefined}
         >
           <span className={`truncate ${!selectedOption ? 'text-gray-400' : 'text-gray-900'}`}>
             {selectedOption ? selectedOption.label : placeholder}
@@ -179,7 +180,7 @@ export default function SmartSearchSelect({
                     type="button"
                     disabled={opt.disabled}
                     onClick={() => handleSelect(opt.value)}
-                    className={`w-full text-left px-3 py-2 text-body-sm flex items-center justify-between transition-colors ${
+                    className={`w-full text-left px-3 py-2 text-body-sm flex items-start justify-between transition-colors ${
                       opt.disabled
                         ? 'bg-gray-50 text-gray-400 cursor-not-allowed opacity-50'
                         : isSelected
@@ -187,13 +188,13 @@ export default function SmartSearchSelect({
                         : 'hover:bg-gray-50 text-gray-700'
                     }`}
                   >
-                    <div className="flex flex-col truncate pr-2">
-                      <span className="truncate">{opt.label}</span>
+                    <div className="flex flex-col min-w-0 pr-2">
+                      <span className="whitespace-normal break-words leading-snug">{opt.label}</span>
                       {opt.desc && (
-                        <span className="text-tiny text-gray-400 font-normal mt-0.5">{opt.desc}</span>
+                        <span className="text-tiny text-gray-400 font-normal mt-0.5 whitespace-normal break-words">{opt.desc}</span>
                       )}
                     </div>
-                    {isSelected && <Check size={16} className="text-blue-600 flex-shrink-0" />}
+                    {isSelected && <Check size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />}
                   </button>
                 )
               })
