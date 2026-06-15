@@ -320,8 +320,10 @@ export function DisplaySettingsProvider({ children }: { children: ReactNode }) {
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, settings.thousands_separator)
     const formattedVal = parts.join(settings.decimal_separator)
 
-    const finalUnit = unit || settings.default_units_count
-    return `${formattedVal} ${finalUnit}`
+    // Phân biệt rõ: unit === undefined → dùng đơn vị đếm mặc định;
+    // unit === '' (cố ý) → KHÔNG gắn đơn vị (vd bản in có cột ĐVT riêng).
+    const finalUnit = unit === undefined ? settings.default_units_count : unit
+    return finalUnit ? `${formattedVal} ${finalUnit}` : formattedVal
   }
 
   // 3. Format Percent

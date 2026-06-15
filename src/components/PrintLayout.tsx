@@ -98,11 +98,19 @@ export default function PrintLayout({
   const renderHeader = (title: string) => (
     <div className="flex justify-between items-start border-b border-black pb-4 mb-6 text-black font-sans">
       <div className="flex-1 pr-4">
-        {/* Logo Text / Image */}
+        {/* Logo Image (nếu đã cấu hình URL) hoặc ô chữ "SL" mặc định */}
         <div className="flex items-center gap-2 mb-1.5">
-          <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center font-bold text-lg">
-            SL
-          </div>
+          {header.logoUrl ? (
+            <img
+              src={header.logoUrl}
+              alt="Logo"
+              className="w-10 h-10 rounded object-contain shrink-0"
+            />
+          ) : (
+            <div className="w-8 h-8 bg-black text-white rounded flex items-center justify-center font-bold text-lg">
+              SL
+            </div>
+          )}
           <span className="font-extrabold text-[14px] leading-tight tracking-wider text-black">
             {header.companyName}
           </span>

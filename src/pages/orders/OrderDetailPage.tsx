@@ -7,10 +7,8 @@ import {
   AlertTriangle,
   User,
   Printer,
-  Send,
   Smartphone,
   MapPin,
-  Boxes,
   X,
   Menu,
   Copy,
@@ -31,6 +29,8 @@ interface OrderLine {
   unit_price: number
   discount: number
   line_total: number
+  lot_number?: string | null
+  expiry_date?: string | null
   product_snapshot?: {
     name: string
     sku: string
@@ -345,7 +345,34 @@ export default function OrderDetailPage() {
         } : undefined
       }))
 
-      setLines(formattedLines as unknown as OrderLine[])
+      // 2b. Lấy lô/HSD đã phân bổ cho từng dòng (FEFO) để hiển thị như bản in.
+      const lineIds = formattedLines.map((l: any) => l.id)
+      const lotMap: Record<string, { lot_number: string; expiry_date: string }> = {}
+      if (lineIds.length > 0) {
+        const { data: allocData } = await supabase
+          .from('order_line_allocations')
+          .select('order_line_id, stock_lots:stock_lots(lot_number, expiry_date)')
+          .in('order_line_id', lineIds)
+        if (allocData) {
+          allocData.forEach((a: any) => {
+            // Mỗi dòng có thể có nhiều lô — lấy lô đầu tiên để hiển thị gọn (giống bản in).
+            if (a.stock_lots && !lotMap[a.order_line_id]) {
+              lotMap[a.order_line_id] = {
+                lot_number: a.stock_lots.lot_number,
+                expiry_date: a.stock_lots.expiry_date
+              }
+            }
+          })
+        }
+      }
+
+      const linesWithLots = formattedLines.map((l: any) => ({
+        ...l,
+        lot_number: lotMap[l.id]?.lot_number ?? null,
+        expiry_date: lotMap[l.id]?.expiry_date ?? null
+      }))
+
+      setLines(linesWithLots as unknown as OrderLine[])
 
       // 3. Fetch Payments
       const { data: payData, error: payErr } = await supabase
@@ -604,6 +631,10 @@ export default function OrderDetailPage() {
   const isDelivery = order.sale_channel === 'delivery'
   const canStaffAct = isAdmin || order.owner_user_id === profile?.id
 
+  // Định dạng ngày HSD ngắn gọn.
+  const formatShortDate = (d: string | null | undefined) =>
+    d ? new Date(d).toLocaleDateString('vi-VN') : null
+
   return (
     <Layout activeMenu="Đơn hàng">
       <div className="p-4 md:p-10 max-w-[1600px] mx-auto space-y-6">
@@ -638,6 +669,16 @@ export default function OrderDetailPage() {
 
           {/* Action buttons — sửa/hủy đi qua RPC phân quyền (fn_order_edit_perms enforce server-side) */}
           <div className="flex items-center gap-3 flex-wrap justify-end">
+            {/* In hóa đơn A4 — gộp lên thanh thao tác trên cùng */}
+            <button
+              onClick={() => window.open(`/print-preview?type=invoice&id=${id}`, '_blank')}
+              title="In hóa đơn A4"
+              className="h-10 px-4 border border-gray-200 text-gray-600 font-semibold rounded-lg hover:bg-gray-50 hover:text-blue-600 transition-colors flex items-center gap-2"
+            >
+              <Printer size={15} />
+              In hóa đơn
+            </button>
+
             {/* Sửa đơn — NV cùng chi nhánh (trong cửa sổ) hoặc Admin */}
             {editPerms?.can_edit && order.status !== 'cancelled' && (
               <button
@@ -729,7 +770,183 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
-        {/* Stepper progress */}
+        {/* Lưới chính: trái = danh sách sản phẩm; phải = thông tin đơn + lịch sử thanh toán */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+          {/* Sản phẩm đặt hàng — bảng gọn (kế thừa phong cách DataTable), kèm Lô/HSD */}
+          <div className="xl:col-span-8">
+            <section className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-body-lg font-bold text-gray-800">Sản phẩm đặt hàng</h3>
+                <span className="text-tiny bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-bold">{lines.length} sản phẩm</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed border-collapse text-left text-[13px]">
+                  <colgroup>
+                    <col style={{ width: 44 }} />
+                    <col />
+                    <col style={{ width: 96 }} />
+                    <col style={{ width: 116 }} />
+                    <col style={{ width: 96 }} />
+                    <col style={{ width: 124 }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="bg-gray-25 text-gray-400 font-semibold text-tiny uppercase tracking-wider border-b border-gray-100">
+                      <th className="px-3 py-2 text-center">STT</th>
+                      <th className="px-3 py-2">Sản phẩm</th>
+                      <th className="px-3 py-2 text-right">SL</th>
+                      <th className="px-3 py-2 text-right">Đơn giá</th>
+                      <th className="px-3 py-2 text-right">CK</th>
+                      <th className="px-3 py-2 text-right">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 text-gray-700">
+                    {lines.length === 0 ? (
+                      <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400 italic">Đơn chưa có sản phẩm</td></tr>
+                    ) : lines.map((line, idx) => {
+                      const expiry = formatShortDate(line.expiry_date)
+                      return (
+                        <tr key={line.id} className="hover:bg-gray-25/50 transition-colors align-top">
+                          <td className="px-3 py-1.5 text-center text-gray-400 font-medium">{idx + 1}</td>
+                          <td className="px-3 py-1.5 overflow-hidden">
+                            <p className="font-bold text-gray-800 truncate">{line.product_snapshot?.name || 'Sản phẩm'}</p>
+                            {(line.product_snapshot?.sku || line.lot_number || expiry) && (
+                              <p className="text-[11px] text-gray-400 truncate">
+                                {line.product_snapshot?.sku && <span className="font-mono">{line.product_snapshot.sku}</span>}
+                                {line.lot_number && <span className="ml-2">Lô: <span className="font-mono">{line.lot_number}</span></span>}
+                                {expiry && <span className="ml-2">HSD: {expiry}</span>}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-semibold text-gray-700 whitespace-nowrap">
+                            {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || ''}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-gray-600 whitespace-nowrap">{line.unit_price.toLocaleString('vi-VN')} ₫</td>
+                          <td className="px-3 py-1.5 text-right text-red-500 whitespace-nowrap">{line.discount > 0 ? `-${(line.discount * line.quantity).toLocaleString('vi-VN')} ₫` : '—'}</td>
+                          <td className="px-3 py-1.5 text-right font-bold text-gray-800 whitespace-nowrap">{line.line_total.toLocaleString('vi-VN')} ₫</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="pt-4 mt-4 border-t border-gray-100 space-y-2 text-tiny max-w-xs ml-auto">
+                <div className="flex justify-between text-gray-400">
+                  <span>Tạm tính</span>
+                  <span className="font-medium text-gray-700">{order.subtotal.toLocaleString('vi-VN')} ₫</span>
+                </div>
+                {order.discount_total > 0 && (
+                  <div className="flex justify-between text-red-500">
+                    <span>Chiết khấu đơn</span>
+                    <span className="font-medium">-{order.discount_total.toLocaleString('vi-VN')} ₫</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-end pt-2 border-t border-dashed border-gray-200">
+                  <span className="text-body-md font-bold text-gray-800">TỔNG CỘNG</span>
+                  <span className="text-body-lg font-black text-blue-500">{order.grand_total.toLocaleString('vi-VN')} ₫</span>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Cột phải: Thông tin đơn + Lịch sử thanh toán */}
+          <div className="xl:col-span-4 space-y-6">
+            {/* Thông tin đơn hàng */}
+            <section className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+              <h3 className="text-body-lg font-bold text-gray-800 mb-4">Thông tin đơn hàng</h3>
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <User size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-tiny text-gray-400">Khách hàng</p>
+                    <p className="text-body-md font-bold text-gray-800 break-words">{order.customers?.farm_name}</p>
+                    <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold rounded uppercase mt-0.5 ${
+                      order.customers?.value_tier === 'vip' ? 'bg-blue-500 text-gray-0' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {order.customers?.value_tier}
+                    </span>
+                  </div>
+                </div>
+
+                {order.owner?.phone && (
+                  <div className="flex items-start gap-3">
+                    <Smartphone size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-tiny text-gray-400">Điện thoại</p>
+                      <p className="text-body-md font-semibold text-gray-700 break-words">{order.owner.phone}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-start gap-3">
+                  <MapPin size={16} className="text-blue-500 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-tiny text-gray-400">Địa chỉ giao hàng</p>
+                    <p className="text-body-md text-gray-700 font-medium leading-snug break-words">{order.delivery_address || 'Nhận tại quầy POS'}</p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-gray-50 space-y-2 text-tiny">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-gray-400 shrink-0">Kho xuất hàng</span>
+                    <span className="font-bold text-gray-700 text-right break-words">{order.warehouses?.name || 'Kho Tổng Miền Nam'}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-gray-400 shrink-0">Nhân viên phụ trách</span>
+                    <span className="font-bold text-gray-700 text-right break-words">{order.owner?.full_name || 'Hệ thống'}</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Lịch sử thanh toán */}
+            <section className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+              <div className="flex justify-between items-center gap-2 mb-5 flex-wrap">
+                <h3 className="text-body-lg font-bold text-gray-800">Lịch sử thanh toán</h3>
+                <div className="text-tiny">
+                  Đã trả: <span className="font-bold text-emerald-600">{order.paid_amount.toLocaleString('vi-VN')} ₫</span> / Còn nợ: <span className="font-bold text-red-500">{order.debt_amount.toLocaleString('vi-VN')} ₫</span>
+                </div>
+              </div>
+
+              {payments.length === 0 ? (
+                <div className="p-6 border-2 border-dashed border-gray-100 rounded-xl text-center text-gray-400 italic text-tiny">
+                  Chưa ghi nhận giao dịch thanh toán nào.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {payments.map(pay => (
+                    <div key={pay.id} className="flex justify-between items-start gap-2 p-3 bg-gray-25 border border-gray-100 rounded-xl">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-body-md font-bold text-gray-800">
+                            {pay.payment_method === 'cash' ? 'Tiền mặt' : pay.payment_method === 'bank_transfer' ? 'Chuyển khoản' : 'Thanh toán POS'}
+                          </span>
+                          <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Thành công</span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 break-words">Ngày: {new Date(pay.payment_date).toLocaleDateString('vi-VN')} | Ref: {pay.reference_no}</p>
+                        {pay.notes && <p className="text-[11px] text-gray-500 italic break-words">Ghi chú: {pay.notes}</p>}
+                      </div>
+                      <span className="text-body-md font-black text-blue-500 whitespace-nowrap">+{pay.amount.toLocaleString('vi-VN')} ₫</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {order.debt_amount > 0 && order.status !== 'cancelled' && (
+                <button
+                  onClick={() => { setPayModalMode('record'); setShowPayModal(true) }}
+                  className="mt-5 w-full py-2.5 rounded-lg border-2 border-dashed border-gray-200 text-blue-500 font-bold text-body-md hover:bg-blue-50/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  <PlusCircle size={16} />
+                  Thêm giao dịch thanh toán
+                </button>
+              )}
+            </section>
+          </div>
+        </div>
+
+        {/* Tiến trình đơn — đưa xuống cuối */}
         {order.status !== 'cancelled' ? renderStepper() : (
           <section className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
             <Ban className="text-red-600 mt-0.5 shrink-0" size={18} />
@@ -740,230 +957,6 @@ export default function OrderDetailPage() {
             </div>
           </section>
         )}
-
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-          {/* Left panel: Details columns */}
-          <div className="xl:col-span-8 space-y-8">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              
-              {/* Shipping info */}
-              <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-                <h3 className="text-body-lg font-bold text-gray-800 mb-5">Thông tin vận chuyển</h3>
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <User size={16} className="text-blue-500 mt-0.5" />
-                    <div>
-                      <p className="text-tiny text-gray-400">Khách hàng</p>
-                      <p className="text-body-md font-bold text-gray-800">{order.customers?.farm_name}</p>
-                      <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold rounded uppercase mt-0.5 ${
-                        order.customers?.value_tier === 'vip' ? 'bg-blue-500 text-gray-0' : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {order.customers?.value_tier}
-                      </span>
-                    </div>
-                  </div>
-
-                  {order.owner?.phone && (
-                    <div className="flex items-start gap-3">
-                      <Smartphone size={16} className="text-blue-500 mt-0.5" />
-                      <div>
-                        <p className="text-tiny text-gray-400">Điện thoại</p>
-                        <p className="text-body-md font-semibold text-gray-700">{order.owner.phone}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-start gap-3">
-                    <MapPin size={16} className="text-blue-500 mt-0.5" />
-                    <div>
-                      <p className="text-tiny text-gray-400">Địa chỉ giao hàng</p>
-                      <p className="text-body-md text-gray-700 font-medium leading-snug">{order.delivery_address || 'Nhận tại quầy POS'}</p>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-gray-50 space-y-2 text-tiny">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Kho xuất hàng:</span>
-                      <span className="font-bold text-gray-700">{order.warehouses?.name || 'Kho Tổng Miền Nam'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Nhân viên phụ trách:</span>
-                      <span className="font-bold text-gray-700">{order.owner?.full_name || 'Hệ thống'}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Product items lists */}
-              <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-body-lg font-bold text-gray-800">Sản phẩm đặt hàng</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-tiny bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-bold">{lines.length} sản phẩm</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3.5 max-h-[260px] overflow-y-auto pr-1">
-                  {lines.map(line => (
-                    <div key={line.id} className="flex justify-between items-center pb-3 border-b border-gray-50">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-body-md font-bold text-gray-800 leading-tight">{line.product_snapshot?.name || 'Sản phẩm'}</p>
-                        <p className="text-tiny text-gray-400 mt-0.5 font-semibold">
-                          {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || 'lọ'} x {line.unit_price.toLocaleString('vi-VN')} ₫
-                          {line.discount > 0 && <span className="text-red-500 ml-1.5">-{(line.discount * line.quantity).toLocaleString('vi-VN')} ₫</span>}
-                        </p>
-                      </div>
-                      <span className="text-body-md font-bold text-gray-800 ml-2 shrink-0">{line.line_total.toLocaleString('vi-VN')} ₫</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-4 space-y-2 text-tiny mt-4">
-                  <div className="flex justify-between text-gray-400">
-                    <span>Tạm tính</span>
-                    <span className="font-medium text-gray-700">{order.subtotal.toLocaleString('vi-VN')} ₫</span>
-                  </div>
-                  {order.discount_total > 0 && (
-                    <div className="flex justify-between text-red-500">
-                      <span>Chiết khấu đơn</span>
-                      <span className="font-medium">-{order.discount_total.toLocaleString('vi-VN')} ₫</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-end pt-2 border-t border-dashed border-gray-200">
-                    <span className="text-body-md font-bold text-gray-800">TỔNG CỘNG</span>
-                    <span className="text-body-lg font-black text-blue-500">{order.grand_total.toLocaleString('vi-VN')} ₫</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Payment history section */}
-            <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-body-lg font-bold text-gray-800">Lịch sử thanh toán</h3>
-                <div className="text-tiny">
-                  Đã trả: <span className="font-bold text-emerald-600">{order.paid_amount.toLocaleString('vi-VN')} ₫</span> / Còn nợ: <span className="font-bold text-red-500">{order.debt_amount.toLocaleString('vi-VN')} ₫</span>
-                </div>
-              </div>
-
-              {payments.length === 0 ? (
-                <div className="p-8 border-2 border-dashed border-gray-100 rounded-xl text-center text-gray-400 italic">
-                  Chưa ghi nhận giao dịch thanh toán nào cho đơn hàng này.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {payments.map(pay => (
-                    <div key={pay.id} className="flex justify-between items-center p-4 bg-gray-25 border border-gray-100 rounded-xl">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-body-md font-bold text-gray-800 capitalize">
-                            {pay.payment_method === 'cash' ? 'Tiền mặt' : pay.payment_method === 'bank_transfer' ? 'Chuyển khoản' : 'Thanh toán POS'}
-                          </span>
-                          <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Thành công</span>
-                        </div>
-                        <p className="text-tiny text-gray-400">Ngày: {new Date(pay.payment_date).toLocaleDateString('vi-VN')} | Ref: {pay.reference_no}</p>
-                        {pay.notes && <p className="text-tiny text-gray-500 italic mt-1">Ghi chú: {pay.notes}</p>}
-                      </div>
-                      <span className="text-body-lg font-black text-blue-500">+{pay.amount.toLocaleString('vi-VN')} ₫</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {order.debt_amount > 0 && order.status !== 'cancelled' && (
-                <button
-                  onClick={() => { setPayModalMode('record'); setShowPayModal(true) }}
-                  className="mt-6 w-full py-2.5 rounded-lg border-2 border-dashed border-gray-200 text-blue-500 font-bold text-body-md hover:bg-blue-50/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                >
-                  <PlusCircle size={16} />
-                  Thêm giao dịch thanh toán
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Right panel: simulated print receipt invoice */}
-          <div className="xl:col-span-4 sticky top-24">
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-              <div className="bg-gray-25 p-4 border-b border-gray-100 flex items-center justify-between">
-                <span className="text-tiny font-bold text-gray-400 uppercase tracking-wider">Xem trước hóa đơn</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => window.open(`/print-preview?type=invoice&id=${id}`, '_blank')}
-                    title="In hóa đơn A4 chuyên nghiệp"
-                    className="w-8 h-8 rounded bg-white border border-gray-200 flex items-center justify-center hover:text-blue-500 transition-colors"
-                  >
-                    <Printer size={14} />
-                  </button>
-                </div>
-              </div>
-
-              {/* simulated thermopaper print layout */}
-              <div className="p-8 bg-gray-50 shadow-inner">
-                <div className="bg-white border border-gray-200 p-6 rounded-lg text-center font-mono text-tiny text-gray-700 max-w-[300px] mx-auto">
-                  <div className="mb-4">
-                    <h4 className="text-body-lg font-bold text-blue-500">SANH LONG VETCO</h4>
-                    <p className="text-[10px] text-gray-400">789 Veterinary Blvd, TP. Hồ Chí Minh</p>
-                    <p className="text-[10px] text-gray-400">Hotline: 1900 6789</p>
-                  </div>
-                  
-                  <div className="text-body-md font-bold border-y border-dashed border-gray-200 py-2 mb-4">
-                    HÓA ĐƠN BÁN LẺ
-                    <div className="text-[10px] font-normal mt-0.5">Mã đơn: #{order.order_code}</div>
-                    <div className="text-[10px] font-normal">Ngày: {new Date(order.created_at).toLocaleDateString('vi-VN')}</div>
-                  </div>
-
-                  <div className="space-y-2 text-left mb-4">
-                    {lines.map(line => (
-                      <div key={line.id} className="flex justify-between text-[11px]">
-                        <span>{line.product_snapshot?.name || 'SP'} (x{line.quantity.toLocaleString('vi-VN')})</span>
-                        <span>{line.line_total.toLocaleString('vi-VN')}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="border-t border-dashed border-gray-200 pt-2 space-y-1 mb-4 text-left">
-                    <div className="flex justify-between text-[11px]">
-                      <span>Tạm tính:</span>
-                      <span>{order.subtotal.toLocaleString('vi-VN')}</span>
-                    </div>
-                    {order.discount_total > 0 && (
-                      <div className="flex justify-between text-[11px] text-red-500">
-                        <span>Giảm giá:</span>
-                        <span>-{order.discount_total.toLocaleString('vi-VN')}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-body-md font-bold pt-2 border-t border-dashed border-gray-200">
-                      <span>TỔNG CỘNG:</span>
-                      <span>{order.grand_total.toLocaleString('vi-VN')}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-center justify-center space-y-2 mt-4 pt-4 border-t border-dashed border-gray-200">
-                    <div className="w-24 h-24 bg-gray-50 border border-gray-100 p-2 rounded flex items-center justify-center relative">
-                      <div className="w-full h-full opacity-10" style={{ backgroundImage: 'radial-gradient(#1e5a9c 1px, transparent 1px)', backgroundSize: '4px 4px' }}></div>
-                      <Boxes className="absolute text-blue-500 animate-pulse" size={32} />
-                    </div>
-                    <p className="text-[9px] text-gray-400">Cảm ơn quý khách đã tin dùng!</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5">
-                <button
-                  onClick={() => {
-                    setAlertMsg({ type: 'success', text: 'Đã gửi hóa đơn qua Zalo/SMS thành công.' })
-                  }}
-                  className="w-full h-11 bg-blue-500 text-white rounded-lg font-bold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2"
-                >
-                  <Send size={16} />
-                  Gửi hóa đơn qua Zalo/SMS
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Dynamic floating actions menu in bottom-right matching Stitch */}
         <div className="fixed bottom-10 right-10 flex flex-col items-end gap-3 z-50">

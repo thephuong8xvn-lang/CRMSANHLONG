@@ -1633,3 +1633,25 @@ Mục tiêu: nâng cấp từ "production-polished" lên "enterprise-grade SaaS 
 - **Tác động:** toàn app gọn lại đúng thiết kế — đáng kể nhất là `body-md` 16→14 và `tiny` 16→11 (caption/SKU/badge). `body-lg` giữ 16 nên các tiêu đề nhấn không đổi.
 - **Phạm vi:** CHỈ thêm fontSize tokens, KHÔNG đổi màu/spacing/logic. Các sửa hardcode `text-[13px]/[11px]` ở 5 modal kho (bổ sung 1–2) giữ nguyên — vẫn khớp thang mới (13≈label-md, 11=tiny).
 - **⚠️ Chưa làm:** màu tuỳ biến chưa định nghĩa (`gray-755/850/550`, `red-650/750`) cũng là no-op → chữ inherit màu; là task nhỏ riêng nếu user muốn (không gấp).
+
+### 2026-06-15 — Sửa lỗi "con" ở bản in + nâng cấp layout trang Chi tiết đơn hàng
+
+**Bối cảnh:** User báo bản in hóa đơn (`/print-preview`) cột **SL** hiển thị thừa chữ **"con"** (vd "6,30 con") dù cột ĐVT đã có "gói"; và muốn bố trí lại trang Chi tiết đơn hàng cho gọn/khoa học. `tsc -b` PASS; 36/37 unit test pass (1 fail `queryClient.test.ts` về `qk.dashboard.stats` — tồn tại sẵn, không liên quan).
+
+- **Gốc lỗi "con":** `formatQuantity(val, unit)` trong `DisplaySettingsContext.tsx` dùng `unit || default_units_count` → chuỗi rỗng `''` (PrintLayout cố ý truyền để bỏ đơn vị) là falsy nên rơi về `default_units_count = 'con'`. **KHÔNG phải** từ cấu hình trang in.
+  - **Fix:** phân biệt `unit === undefined` (dùng đơn vị mặc định) với `unit === ''` (bỏ đơn vị, trả số trần). Áp dụng đồng loạt cho 6 chỗ gọi trong `PrintLayout.tsx` (hóa đơn/nhập/trả/xuất). Export Excel/PDF dùng helper `qty()` riêng → vốn đã đúng.
+- **Layout `OrderDetailPage.tsx` (thuần UI):** thứ tự mới từ trên xuống: (1) Thông tin vận chuyển gộp **1 dải ngang** lên đầu (KH+tier · SĐT · Địa chỉ giao · Kho xuất · NV); (2) lưới 2 cột **Sản phẩm đặt hàng (col-8) | Xem trước hóa đơn (col-4)**; (3) tiến trình (stepper) **đưa xuống cuối**; (4) **Lịch sử thanh toán** dưới tiến trình.
+  - "Sản phẩm đặt hàng" render bằng **DataTable.tsx** (kế thừa) — STT · Tên+SKU · SL · Đơn giá · CK · Thành tiền; `pageSize={0}` `card={false}` → hiện hết mọi SP, mỗi SP 1 dòng, **bỏ scroll** (trước có `max-h-[260px] overflow-y-auto`). Tổng (Tạm tính/Chiết khấu/Tổng cộng) đặt dưới bảng.
+- **Phạm vi:** KHÔNG đụng RPC (`fn_confirm_order`/`fn_advance_delivery`/`fn_complete_delivery_payment`/`fn_cancel_order`/`fn_create_sales_return`), `editPerms`/`isAdmin`/`canStaffAct`, truy vấn dữ liệu hay DB. Mọi điều kiện hiển thị nút giữ nguyên.
+
+### 2026-06-15 (bổ sung) — Tinh chỉnh layout đợt 2 + render logo bản in
+
+**Bối cảnh:** User phản hồi sau đợt 1: tên KH ở dải ngang bị đè/cắt; khung quá rộng; muốn 2 cột (trái=SP, phải=thông tin + gộp luôn Lịch sử thanh toán); bỏ hẳn khối "Xem trước hóa đơn" (biên lai giả), đưa nút in lên thanh trên cùng; bảng SP dòng còn thưa → thu hẹp + bổ sung Lô/HSD. Bản in (Hình 2) đã đúng nhưng chưa hiện logo dù đã cấu hình. `tsc -b` PASS.
+
+- **`OrderDetailPage.tsx`:**
+  - **Bỏ dải vận chuyển ngang trên cùng** và **bỏ panel "Xem trước hóa đơn"** (biên lai nhiệt giả + nút Zalo/SMS — gỡ luôn icon `Send`, `Boxes`).
+  - Bố cục mới: lưới 2 cột — **trái (col-8)** = bảng SP; **phải (col-4)** = card "Thông tin đơn hàng" (KH/SĐT/Địa chỉ/Kho/NV, dùng `break-words` để tên KH **không bị cắt**) + card "Lịch sử thanh toán" (gộp xuống đây). **Stepper** vẫn ở cuối trang.
+  - **Nút "In hóa đơn"** chuyển lên thanh thao tác trên cùng (mở `/print-preview?type=invoice&id=`).
+  - Bảng SP: thay DataTable component bằng **bảng `<table>` gọn cùng phong cách DataTable** (header `bg-gray-25 text-tiny uppercase`, `divide-y divide-gray-50`, `text-[13px]`) nhưng **padding `py-1.5`** (thu hẹp dòng) + dòng phụ **SKU · Lô · HSD** dưới tên SP. Lấy Lô/HSD qua `order_line_allocations → stock_lots` trong `loadOrderDetails` (lô đầu tiên/dòng, giống bản in).
+- **`PrintLayout.tsx` — logo:** `renderHeader` giờ render `<img src={header.logoUrl}>` (w/h 10, object-contain) nếu có `print_company_logo_url`, ngược lại fallback ô chữ "SL". `header = data.headerConfig || printConfig`; PrintPreview không truyền headerConfig nên dùng `printConfig` (đọc từ `display_settings`). **Lưu ý chưa làm:** export **PDF** (`documentPdf.tsx`) vẫn chưa nhúng logo (cần react-pdf `Image` + lo CORS) — tách riêng nếu user cần.
+- **Phạm vi:** thuần UI + 1 truy vấn đọc allocations để hiển thị; KHÔNG đụng RPC/phân quyền/DB.
