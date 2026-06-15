@@ -182,6 +182,16 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **#3 Mặt tài chính trả NCC — HOÀN THÀNH** (migration `20260705000000_purchase_return_finance.sql`, ĐÃ apply remote + verify + **smoke-test rollback PASS**). Hạch toán chuẩn kế toán (user duyệt): trigger `fn_finance_on_purchase_return` (AFTER UPDATE) ghi khi rời 'draft'→confirmed/completed: `credit_note`/`next_po_offset` → giảm `suppliers.current_debt_payable`; `cash_refund` → ghi THU sổ quỹ (cashbook inflow, quỹ mặc định chi nhánh, **không gắn session**, danh mục THU-HOAN-NCC), không đụng công nợ. Hủy phiếu đã ghi → đảo ngược (cộng lại nợ / ghi CHI-HOAN-NCC). Smoke-test: credit_note debt −1000 + lô −1; cash_refund 1 dòng inflow 1000 + debt delta 0.
 - ✅ Đã tốt giữ nguyên: phiếu nhập (status guard `20260622` + công nợ `20260623`); transfer chống race (FOR UPDATE); kiểm tồn khả dụng trước xuất.
 
+#### 🛒 Nâng cấp /pos: BÁN THEO LÔ (chọn lô thủ công) + tìm kiếm + luồng SL + tiện dụng — 2026-06-15 `[HOÀN THÀNH]`
+**3 vòng lặp theo phản hồi test. `npm run build` PASS.**
+- [x] **#1 POS nhận biết LÔ (HSD):** `fetchStockData` nạp `id, lot_number, expiry_date` → `productLots` (sắp FEFO). Badge CẬN HẠN (≤30 ngày)/QUÁ HẠN/BÁN TRƯỚC.
+- [x] **#2 Khung tìm kiếm rộng + font lớn**, dời vào thanh xanh POS (vòng 2).
+- [x] **#3 Luồng nhập SL:** chọn lô (Enter/click) → ô SL luôn hiển thị sẵn, focus + prefill "1" → Enter → thêm → quay lại ô tìm; Esc hủy.
+- [x] **#4 Tiện dụng:** chống double-submit (`submittingRef`); **Alt+1..9** chuyển tab; **Thêm nhanh KH** tại POS (RLS owner=auth.uid()).
+- [x] **CHỌN LÔ THỦ CÔNG (vòng 3 — có migration `20260706000000_pos_manual_lot_selection.sql`, ĐÃ apply + smoke-test rollback):** `order_lines + lot_id`; `fn_pos_build_draft` ghi lô + chặn oversell THEO LÔ + validate lô thuộc kho; trigger xác nhận trừ ĐÚNG lô đã chọn (NULL → FEFO). Lý do: KH không nhận lô cận date. FE: dropdown mỗi lô 1 mục chọn được; giỏ mỗi lô 1 dòng; vượt tồn lô → disable Thanh toán.
+- [x] **Bỏ header + logo trên POS (vòng 3):** `Layout` prop `hideTopBar`; POS `h-screen`, chiếm trọn màn hình.
+- **Rà soát:** quick-add KH an toàn; trừ kho đúng lô đã chọn (smoke-test xác nhận lô FEFO không bị đụng). **Hở:** `fn_pos_apply_lines` (sửa đơn) chưa truyền lot_id → sửa đơn re-FEFO (chưa sai toàn vẹn). Xem [[feature-pos-draft-persistence]].
+
 #### 🔍 Kiểm tra toàn diện 2026-05-29 — Order Module Bugfix
 
 **Đã phát hiện & fix (migration `20260529000016_fix_orders_rls_and_relations.sql`):**

@@ -34,6 +34,30 @@ Tái dùng `posDraftStorage.ts` — thêm keys `goodsReceiptDraftKey/stockTransf
 - **🐞 Vá khôi phục phiếu nhập (StrictMode):** restore phải persist+khôi phục `selectedPOId`+`selectedPO` (cờ gating màn nhập, fallback dựng lại cho nháp cũ). **ROOT CAUSE quan trọng:** dự án bật `<StrictMode>` → effect chạy 2 lần → cờ skip-một-lần (`modeInitRef`) bị phá, effect reset theo `receiptMode` xóa item đã khôi phục. **Fix: so prev-value `prevModeRef.current === receiptMode`, KHÔNG dùng boolean một-lần.** 2 modal kho an toàn (effect chỉ nạp lot dropdown, reset lines chỉ trong onChange người dùng).
 - **BÀI HỌC chung:** mọi effect "reset state khi X đổi" phải so sánh prev-value qua ref, không dùng cờ boolean chạy-một-lần (StrictMode double-invoke sẽ phá).
 
+## Nâng cấp /pos lô-FEFO + tiện dụng ✅ 2026-06-15 (frontend-only)
+- **#1 Lô/FEFO/HSD:** `fetchStockData` nạp thêm lô (`id,lot_number,expiry_date`) → `productLots` sắp FEFO; helper `getLotSummary`/`getFefoInfo`/`daysToExpiry` (ngưỡng cận hạn 30 ngày). Hiện badge CẬN/QUÁ HẠN + lô bán ở ô tìm + dòng giỏ. Server vẫn trừ FEFO khi xác nhận. Chọn lô thủ công = Phase 2 (cần RPC nhận lot_id).
+- **#2** ô tìm rộng 640px, font 15px. **#3** luồng Enter→nhập SL→Enter (pendingProduct + qtyInputRef; `addToCart(product, qty)`). **#4** double-submit guard (`submittingRef`), Alt+1..9 chuyển tab (`tabsRef`), thêm nhanh KH (modal, RLS owner=auth.uid()).
+- **"60 sai về logic"** thực chất = muốn thấy lô (SP có nhiều lô khác HSD), không phải sai số. Đã làm minh bạch lô.
+
+## Nâng cấp /pos vòng 2 — layout + lô tách dòng ✅ 2026-06-15 (sau test, frontend-only, build PASS)
+User chọn **FEFO tự tách dòng** (KHÔNG migration; backend vẫn trừ FEFO ở `fn_allocate_lots_fefo` 20260624). Sửa theo 5 góp ý:
+- **#5 Dời ô tìm kiếm vào THANH XANH POS** (bỏ `searchElement` Layout — truyền `<span hidden/>`). Header xanh tách **2 hàng**: hàng 1 = logo + `productSearchBar` (flex-1) + nút thao tác; hàng 2 (`bg-[#006cc0] h-9`) = tab hóa đơn. Mục đích: đủ rộng, hết che chữ (#1).
+- **#4 Ô SỐ LƯỢNG luôn mount** (không còn toggle remount) → `qtyInputRef` luôn hợp lệ, focus chắc chắn sau Enter; mặc định prefill `'1'` + `select()` để gõ đè. `choosePendingProduct()` dùng chung cho Enter & click. Sửa lỗi "phải dùng chuột mới thêm được".
+- **#2 Dropdown hiện CHI TIẾT TỪNG LÔ** (thay "2 lô" gộp): mỗi lô 1 dòng (Lô · HSD · tồn + badge BÁN TRƯỚC/CẬN HẠN/QUÁ HẠN). Tên SP `break-words` hết truncate.
+- **#3 Giỏ hàng tách dòng theo lô**: helper `getFefoAllocation(productId, qty)` → mỗi lô 1 dòng (Lô · HSD · SL phân bổ) dưới tên SP + cảnh báo `shortfall`. Thay `getFefoInfo`/`getLotSummary` (đã xóa).
+- **Lưu ý:** allocation giỏ tính theo `item.quantity` từng dòng (trùng lô nếu cùng SP 2 dòng thường — hiếm). Chọn lô thủ công vẫn là Phase 2 (cần migration order_lines.lot_id + sửa trigger) — user đã chốt KHÔNG làm.
+
+## Nâng cấp /pos vòng 3 — CHỌN LÔ THỦ CÔNG ✅ 2026-06-15 (có migration, build PASS)
+User đổi ý từ FEFO-auto → **cho NV chọn lô** (lý do: một số KH không nhận lô cận date). Đây là Phase 2 đã làm.
+- **Migration `20260706000000_pos_manual_lot_selection.sql`** (ĐÃ apply remote + smoke test rollback PASS + ghi schema_migrations):
+  - `order_lines + lot_id UUID` (nullable, FK stock_lots). NULL = FEFO như cũ (tương thích ngược, quà KM/SP không lô).
+  - `fn_pos_build_draft` (override bản 20260703): ghi lot_id + **validate lô thuộc kho xuất & active** + **chặn oversell THEO TỪNG LÔ** (dòng có lô so tồn đúng lô; dòng không lô so tồn tổng SP). Giữ guard kho-chi-nhánh.
+  - `fn_auto_stock_on_order_confirm` (override 20260624): dòng có lot_id → trừ **ĐÚNG lô đã chọn** (ghi order_line_allocations + stock_movements + giảm qoh, KHÔNG đụng reserved); dòng NULL → FEFO. Hủy đơn vẫn hồi kho đúng (dựa order_line_allocations).
+  - **Smoke test** (DO block + RAISE rollback, cần `set_config('app.order_rpc','on',true)` để qua guard `fn_guard_order_status`): chọn lô_b → trừ đúng lô_b, lô FEFO lô_a KHÔNG đổi. ✅
+- **Frontend POSPage**: `CartItem + lotId/lotNumber/lotExpiry/lotAvailable`. `searchLotEntries` phẳng hóa SP×lô → dropdown **mỗi lô 1 mục chọn được** (↑↓/Enter/click), nhãn BÁN TRƯỚC (lô FEFO đầu). `addToCart(product, qty, lot)` gộp theo (SP,lô,giá). **Giỏ: mỗi lô 1 dòng riêng** (cùng SP khác lô = 2 dòng). **oversellLines tính theo lô** (tồn tươi từ productLots) → nút **Thanh toán bị disable** khi vượt tồn lô. Submit `lines[].lot_id`.
+- **#3 Bỏ header trên cùng + logo**: `Layout` thêm prop `hideTopBar` (ẩn `<header>` nav, main `overflow-hidden`); POS truyền `hideTopBar` + `h-screen`; bỏ luôn `<h1>SANH LONG POS` trong thanh xanh. Muốn mở Dashboard → mở tab trình duyệt khác.
+- **⚠️ Còn hở (ngoài phạm vi):** `fn_pos_apply_lines` (luồng SỬA đơn) chưa truyền lot_id → sửa đơn có lô sẽ re-FEFO. Không sai toàn vẹn (vẫn trừ kho đúng tổng) nhưng mất lựa chọn lô. Cân nhắc vá khi đụng tới trang sửa đơn.
+
 - **Rà soát toàn diện kho (Phần B): CHƯA làm** — chờ user duyệt.
 
 Liên quan: [[project-state]], [[feedback-conventions]].

@@ -75,9 +75,21 @@ interface Product {
   product_active_ingredients?: ProductActiveIngredient[]
 }
 
+interface ProductLot {
+  lotId: string
+  lotNumber: string
+  expiry: string | null   // expiry_date (HSD), null = không hạn
+  available: number       // quantity_on_hand - quantity_reserved
+}
+
 interface CartItem {
   id: string
   product: Product
+  // Lô cụ thể NV chọn bán (null = SP không quản lý lô / quà KM → server FEFO).
+  lotId?: string | null
+  lotNumber?: string
+  lotExpiry?: string | null
+  lotAvailable?: number   // tồn khả dụng của lô lúc thêm (chỉ để tham chiếu; kiểm tra dùng giá trị tươi)
   quantity: number
   unitPrice: number
   discountPercent: number // manual discount in percent
@@ -181,6 +193,8 @@ export default function POSPage() {
   const [customerDebt, setCustomerDebt] = useState(0)
   const [products, setProducts] = useState<Product[]>([])
   const [productStock, setProductStock] = useState<Record<string, number>>({})
+  // Lô theo SP (đã sắp FEFO theo HSD tăng dần) — để hiện HSD/cảnh báo cận hạn tại POS.
+  const [productLots, setProductLots] = useState<Record<string, ProductLot[]>>({})
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('')
   const [categories, setCategories] = useState<{ id: string; code: string; name: string }[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
@@ -227,7 +241,17 @@ export default function POSPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const debouncedSearch = useDebouncedValue(searchTerm, 300)
   const [focusedSearchIndex, setFocusedSearchIndex] = useState(-1)
+  // Luồng nhập số lượng: chọn LÔ (Enter) → nhập SL → Enter → thêm vào hóa đơn.
+  const [pendingProduct, setPendingProduct] = useState<Product | null>(null)
+  const [pendingLot, setPendingLot] = useState<ProductLot | null>(null)
+  const [pendingQty, setPendingQty] = useState('')
+  const qtyInputRef = useRef<HTMLInputElement>(null)
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
+  // Thêm nhanh khách hàng mới ngay tại POS
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [newCustName, setNewCustName] = useState('')
+  const [newCustPhone, setNewCustPhone] = useState('')
+  const [addingCustomer, setAddingCustomer] = useState(false)
   // Tùy chọn hiển thị POS — nhớ lựa chọn của thu ngân giữa các lần mở (localStorage).
   const readPref = (k: string, def: boolean) => {
     try { const v = localStorage.getItem(k); return v === null ? def : v === '1' } catch { return def }
@@ -256,6 +280,8 @@ export default function POSPage() {
   const [createdOrderCode, setCreatedOrderCode] = useState('')
   const [createdOrderId, setCreatedOrderId] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Chống bấm thanh toán 2 lần (Enter/F9 dồn nhanh trước khi state cập nhật → 2 đơn trùng).
+  const submittingRef = useRef(false)
 
   // Focus search input
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -283,6 +309,9 @@ export default function POSPage() {
   // setCart/updateActiveTab luôn ghi đúng tab hiện tại.
   const activeTabIdRef = useRef(activeTabId)
   activeTabIdRef.current = activeTabId
+  // Ref luôn mới cho danh sách tab — dùng trong phím tắt Alt+số (effect deps []).
+  const tabsRef = useRef(tabs)
+  tabsRef.current = tabs
 
   const cart = activeTab.cart
   const invoiceDiscount = activeTab.invoiceDiscount
@@ -397,7 +426,15 @@ export default function POSPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey && e.key === '/') || e.key === 'F2') {
         e.preventDefault()
-        searchInputRef.current?.focus()
+        setPendingProduct(null)  // thoát chế độ nhập SL nếu đang mở
+        setPendingLot(null)
+        setTimeout(() => searchInputRef.current?.focus(), 0)
+      }
+      // Alt+1..9: chuyển nhanh giữa các hóa đơn đang mở.
+      if (e.altKey && /^[1-9]$/.test(e.key)) {
+        const idx = parseInt(e.key, 10) - 1
+        const t = tabsRef.current[idx]
+        if (t) { e.preventDefault(); setActiveTabId(t.id) }
       }
       if (e.key === 'F3') {
         e.preventDefault()
@@ -576,23 +613,42 @@ export default function POSPage() {
       // Không xác định được kho chính → để tồn rỗng (không cho POS bán mù).
       if (!mainWhId) {
         setProductStock({})
+        setProductLots({})
         return
       }
 
       const stockQuery = supabase
         .from('stock_lots')
-        .select('product_id, quantity_on_hand, quantity_reserved')
+        .select('id, product_id, lot_number, expiry_date, quantity_on_hand, quantity_reserved')
         .eq('status', 'active')
         .eq('warehouse_id', mainWhId)
 
       const { data: stockData, error } = await stockQuery
       if (!error && stockData) {
         const stockMap: Record<string, number> = {}
+        const lotsMap: Record<string, ProductLot[]> = {}
         stockData.forEach((item: any) => {
-          const avail = item.quantity_on_hand - item.quantity_reserved
+          const avail = (item.quantity_on_hand || 0) - (item.quantity_reserved || 0)
           stockMap[item.product_id] = (stockMap[item.product_id] || 0) + avail
+          if (avail > 0) {
+            if (!lotsMap[item.product_id]) lotsMap[item.product_id] = []
+            lotsMap[item.product_id].push({
+              lotId: item.id,
+              lotNumber: item.lot_number || '—',
+              expiry: item.expiry_date || null,
+              available: avail,
+            })
+          }
         })
+        // Sắp FEFO: HSD tăng dần (không hạn xuống cuối) — khớp thứ tự trừ kho server.
+        Object.values(lotsMap).forEach(lots => lots.sort((a, b) => {
+          if (a.expiry && b.expiry) return a.expiry.localeCompare(b.expiry)
+          if (a.expiry) return -1
+          if (b.expiry) return 1
+          return 0
+        }))
         setProductStock(stockMap)
+        setProductLots(lotsMap)
       }
     } catch (err) {
       console.error('Error fetching stock data:', err)
@@ -801,8 +857,9 @@ export default function POSPage() {
     return matched.slice(0, 50)
   }, [customers, customerSearchQuery])
 
-  // Add to cart helper
-  const addToCart = useCallback((product: Product) => {
+  // Add to cart helper — kèm LÔ đã chọn (null = SP không lô / FEFO).
+  const addToCart = useCallback((product: Product, qty: number = 1, lot: ProductLot | null = null) => {
+    const addQty = qty > 0 ? qty : 1
     let price = 0
     if (product.price_list_items && product.price_list_items.length > 0) {
       const itemPrice = product.price_list_items.find(
@@ -819,20 +876,28 @@ export default function POSPage() {
     }
 
     setCart(prev => {
+      // Gộp dòng khi cùng SP + cùng LÔ + cùng giá + không CK/không sửa giá.
       const existingIndex = prev.findIndex(
         item => item.product.id === product.id &&
+                (item.lotId ?? null) === (lot?.lotId ?? null) &&
                 item.unitPrice === price &&
                 item.discountPercent === 0 &&
                 !item.isPriceOverridden
       )
       if (existingIndex > -1) {
         const updated = [...prev]
-        updated[existingIndex] = { ...updated[existingIndex], quantity: updated[existingIndex].quantity + 1 }
+        updated[existingIndex] = { ...updated[existingIndex], quantity: updated[existingIndex].quantity + addQty }
         return updated
       }
       return [
         ...prev,
-        { id: genId(), product, quantity: 1, unitPrice: price, discountPercent: 0, isPriceOverridden: false }
+        {
+          id: genId(), product, quantity: addQty, unitPrice: price, discountPercent: 0, isPriceOverridden: false,
+          lotId: lot?.lotId ?? null,
+          lotNumber: lot?.lotNumber,
+          lotExpiry: lot?.expiry ?? null,
+          lotAvailable: lot?.available,
+        }
       ]
     })
   }, [selectedPriceListId])
@@ -964,22 +1029,33 @@ export default function POSPage() {
   const isCreditLimitExceeded = !!selectedCustomer && debtAmount > 0 &&
     (customerDebt + debtAmount > selectedCustomer.credit_limit)
 
-  // Các SP trong giỏ vượt tồn kho chính (gộp mọi dòng cùng SP, gồm quà tặng/KM).
-  // Khớp đúng số tồn backend enforce ở fn_pos_build_draft → chặn bán âm cả 2 mode.
+  // Vượt tồn — TÍNH THEO TỪNG LÔ (khớp chặn server fn_pos_build_draft bản 20260706):
+  //   • dòng có lô → gộp theo lô, so tồn khả dụng tươi của ĐÚNG lô đó (productLots).
+  //   • dòng không lô (quà/SP không lô) → gộp theo SP, so tồn tổng SP (productStock).
   const oversellLines = useMemo(() => {
-    const reqByProduct = new Map<string, { name: string; req: number }>()
+    const byKey = new Map<string, { label: string; req: number; avail: number }>()
     cart.forEach(item => {
-      const cur = reqByProduct.get(item.product.id)
-      if (cur) cur.req += item.quantity
-      else reqByProduct.set(item.product.id, { name: item.product.name, req: item.quantity })
+      if (item.lotId) {
+        const key = 'lot:' + item.lotId
+        // tồn tươi của lô từ productLots (lô đã bán hết sẽ không còn → avail 0)
+        const freshLot = (productLots[item.product.id] || []).find(l => l.lotId === item.lotId)
+        const avail = freshLot ? freshLot.available : 0
+        const cur = byKey.get(key)
+        if (cur) cur.req += item.quantity
+        else byKey.set(key, { label: `${item.product.name} / Lô ${item.lotNumber || '—'}`, req: item.quantity, avail })
+      } else {
+        const key = 'prod:' + item.product.id
+        const cur = byKey.get(key)
+        if (cur) cur.req += item.quantity
+        else byKey.set(key, { label: item.product.name, req: item.quantity, avail: productStock[item.product.id] || 0 })
+      }
     })
-    const out: { name: string; req: number; avail: number; short: number }[] = []
-    reqByProduct.forEach(({ name, req }, id) => {
-      const avail = productStock[id] || 0
-      if (req > avail) out.push({ name, req, avail, short: req - avail })
+    const out: { label: string; req: number; avail: number; short: number }[] = []
+    byKey.forEach(({ label, req, avail }) => {
+      if (req > avail) out.push({ label, req, avail, short: req - avail })
     })
     return out
-  }, [cart, productStock])
+  }, [cart, productStock, productLots])
 
   // Autocomplete products
   const searchResults = useMemo(() => products.filter(p => {
@@ -987,6 +1063,18 @@ export default function POSPage() {
     return p.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
            p.sku.toLowerCase().includes(debouncedSearch.toLowerCase())
   }), [products, debouncedSearch])
+
+  // Phẳng hóa theo LÔ — NV chọn ĐÚNG lô (mỗi lô 1 mục; SP không lô → 1 mục lot=null).
+  // ↑↓ duyệt theo mục này, Enter chọn mục → nhập số lượng.
+  const searchLotEntries = useMemo(() => {
+    const entries: { product: Product; lot: ProductLot | null }[] = []
+    for (const p of searchResults) {
+      const lots = productLots[p.id] || []
+      if (lots.length === 0) entries.push({ product: p, lot: null })
+      else for (const lot of lots) entries.push({ product: p, lot })
+    }
+    return entries
+  }, [searchResults, productLots])
 
   // Keyboard navigation for Autocomplete
   useEffect(() => {
@@ -998,27 +1086,60 @@ export default function POSPage() {
   }, [debouncedSearch])
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const n = searchLotEntries.length
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      if (searchResults.length > 0) {
-        setFocusedSearchIndex(prev => (prev + 1) % searchResults.length)
-      }
+      if (n > 0) setFocusedSearchIndex(prev => (prev + 1) % n)
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      if (searchResults.length > 0) {
-        setFocusedSearchIndex(prev => (prev - 1 + searchResults.length) % searchResults.length)
-      }
+      if (n > 0) setFocusedSearchIndex(prev => (prev - 1 + n) % n)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const index = focusedSearchIndex >= 0 ? focusedSearchIndex : 0
-      if (searchResults[index]) {
-        addToCart(searchResults[index])
-        setSearchTerm('')
-        setFocusedSearchIndex(-1)
-      }
+      const entry = searchLotEntries[index]
+      if (entry) choosePendingLot(entry.product, entry.lot)
     } else if (e.key === 'Escape') {
       setSearchTerm('')
       setFocusedSearchIndex(-1)
+    }
+  }
+
+  // Chọn LÔ (Enter/click) → bước nhập SỐ LƯỢNG. Ô SL luôn mount, mặc định "1" + bôi chọn
+  // để gõ đè ngay; focus chắc chắn (sửa lỗi #4 không nhảy focus).
+  const choosePendingLot = (prod: Product, lot: ProductLot | null) => {
+    setPendingProduct(prod)
+    setPendingLot(lot)
+    setPendingQty('1')
+    setSearchTerm('')
+    setFocusedSearchIndex(-1)
+    setTimeout(() => { qtyInputRef.current?.focus(); qtyInputRef.current?.select() }, 0)
+  }
+
+  const cancelPendingProduct = () => {
+    setPendingProduct(null)
+    setPendingLot(null)
+    setPendingQty('')
+    setTimeout(() => searchInputRef.current?.focus(), 0)
+  }
+
+  // Xác nhận số lượng cho LÔ đang chọn → thêm vào hóa đơn, quay lại ô tìm kiếm.
+  const confirmPendingQty = () => {
+    if (!pendingProduct) return
+    const qty = parseFloat(pendingQty.replace(',', '.')) || 1
+    addToCart(pendingProduct, qty, pendingLot)
+    setPendingProduct(null)
+    setPendingLot(null)
+    setPendingQty('')
+    setTimeout(() => searchInputRef.current?.focus(), 0)
+  }
+
+  const handleQtyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      confirmPendingQty()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelPendingProduct()
     }
   }
 
@@ -1147,7 +1268,42 @@ export default function POSPage() {
   }
 
   // Submit: bán nhanh (atomic RPC) hoặc tạo đơn giao hàng nháp
+  // Thêm nhanh khách hàng mới ngay tại POS (RLS: owner_user_id = auth.uid()).
+  const handleQuickAddCustomer = async () => {
+    const name = newCustName.trim()
+    if (!name) { setAlertMsg({ type: 'error', text: 'Vui lòng nhập tên khách / trại.' }); return }
+    if (!profile?.id) { setAlertMsg({ type: 'error', text: 'Lỗi tài khoản. Vui lòng đăng nhập lại.' }); return }
+    setAddingCustomer(true)
+    try {
+      const { data: cust, error } = await supabase
+        .from('customers')
+        .insert([{ farm_name: name, owner_user_id: profile.id }])
+        .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
+        .single()
+      if (error) throw error
+      const phone = newCustPhone.trim()
+      if (phone) {
+        await supabase.from('customer_contacts')
+          .insert([{ customer_id: cust.id, full_name: name, phone, is_primary: true }])
+      }
+      const newC = cust as Customer
+      setCustomers(prev => [newC, ...prev])
+      setSelectedCustomerId(newC.id)
+      setCustomerSearchQuery(newC.farm_name)
+      setShowAddCustomer(false)
+      setShowCustomerDropdown(false)
+      setNewCustName(''); setNewCustPhone('')
+      setAlertMsg({ type: 'success', text: `Đã thêm khách hàng "${name}".` })
+    } catch (err: any) {
+      console.error('Quick add customer error:', err)
+      setAlertMsg({ type: 'error', text: 'Lỗi thêm khách: ' + (err.message || 'Không xác định') })
+    } finally {
+      setAddingCustomer(false)
+    }
+  }
+
   const handlePayment = async () => {
+    if (submittingRef.current) return   // chống double-submit (đồng bộ, trước khi setState)
     if (cart.length === 0) {
       setAlertMsg({ type: 'error', text: 'Giỏ hàng đang trống. Vui lòng thêm sản phẩm.' })
       return
@@ -1164,7 +1320,7 @@ export default function POSPage() {
     if (oversellLines.length > 0) {
       setAlertMsg({
         type: 'error',
-        text: 'Không đủ tồn kho: ' + oversellLines.map(l => `${l.name} (cần ${l.req.toLocaleString('vi-VN')}, còn ${l.avail.toLocaleString('vi-VN')})`).join('; ')
+        text: 'Không đủ tồn kho: ' + oversellLines.map(l => `${l.label} (cần ${l.req.toLocaleString('vi-VN')}, còn ${l.avail.toLocaleString('vi-VN')})`).join('; ')
       })
       return
     }
@@ -1177,11 +1333,13 @@ export default function POSPage() {
       return
     }
 
+    submittingRef.current = true
     setSubmitting(true)
     try {
       // discount per-unit (khớp order_lines.discount); invoice_discount giữ voucher/KM cấp HĐ
       const lines = cart.map(item => ({
         product_id: item.product.id,
+        lot_id: item.lotId || null,   // lô NV chọn (null = FEFO)
         quantity: item.quantity,
         unit_price: item.unitPrice,
         discount: Math.round(item.unitPrice * (item.discountPercent / 100))
@@ -1235,6 +1393,7 @@ export default function POSPage() {
       console.error('POS billing error:', err)
       setAlertMsg({ type: 'error', text: 'Thao tác thất bại: ' + (err.message || 'Lỗi không xác định') })
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -1243,62 +1402,131 @@ export default function POSPage() {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val)
   }
 
-  // Custom Search element passed to top Layout header (F2 Product Search)
-  const customSearchElement = (
-    <div className="relative flex items-center bg-gray-25 rounded-lg px-3 h-10 w-full max-w-[200px] sm:max-w-[280px] md:max-w-[360px] lg:max-w-[400px] border border-gray-105 focus-within:border-blue-500 focus-within:ring-[4px] focus-within:ring-blue-100 transition-all text-gray-800">
-      <Search className="text-gray-400 mr-2" size={15} strokeWidth={1.5} />
-      <input
-        ref={searchInputRef}
-        type="text"
-        placeholder="F2: Tìm sản phẩm (SKU, tên...) [Ctrl+/]"
-        value={searchTerm}
-        onChange={e => setSearchTerm(e.target.value)}
-        onKeyDown={handleSearchKeyDown}
-        className="bg-transparent border-none focus:ring-0 text-body-md w-full placeholder-gray-400 p-0 focus:outline-none text-[13px]"
-      />
-      <span className="text-[9px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 bg-white font-mono select-none ml-2 shrink-0">F2</span>
+  // ── Lô & HSD (FEFO) ──
+  const NEAR_EXPIRY_DAYS = 30  // ngưỡng cảnh báo cận hạn
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('vi-VN') : 'Không hạn'
+  const daysToExpiry = (expiry: string | null): number | null => {
+    if (!expiry) return null
+    return Math.ceil((new Date(expiry + 'T00:00:00').getTime() - Date.now()) / 86400000)
+  }
+  // ── Thanh tìm kiếm + nhập SỐ LƯỢNG (đặt ngay trong thanh xanh POS, rộng & rõ chữ) ──
+  // Ô số lượng LUÔN hiển thị sẵn (mặc định "1"); chọn SP xong con trỏ tự nhảy vào đây.
+  const productSearchBar = (
+    <div className="relative flex-1 min-w-0">
+      <div className="flex items-stretch h-9 bg-white rounded-md shadow-sm overflow-visible">
+        {/* Vùng tìm kiếm / SP đang chọn */}
+        <div className="flex items-center flex-1 min-w-0 px-2.5">
+          {pendingProduct ? (
+            <div className="flex items-center gap-2 min-w-0 w-full">
+              <Package className="text-blue-600 shrink-0" size={16} />
+              <span className="font-bold text-[14px] text-gray-800 truncate shrink min-w-0" title={pendingProduct.name}>{pendingProduct.name}</span>
+              {pendingLot ? (
+                <span className="shrink-0 flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 font-bold whitespace-nowrap">
+                  <Layers size={11} /> Lô {pendingLot.lotNumber} · HSD {fmtDate(pendingLot.expiry)} · còn {pendingLot.available.toLocaleString('vi-VN')}
+                </span>
+              ) : (
+                <span className="text-[11px] text-gray-400 shrink-0 whitespace-nowrap">Tồn: <b className={(productStock[pendingProduct.id]||0)>0?'text-emerald-600':'text-red-500'}>{(productStock[pendingProduct.id]||0).toLocaleString('vi-VN')}</b></span>
+              )}
+              <span className="text-[11px] text-gray-400 shrink-0 hidden lg:inline ml-1">Enter để thêm · Esc hủy</span>
+              <button onClick={cancelPendingProduct} className="ml-auto shrink-0 text-gray-400 hover:text-red-500 p-0.5" title="Hủy chọn (Esc)"><X size={15} /></button>
+            </div>
+          ) : (
+            <>
+              <Search className="text-gray-400 mr-2 shrink-0" size={16} strokeWidth={1.5} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="F2: Tìm sản phẩm (SKU, tên) — ↑↓ chọn, Enter nhập số lượng"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                className="bg-transparent border-none focus:ring-0 w-full placeholder-gray-400 p-0 focus:outline-none text-[14px] text-gray-800"
+              />
+            </>
+          )}
+        </div>
+        {/* Ô SỐ LƯỢNG — luôn hiển thị sẵn */}
+        <div className={`flex items-center gap-1.5 px-2 border-l ${pendingProduct ? 'border-blue-200 bg-blue-50/70' : 'border-gray-150 bg-gray-50'}`}>
+          <span className="text-[10px] font-bold text-gray-400 uppercase shrink-0">SL</span>
+          <input
+            ref={qtyInputRef}
+            type="text"
+            inputMode="decimal"
+            value={pendingQty}
+            disabled={!pendingProduct}
+            onChange={e => setPendingQty(e.target.value)}
+            onKeyDown={handleQtyKeyDown}
+            placeholder="1"
+            className="w-16 h-7 text-center bg-white border border-gray-300 rounded text-[15px] font-bold focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-blue-700 disabled:bg-gray-100 disabled:text-gray-300 shrink-0"
+          />
+          <span className="text-[11px] text-gray-400 w-8 truncate shrink-0">{pendingProduct?.unit || ''}</span>
+        </div>
+        {/* Nút Thêm */}
+        <button
+          onClick={confirmPendingQty}
+          disabled={!pendingProduct}
+          className="shrink-0 px-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-[13px] font-bold flex items-center gap-1 rounded-r-md transition-colors"
+        >
+          <Plus size={14} /> Thêm
+        </button>
+      </div>
 
-      {/* Autocomplete Dropdown List */}
-      {searchTerm && (
-        <div className="absolute left-0 right-0 top-full mt-1.5 max-h-80 overflow-y-auto bg-white border border-gray-200 rounded shadow-xl z-50 py-1 text-gray-800 text-[13px]">
-          {searchResults.map((prod, idx) => {
+      {/* Dropdown — MỖI LÔ là 1 mục CHỌN ĐƯỢC (NV chọn đúng lô khách chấp nhận).
+          Nhóm theo SP: tiêu đề SP (giá/tồn) + danh sách lô bấm chọn. */}
+      {!pendingProduct && searchTerm && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 max-h-[460px] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-2xl z-[60] py-1 text-gray-800">
+          {searchLotEntries.map((entry, idx) => {
+            const prod = entry.product
+            const lot = entry.lot
+            const firstOfProduct = idx === 0 || searchLotEntries[idx - 1].product.id !== prod.id
             let price = 0
             if (prod.price_list_items && prod.price_list_items.length > 0) {
               const itemPrice = prod.price_list_items.find(
                 item => item.price_list_id === selectedPriceListId || item.price_list?.id === selectedPriceListId
               )
-              if (itemPrice) {
-                price = itemPrice.selling_price
-              } else {
-                const retailPrice = prod.price_list_items.find(
-                  item => item.price_list?.code === 'GIA-LE'
-                )
-                price = retailPrice ? retailPrice.selling_price : prod.price_list_items[0].selling_price
-              }
+              price = itemPrice
+                ? itemPrice.selling_price
+                : (prod.price_list_items.find(i => i.price_list?.code === 'GIA-LE')?.selling_price ?? prod.price_list_items[0].selling_price)
             }
+            const nd = lot ? daysToExpiry(lot.expiry) : null
+            const expired = nd !== null && nd < 0
+            const near = nd !== null && nd >= 0 && nd <= NEAR_EXPIRY_DAYS
+            const isFefoFirst = !!lot && (productLots[prod.id] || [])[0]?.lotId === lot.lotId
             return (
-              <div
-                key={prod.id}
-                onClick={() => {
-                  addToCart(prod)
-                  setSearchTerm('')
-                  setFocusedSearchIndex(-1)
-                }}
-                className={`px-3 py-1.5 flex items-center justify-between cursor-pointer border-b border-gray-50 last:border-0 ${
-                  idx === focusedSearchIndex ? 'bg-blue-50 text-blue-900 font-medium' : 'hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex flex-col">
-                  <span className="font-semibold">{prod.name}</span>
-                  <span className="text-[10px] text-gray-400 font-mono">
-                    SKU: {prod.sku || '-'} | ĐVT: {prod.unit || '-'} | Tồn: <span className={(productStock[prod.id] || 0) > 0 ? "text-emerald-600 font-bold" : "text-red-500 font-bold"}>{(productStock[prod.id] || 0).toLocaleString('vi-VN')}</span>
-                  </span>
+              <Fragment key={prod.id + ':' + (lot?.lotId || 'nolot')}>
+                {firstOfProduct && (
+                  <div className="px-3.5 pt-2 pb-1 flex items-start justify-between gap-3 bg-gray-50/70 border-t border-gray-100 first:border-t-0">
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-semibold text-[13px] leading-snug break-words">{prod.name}</span>
+                      <span className="text-[10px] text-gray-400 font-mono">SKU {prod.sku || '-'} · ĐVT {prod.unit || '-'} · Tồn <span className={(productStock[prod.id] || 0) > 0 ? 'text-emerald-600 font-bold' : 'text-red-500 font-bold'}>{(productStock[prod.id] || 0).toLocaleString('vi-VN')}</span></span>
+                    </div>
+                    <span className="font-bold text-blue-600 shrink-0 text-[13px]">{formatCurrency(price)}</span>
+                  </div>
+                )}
+                <div
+                  onClick={() => choosePendingLot(prod, lot)}
+                  className={`px-3.5 py-1.5 pl-7 cursor-pointer flex items-center gap-1.5 flex-wrap ${
+                    idx === focusedSearchIndex ? 'bg-blue-100 ring-1 ring-inset ring-blue-300' : 'hover:bg-blue-50'
+                  }`}
+                >
+                  {lot ? (
+                    <>
+                      <Layers size={12} className="text-blue-400 shrink-0" />
+                      <span className="font-bold text-gray-700 text-[12px]">Lô {lot.lotNumber}</span>
+                      <span className="text-[11px] text-gray-500">· HSD {fmtDate(lot.expiry)}</span>
+                      <span className="text-[11px] text-gray-500">· còn <b className="text-gray-700">{lot.available.toLocaleString('vi-VN')}</b> {prod.unit || ''}</span>
+                      {isFefoFirst && <span className="px-1 bg-blue-50 text-blue-600 rounded text-[9px] font-bold border border-blue-100">BÁN TRƯỚC</span>}
+                      {expired && <span className="px-1 bg-red-50 text-red-600 rounded text-[9px] font-bold border border-red-100">QUÁ HẠN</span>}
+                      {!expired && near && <span className="px-1 bg-amber-50 text-amber-700 rounded text-[9px] font-bold border border-amber-100">CẬN HẠN</span>}
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-gray-500 italic">Không có lô — bán theo tồn chung (FEFO)</span>
+                  )}
                 </div>
-                <span className="font-bold text-blue-600">{formatCurrency(price)}</span>
-              </div>
+              </Fragment>
             )
           })}
-          {searchResults.length === 0 && (
+          {searchLotEntries.length === 0 && (
             <div className="p-3 text-center text-gray-400 italic">Không tìm thấy sản phẩm.</div>
           )}
         </div>
@@ -1307,8 +1535,8 @@ export default function POSPage() {
   )
 
   return (
-    <Layout activeMenu="Đơn hàng" searchElement={customSearchElement}>
-      <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden bg-gray-25 text-gray-600 font-sans">
+    <Layout activeMenu="Đơn hàng" hideTopBar searchElement={<span className="hidden" aria-hidden />}>
+      <div className="flex flex-col h-screen overflow-hidden bg-gray-25 text-gray-600 font-sans">
         
         {/* Toast Alert */}
         {alertMsg && (
@@ -1323,81 +1551,79 @@ export default function POSPage() {
           </div>
         )}
 
-        {/* KiotViet Blue Header Bar (Middle bar under top layout header) */}
-        <header className="h-12 bg-[#007edb] flex items-center justify-between px-4 text-white shrink-0 shadow-md">
-          {/* Logo & Invoices Tabs */}
-          <div className="flex items-center gap-4 h-full overflow-hidden flex-1">
-            <h1 className="font-bold text-sm tracking-wider uppercase flex items-center gap-1.5 border-r border-[#006cc0] pr-4 select-none shrink-0 whitespace-nowrap">
-              <Package size={18} />
-              Sanh Long POS
-            </h1>
+        {/* KiotViet Blue Header — 2 hàng: (1) logo + tìm kiếm + thao tác · (2) tab hóa đơn */}
+        <div className="shrink-0 shadow-md">
+          {/* ── Hàng 1: Logo · Ô tìm kiếm + Số lượng · Nút thao tác ── */}
+          <header className="h-12 bg-[#007edb] flex items-center gap-3 px-4 text-white">
+            {/* Ô tìm kiếm sản phẩm + nhập số lượng (rộng, hiển thị rõ chữ) */}
+            {productSearchBar}
 
-            {/* Invoices Tab List - Scrollable and Non-Shrinking to handle 18+ tabs */}
-            <div className="flex items-end gap-1 h-full pt-1.5 overflow-x-auto flex-nowrap shrink-0 max-w-[40vw] sm:max-w-[45vw] md:max-w-[50vw] lg:max-w-[60vw] xl:max-w-[70vw] scrollbar-none">
-              {tabs.map(tab => (
-                <div
-                  key={tab.id}
-                  onClick={() => setActiveTabId(tab.id)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-t-md text-[13px] font-bold cursor-pointer transition-all select-none shrink-0 ${
-                    tab.id === activeTabId
-                      ? 'bg-white text-gray-800 border-t-2 border-[#007edb] shadow-sm'
-                      : 'bg-[#006cc0] text-blue-100 hover:bg-[#005ba3]'
+            {/* Nút thao tác */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowDiagModal(true)}
+                className="px-3 h-8 rounded bg-emerald-600 hover:bg-emerald-700 text-tiny font-bold flex items-center gap-1.5 transition-colors border border-emerald-700 shadow-sm whitespace-nowrap"
+                title="Chẩn đoán nhanh và tự động gợi ý sản phẩm theo phác đồ [F7]"
+              >
+                <Stethoscope size={13} />
+                <span className="hidden md:inline">Chẩn đoán &amp; Gợi ý</span>
+                <span>(F7)</span>
+              </button>
+              <button
+                onClick={() => setShowGrid(prev => !prev)}
+                className="px-3 h-8 rounded bg-[#006cc0] hover:bg-[#005ba3] text-tiny font-bold flex items-center gap-1.5 transition-colors border border-[#005ba3] whitespace-nowrap"
+              >
+                <span>{showGrid ? 'Ẩn danh mục' : 'Xem danh mục'}</span>
+              </button>
+              <button
+                onClick={() => setAutoPrint(prev => !prev)}
+                className={`px-3 h-8 rounded text-tiny font-bold flex items-center gap-1.5 transition-colors border whitespace-nowrap ${
+                  autoPrint ? 'bg-emerald-600 hover:bg-emerald-700 border-emerald-700' : 'bg-[#005ba3]/40 hover:bg-[#005ba3]/60 border-[#005ba3]'
+                }`}
+                title="Bật/tắt tự động mở bản in sau khi thanh toán"
+              >
+                <Printer size={13} />
+                <span className="hidden lg:inline">{autoPrint ? 'Tự in: BẬT' : 'Tự in: TẮT'}</span>
+              </button>
+              <div className="flex items-center gap-2 border-l border-[#006cc0] pl-3 text-tiny">
+                <User size={15} />
+                <span className="font-semibold truncate max-w-[120px] hidden lg:inline">{profile?.full_name || profile?.email || 'N/A'}</span>
+              </div>
+            </div>
+          </header>
+
+          {/* ── Hàng 2: Danh sách tab hóa đơn (hạ xuống 1 dòng cho đủ không gian) ── */}
+          <div className="h-9 bg-[#006cc0] flex items-end gap-1 px-4 overflow-x-auto flex-nowrap scrollbar-none">
+            {tabs.map(tab => (
+              <div
+                key={tab.id}
+                onClick={() => setActiveTabId(tab.id)}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-t-md text-[13px] font-bold cursor-pointer transition-all select-none shrink-0 ${
+                  tab.id === activeTabId
+                    ? 'bg-white text-gray-800 shadow-sm'
+                    : 'bg-[#005ba3] text-blue-100 hover:bg-[#00529a]'
+                }`}
+              >
+                <span className="whitespace-nowrap">{tab.name}</span>
+                <button
+                  onClick={(e) => handleCloseTab(tab.id, e)}
+                  className={`p-0.5 rounded-full hover:bg-gray-250 transition-colors ${
+                    tab.id === activeTabId ? 'text-gray-400 hover:text-gray-700' : 'text-blue-200 hover:text-white'
                   }`}
                 >
-                  <span className="whitespace-nowrap">{tab.name}</span>
-                  <button
-                    onClick={(e) => handleCloseTab(tab.id, e)}
-                    className={`p-0.5 rounded-full hover:bg-gray-250 transition-colors ${
-                      tab.id === activeTabId ? 'text-gray-400 hover:text-gray-700' : 'text-blue-200 hover:text-white'
-                    }`}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
             <button
               onClick={handleAddTab}
-              className="p-1.5 mb-1 rounded bg-[#006cc0] hover:bg-[#005ba3] text-white flex items-center justify-center transition-colors shrink-0"
+              className="p-1.5 mb-1 rounded bg-[#005ba3] hover:bg-[#00529a] text-white flex items-center justify-center transition-colors shrink-0"
               title="Thêm hóa đơn mới"
             >
               <Plus size={14} />
             </button>
           </div>
-
-          {/* Grid Toggle and Account Info */}
-          <div className="flex items-center gap-3 shrink-0 ml-4">
-            <button
-              onClick={() => setShowDiagModal(true)}
-              className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-tiny font-bold flex items-center gap-1.5 transition-colors border border-emerald-700 shadow-sm"
-              title="Chẩn đoán nhanh và tự động gợi ý sản phẩm theo phác đồ [F7]"
-            >
-              <Stethoscope size={13} />
-              <span>Chẩn đoán &amp; Gợi ý (F7)</span>
-            </button>
-            <button
-              onClick={() => setShowGrid(prev => !prev)}
-              className="px-3 py-1 rounded bg-[#006cc0] hover:bg-[#005ba3] text-tiny font-bold flex items-center gap-1.5 transition-colors border border-[#005ba3]"
-            >
-              <span>{showGrid ? 'Ẩn danh mục' : 'Xem danh mục'}</span>
-            </button>
-            <button
-              onClick={() => setAutoPrint(prev => !prev)}
-              className={`px-3 py-1 rounded text-tiny font-bold flex items-center gap-1.5 transition-colors border ${
-                autoPrint ? 'bg-emerald-600 hover:bg-emerald-700 border-emerald-700' : 'bg-[#005ba3]/40 hover:bg-[#005ba3]/60 border-[#005ba3]'
-              }`}
-              title="Bật/tắt tự động mở bản in sau khi thanh toán"
-            >
-              <Printer size={13} />
-              <span>{autoPrint ? 'Tự in: BẬT' : 'Tự in: TẮT'}</span>
-            </button>
-            <div className="flex items-center gap-2 border-l border-[#006cc0] pl-3 text-tiny">
-              <User size={15} />
-              <span className="font-semibold truncate max-w-[120px]">{profile?.full_name || profile?.email || 'N/A'}</span>
-            </div>
-          </div>
-        </header>
+        </div>
 
         {/* Main Work Area */}
         <div className="flex flex-1 overflow-hidden">
@@ -1496,12 +1722,33 @@ export default function POSPage() {
                             <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded border border-emerald-100 uppercase scale-90">KM</span>
                           )}
                         </div>
-                        {(() => {
-                          const reqTotal = cart.filter(c => c.product.id === item.product.id).reduce((s, c) => s + c.quantity, 0)
-                          const avail = productStock[item.product.id] || 0
-                          return reqTotal > avail ? (
-                            <span className="text-[10px] font-bold text-amber-600">⚠ Tồn {avail.toLocaleString('vi-VN')} — thiếu {(reqTotal - avail).toLocaleString('vi-VN')}</span>
-                          ) : null
+                        {/* Mỗi dòng = 1 LÔ cụ thể NV đã chọn. Hiện lô + HSD + cảnh báo cận/quá hạn
+                            + chặn vượt tồn của ĐÚNG lô đó (so tồn tươi). KM/quà (không lô) bỏ qua. */}
+                        {!item.isGift && (() => {
+                          if (!item.lotId) {
+                            return <span className="text-[10px] text-gray-400 italic block mt-0.5">Bán theo tồn chung (FEFO)</span>
+                          }
+                          const freshLot = (productLots[item.product.id] || []).find(l => l.lotId === item.lotId)
+                          const avail = freshLot ? freshLot.available : 0
+                          const nd = daysToExpiry(item.lotExpiry ?? null)
+                          const expired = nd !== null && nd < 0
+                          const near = nd !== null && nd >= 0 && nd <= NEAR_EXPIRY_DAYS
+                          const over = item.quantity > avail
+                          return (
+                            <div className="mt-1 ml-0.5 pl-2 border-l-2 border-blue-100 flex flex-col gap-0.5">
+                              <span className="text-[10px] flex items-center gap-1 flex-wrap text-gray-500">
+                                <Layers size={10} className="text-gray-400 shrink-0" />
+                                <span className="font-semibold text-gray-600">Lô {item.lotNumber || '—'}</span>
+                                <span>· HSD {fmtDate(item.lotExpiry ?? null)}</span>
+                                <span>· còn <b className={over ? 'text-red-600' : 'text-gray-700'}>{avail.toLocaleString('vi-VN')}</b> {item.product.unit || ''}</span>
+                                {expired && <span className="px-1 bg-red-50 text-red-600 rounded text-[9px] font-bold border border-red-100">QUÁ HẠN</span>}
+                                {!expired && near && <span className="px-1 bg-amber-50 text-amber-700 rounded text-[9px] font-bold border border-amber-100">CẬN HẠN</span>}
+                              </span>
+                              {over && (
+                                <span className="text-[10px] font-bold text-red-600">⚠ Vượt tồn lô — thiếu {(item.quantity - avail).toLocaleString('vi-VN')} {item.product.unit || ''}</span>
+                              )}
+                            </div>
+                          )
                         })()}
                       </td>
                       <td className="py-3 px-2 text-center">
@@ -1784,7 +2031,17 @@ export default function POSPage() {
               
               {/* Customer Selector */}
               <div className="relative" ref={customerBoxRef}>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Khách hàng</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Khách hàng</label>
+                  <button
+                    type="button"
+                    onClick={() => { setNewCustName(customerSearchQuery.trim()); setNewCustPhone(''); setShowAddCustomer(true) }}
+                    className="flex items-center gap-0.5 text-[10px] font-bold text-blue-600 hover:text-blue-800"
+                    title="Thêm khách hàng mới"
+                  >
+                    <Plus size={12} /> Thêm KH
+                  </button>
+                </div>
                 <div className="relative">
                   <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                   <input
@@ -2031,7 +2288,7 @@ export default function POSPage() {
                     <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <div className="text-[10px] leading-tight">
                       <span className="font-bold">Không đủ tồn kho!</span>{' '}
-                      {oversellLines.map(l => `${l.name} (cần ${l.req.toLocaleString('vi-VN')}, còn ${l.avail.toLocaleString('vi-VN')})`).join('; ')}
+                      {oversellLines.map(l => `${l.label} (cần ${l.req.toLocaleString('vi-VN')}, còn ${l.avail.toLocaleString('vi-VN')})`).join('; ')}
                     </div>
                   </div>
                 </div>
@@ -2058,6 +2315,49 @@ export default function POSPage() {
           </aside>
         </div>
       </div>
+
+      {/* Modal thêm nhanh khách hàng */}
+      {showAddCustomer && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => !addingCustomer && setShowAddCustomer(false)}>
+          <div className="bg-white w-full max-w-sm rounded-xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 bg-[#007edb] text-white flex items-center justify-between">
+              <h3 className="font-bold text-body-md flex items-center gap-2"><User size={18} /> Thêm khách hàng mới</h3>
+              <button onClick={() => setShowAddCustomer(false)} className="text-white hover:text-blue-100"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Tên khách / trại <span className="text-red-500">*</span></label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={newCustName}
+                  onChange={e => setNewCustName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleQuickAddCustomer()}
+                  placeholder="VD: Trại heo anh Tư"
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-[14px] focus:outline-none focus:border-[#007edb]"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Số điện thoại</label>
+                <input
+                  type="tel"
+                  value={newCustPhone}
+                  onChange={e => setNewCustPhone(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleQuickAddCustomer()}
+                  placeholder="(tùy chọn)"
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-[14px] focus:outline-none focus:border-[#007edb]"
+                />
+              </div>
+            </div>
+            <div className="px-5 py-4 bg-gray-25 border-t border-gray-100 grid grid-cols-2 gap-3">
+              <button onClick={() => setShowAddCustomer(false)} disabled={addingCustomer} className="h-10 border border-gray-200 text-gray-700 rounded-lg text-body-md font-semibold hover:bg-gray-50 disabled:opacity-50">Hủy</button>
+              <button onClick={handleQuickAddCustomer} disabled={addingCustomer || !newCustName.trim()} className="h-10 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-body-md font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+                {addingCustomer ? <RefreshCw size={16} className="animate-spin" /> : <Check size={16} />} Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal xác nhận thanh toán thành công */}
       {showReceiptModal && (

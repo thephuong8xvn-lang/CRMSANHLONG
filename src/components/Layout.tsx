@@ -36,9 +36,11 @@ interface LayoutProps {
   activeMenu?: string
   onSearch?: (term: string) => void
   searchElement?: React.ReactNode
+  // Ẩn toàn bộ thanh điều hướng trên cùng (dùng cho POS — chiếm trọn màn hình).
+  hideTopBar?: boolean
 }
 
-export default function Layout({ children, activeMenu, onSearch, searchElement }: LayoutProps) {
+export default function Layout({ children, activeMenu, onSearch, searchElement, hideTopBar }: LayoutProps) {
   // Sprint P1-6 (2026-05-26): role + permissions giờ đọc từ AuthContext
   // (cache TanStack Query 15 phút), thay vì 2 query lặp lại mỗi page render.
   const { profile, signOut, userRole, userPermissions } = useAuth()
@@ -188,7 +190,8 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
       {/* ── Main Layout Wrapper (No desktop sidebar margin) ── */}
       <div className="flex-1 flex flex-col min-h-screen">
         
-        {/* ── Top App Bar (Contains Brand, Menu and User Controls) ── */}
+        {/* ── Top App Bar (Contains Brand, Menu and User Controls) — ẩn khi hideTopBar (POS) ── */}
+        {!hideTopBar && (
         <header className="sticky top-0 bg-gray-0 border-b border-gray-100 min-h-16 md:h-16 flex flex-col md:flex-row justify-between items-center px-4 md:px-6 z-40 gap-3 py-3 md:py-0">
           <div className="flex items-center justify-between w-full md:w-auto gap-4">
             <div className="flex items-center gap-3">
@@ -386,9 +389,10 @@ export default function Layout({ children, activeMenu, onSearch, searchElement }
             </button>
           </div>
         </header>
+        )}
 
         {/* ── Main Content Canvas ── */}
-        <main className="flex-grow pb-24 md:pb-10">
+        <main className={hideTopBar ? "flex-grow overflow-hidden" : "flex-grow pb-24 md:pb-10"}>
           {children}
         </main>
       </div>
