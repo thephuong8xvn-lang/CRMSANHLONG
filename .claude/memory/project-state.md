@@ -9,7 +9,7 @@ metadata:
 
 **Thư mục**: `E:\CRMSANHLONG`  
 **Stack**: React 18 + TypeScript + Vite + Supabase + TanStack Query + Tailwind CSS  
-**Ngày cập nhật**: 2026-06-07
+**Ngày cập nhật**: 2026-06-16
 
 ---
 
@@ -254,6 +254,12 @@ Sprint P0–P3 hoàn thành: lazy routes, manualChunks Vite, TanStack Query, ser
 - **Thêm `theme.extend.fontSize`** (MERGE, `text-sm/base/lg` chuẩn vẫn chạy): `tiny` 11/15 · `body-sm` 12/16 · `label-md` 13/18 · **`body-md` 14/20** · `body-lg` 16/24 · `headline-sm` 18/26 · `headline-md` 20/28 · `headline-lg` 24/30 · `display-xs` 28/34 · `display-sm` 32/38. Calib theo px thật (241× `text-[11px]`, 35× `text-[13px]`).
 - Tác động lớn nhất: `body-md` 16→14 (1251 chỗ) và `tiny` 16→11 (979 chỗ) → app gọn lại đúng thiết kế. `body-lg` giữ 16.
 - ⚠️ Màu tuỳ biến `gray-755/850/550`, `red-650/750` vẫn no-op (chữ inherit màu) — task nhỏ riêng nếu cần.
+
+## 2026-06-16 — 🐛 HOTFIX POS không bán được hàng (regression cờ guard)
+- **Triệu chứng:** Bán nhanh F9 báo *"Không được đổi trạng thái đơn hàng trực tiếp…"* dù đã nhập kho + thiết lập hạn mức nợ.
+- **Gốc:** migration `20260708000000` viết lại `fn_pos_quick_sale` (thêm `overpay_credit`) nhưng bỏ mất `set_config('app.order_rpc','on',true)` → trigger `trg_guard_order_status` chặn UPDATE status. Xác minh remote: chỉ `fn_pos_quick_sale` mất cờ, 6 RPC khác còn.
+- **Fix:** migration `20260709000000_fix_pos_quick_sale_status_guard.sql` (CREATE OR REPLACE thêm lại cờ) — **ĐÃ apply remote qua Management API + reload schema + verify `has_flag=true` + chèn tracking row**. Bài học: [[lesson-rpc-status-guard-flag]].
+- ⚠️ Tracking lệch: `20260702/07/08` đã apply remote nhưng KHÔNG có trong `schema_migrations` — cần backfill trước `supabase db push`.
 
 ## Files quan trọng cần biết
 
