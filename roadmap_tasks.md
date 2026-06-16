@@ -192,6 +192,22 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 - [x] **Bỏ header + logo trên POS (vòng 3):** `Layout` prop `hideTopBar`; POS `h-screen`, chiếm trọn màn hình.
 - **Rà soát:** quick-add KH an toàn; trừ kho đúng lô đã chọn (smoke-test xác nhận lô FEFO không bị đụng). **Hở:** `fn_pos_apply_lines` (sửa đơn) chưa truyền lot_id → sửa đơn re-FEFO (chưa sai toàn vẹn). Xem [[feature-pos-draft-persistence]].
 
+#### 🛠️ Nâng cấp /pos vòng 4 — tìm theo lô, giá gần nhất, info KH + sửa hạn mức — 2026-06-16 `[HOÀN THÀNH]`
+
+Migration `20260707000000_pos_last_price_and_credit_limit.sql` (ĐÃ apply remote + smoke-test rollback, 2 hàm SECURITY DEFINER, KHÔNG đổi schema):
+- [x] **#1 Tìm SP bằng SỐ LÔ:** `searchResults`/`searchLotEntries` khớp thêm `lot_number`; nếu chỉ khớp số lô → dropdown chỉ hiện đúng lô đó. Thuần FE, đọc `productLots` đã nạp.
+- [x] **#2 Gợi ý GIÁ BÁN GẦN NHẤT (chỉ sau khi chọn KH):** RPC `fn_pos_last_sold_prices(customer_id, product_ids[])` — bỏ RLS `orders` (sales chỉ thấy đơn mình) để lấy giá lần bán gần nhất của ĐÚNG KH đó/SP (loại đơn `cancelled`). FE: nút "Gần nhất: X" dưới ô đơn giá, bấm → set giá. Refetch chỉ khi TẬP SP trong giỏ đổi (cache, nhẹ).
+- [x] **#3 Tìm KH bằng ID:** thêm `c.id` vào lọc dropdown KH (đã có farm_name/code).
+- [x] **#4 Mở rộng info KH + SỬA HẠN MỨC NỢ:** nạp LƯỜI địa chỉ (`customers.province/district/address`) + SĐT (`customer_contacts` lô chính) khi chọn KH → không tăng payload load đầu. Hiện thêm SĐT (bấm gọi), địa chỉ, mã KH. Sửa hạn mức inline qua RPC `fn_pos_set_credit_limit` (user chốt: **mọi NV active sửa được MỌI KH** — bỏ RLS, có **audit_logs** `source=pos_set_credit_limit` truy vết). KH chưa có hạn mức (=0) tô đỏ "Chưa thiết lập".
+- **Trả lời câu hỏi user:** Data → chỉ #4 ghi `customers.credit_limit` (có audit); #2 thêm hàm đọc; #1/#3 thuần FE. Hiệu năng → load đầu KHÔNG đổi (mọi thứ nạp lười sau chọn KH); mỗi lần chọn KH thêm ~2 query nhỏ có index/cache. **Rủi ro đã nêu:** thu ngân tự nâng hạn mức = tự duyệt nợ (user chấp nhận, đã có audit). Xem [[feature-pos-draft-persistence]].
+- [x] **Layout cột thông tin phải (2 vòng tinh chỉnh):** mở rộng `20%→25%` (giỏ `80→75`, danh mục `35→30`); thanh toán xếp **hàng ngang 3 nút**; nén khoảng cách; khối info KH gộp còn **3 dòng** (Hạng+Mã · SĐT | Địa chỉ full-width | Nợ | Hạn mức) → Bảng giá + Thanh toán hiện sẵn không cần cuộn.
+
+#### 💰 POS — xử lý tiền khách trả DƯ (overpayment) — 2026-06-16 `[HOÀN THÀNH]`
+Migration `20260708000000_pos_overpayment_to_credit.sql` (ĐÃ apply remote + smoke-test rollback PASS cả 2 nhánh). Khi `Khách trả > Khách cần trả`, hiện 2 lựa chọn:
+- [x] **Trả khách (mặc định):** giữ nguyên — server kẹp trần `paid=grand_total`, phần dư đưa lại tiền mặt, sổ quỹ ghi đúng grand_total.
+- [x] **Tính vào công nợ:** server ghi nhận TOÀN BỘ tiền nhận (sổ quỹ khớp tiền thực), phần dư thành dòng `customer_debts` ÂM (`advance_from_customer`) → trừ nợ cũ; khách không nợ thì thành số dư có (nợ âm) cho lần mua sau.
+- **Cơ chế:** `fn_pos_settle_payment` thêm tham số `p_overpay_credit BOOLEAN DEFAULT false` (drop bản 3 tham số cũ → lời gọi cũ trong `fn_complete_delivery_payment` tự khớp bản mới với default=false, đơn giao hàng KHÔNG đổi). `fn_pos_quick_sale` đọc `overpay_credit` từ payload. FE: state `overpayToCredit` (reset khi đổi tab + sau bán), toggle chỉ hiện khi `changeDue>0 & method≠credit`, gửi cờ trong payload.
+
 #### 🔍 Kiểm tra toàn diện 2026-05-29 — Order Module Bugfix
 
 **Đã phát hiện & fix (migration `20260529000016_fix_orders_rls_and_relations.sql`):**

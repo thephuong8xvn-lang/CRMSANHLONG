@@ -191,6 +191,16 @@ export default function POSPage() {
   // Base Data States
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerDebt, setCustomerDebt] = useState(0)
+  // Thông tin mở rộng KH đang chọn (nạp lười khi chọn KH — không làm nặng load đầu).
+  const [customerDetail, setCustomerDetail] = useState<{ phone: string | null; address: string | null } | null>(null)
+  // Giá bán gần nhất của KH đang chọn cho từng SP (productId → unit_price). Reset khi đổi KH.
+  const [lastPrices, setLastPrices] = useState<Record<string, number>>({})
+  // Sửa hạn mức nợ ngay tại quầy (qua RPC có audit)
+  const [editingCreditLimit, setEditingCreditLimit] = useState(false)
+  const [creditLimitInput, setCreditLimitInput] = useState('')
+  const [savingCreditLimit, setSavingCreditLimit] = useState(false)
+  // Xử lý tiền khách trả DƯ: false = trả lại khách (mặc định) | true = ghi có công nợ (trừ nợ sau)
+  const [overpayToCredit, setOverpayToCredit] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [productStock, setProductStock] = useState<Record<string, number>>({})
   // Lô theo SP (đã sắp FEFO theo HSD tăng dần) — để hiện HSD/cảnh báo cận hạn tại POS.
@@ -705,6 +715,62 @@ export default function POSPage() {
     fetchDebt()
   }, [selectedCustomerId])
 
+  // Nạp lười thông tin mở rộng KH (địa chỉ + SĐT lô chính) khi chọn KH.
+  // Tách khỏi fetch hàng loạt customers để không tăng payload load đầu.
+  useEffect(() => {
+    setEditingCreditLimit(false)
+    if (!selectedCustomerId) { setCustomerDetail(null); return }
+    let cancelled = false
+    const fetchDetail = async () => {
+      try {
+        const [{ data: cust }, { data: contact }] = await Promise.all([
+          supabase.from('customers').select('province, district, address').eq('id', selectedCustomerId).single(),
+          supabase.from('customer_contacts').select('phone').eq('customer_id', selectedCustomerId).eq('is_primary', true).limit(1).maybeSingle(),
+        ])
+        if (cancelled) return
+        const addr = [(cust as any)?.address, (cust as any)?.district, (cust as any)?.province].filter(Boolean).join(', ')
+        setCustomerDetail({ phone: (contact as any)?.phone || null, address: addr || null })
+      } catch (err) {
+        if (!cancelled) setCustomerDetail(null)
+        console.error('Error fetching customer detail:', err)
+      }
+    }
+    fetchDetail()
+    return () => { cancelled = true }
+  }, [selectedCustomerId])
+
+  // Gợi ý GIÁ BÁN GẦN NHẤT — chỉ chạy SAU khi chọn KH. Lấy theo bộ SP trong giỏ
+  // (chỉ refetch khi TẬP sản phẩm đổi, không refetch lúc đổi SL/giá → nhẹ).
+  const cartProductIdsKey = useMemo(
+    () => Array.from(new Set(cart.filter(c => !c.isGift).map(c => c.product.id))).sort().join(','),
+    [cart]
+  )
+  useEffect(() => {
+    if (!selectedCustomerId) { setLastPrices({}); return }
+    const ids = cartProductIdsKey ? cartProductIdsKey.split(',') : []
+    if (ids.length === 0) { setLastPrices({}); return }
+    let cancelled = false
+    const fetchLastPrices = async () => {
+      try {
+        const { data, error } = await supabase.rpc('fn_pos_last_sold_prices', {
+          p_customer_id: selectedCustomerId,
+          p_product_ids: ids,
+        })
+        if (cancelled || error || !data) return
+        const map: Record<string, number> = {}
+        ;(data as any[]).forEach(r => { map[r.product_id] = Number(r.unit_price) })
+        setLastPrices(map)
+      } catch (err) {
+        console.error('Error fetching last sold prices:', err)
+      }
+    }
+    fetchLastPrices()
+    return () => { cancelled = true }
+  }, [selectedCustomerId, cartProductIdsKey])
+
+  // Đổi hóa đơn (tab) → reset lựa chọn xử lý tiền dư về mặc định (trả khách).
+  useEffect(() => { setOverpayToCredit(false) }, [activeTabId])
+
   // Check for Antagonism in the cart
   useEffect(() => {
     if (cart.length < 2 || compatibilities.length === 0) {
@@ -851,7 +917,8 @@ export default function POSPage() {
       ? customers
       : customers.filter(c =>
           removeVietnameseTones(c.farm_name.toLowerCase()).includes(q) ||
-          removeVietnameseTones((c.code || '').toLowerCase()).includes(q)
+          removeVietnameseTones((c.code || '').toLowerCase()).includes(q) ||
+          c.id.toLowerCase().includes(q)
         )
     // Giới hạn 50 dòng hiển thị (tránh render hàng nghìn nút khi danh sách lớn)
     return matched.slice(0, 50)
@@ -1057,24 +1124,35 @@ export default function POSPage() {
     return out
   }, [cart, productStock, productLots])
 
-  // Autocomplete products
-  const searchResults = useMemo(() => products.filter(p => {
-    if (!debouncedSearch.trim()) return false
-    return p.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-           p.sku.toLowerCase().includes(debouncedSearch.toLowerCase())
-  }), [products, debouncedSearch])
+  // Autocomplete products — khớp tên/SKU HOẶC số lô (tìm SP bằng số lô).
+  const searchResults = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase()
+    if (!q) return []
+    return products.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      (productLots[p.id] || []).some(l => (l.lotNumber || '').toLowerCase().includes(q))
+    )
+  }, [products, debouncedSearch, productLots])
 
   // Phẳng hóa theo LÔ — NV chọn ĐÚNG lô (mỗi lô 1 mục; SP không lô → 1 mục lot=null).
   // ↑↓ duyệt theo mục này, Enter chọn mục → nhập số lượng.
+  // Nếu SP chỉ khớp do SỐ LÔ (không khớp tên/SKU) → chỉ hiện đúng lô khớp.
   const searchLotEntries = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase()
     const entries: { product: Product; lot: ProductLot | null }[] = []
     for (const p of searchResults) {
       const lots = productLots[p.id] || []
-      if (lots.length === 0) entries.push({ product: p, lot: null })
-      else for (const lot of lots) entries.push({ product: p, lot })
+      if (lots.length === 0) { entries.push({ product: p, lot: null }); continue }
+      const matchesNameSku = p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+      const lotsToShow = matchesNameSku
+        ? lots
+        : lots.filter(l => (l.lotNumber || '').toLowerCase().includes(q))
+      const finalLots = lotsToShow.length > 0 ? lotsToShow : lots
+      for (const lot of finalLots) entries.push({ product: p, lot })
     }
     return entries
-  }, [searchResults, productLots])
+  }, [searchResults, productLots, debouncedSearch])
 
   // Keyboard navigation for Autocomplete
   useEffect(() => {
@@ -1265,6 +1343,7 @@ export default function POSPage() {
     setAppliedDiscount(null)
     setVoucherCode('')
     setVoucherError('')
+    setOverpayToCredit(false)
   }
 
   // Submit: bán nhanh (atomic RPC) hoặc tạo đơn giao hàng nháp
@@ -1299,6 +1378,30 @@ export default function POSPage() {
       setAlertMsg({ type: 'error', text: 'Lỗi thêm khách: ' + (err.message || 'Không xác định') })
     } finally {
       setAddingCustomer(false)
+    }
+  }
+
+  // Lưu hạn mức nợ KH qua RPC (bỏ RLS + ghi audit). Cập nhật state cục bộ để
+  // isCreditLimitExceeded tính lại ngay, không phải nạp lại toàn bộ danh sách KH.
+  const handleSaveCreditLimit = async () => {
+    if (!selectedCustomerId) return
+    const newLimit = parseNumberString(creditLimitInput)
+    if (newLimit < 0) { setAlertMsg({ type: 'error', text: 'Hạn mức nợ phải ≥ 0.' }); return }
+    setSavingCreditLimit(true)
+    try {
+      const { error } = await supabase.rpc('fn_pos_set_credit_limit', {
+        p_customer_id: selectedCustomerId,
+        p_credit_limit: newLimit,
+      })
+      if (error) throw error
+      setCustomers(prev => prev.map(c => c.id === selectedCustomerId ? { ...c, credit_limit: newLimit } : c))
+      setEditingCreditLimit(false)
+      setAlertMsg({ type: 'success', text: `Đã cập nhật hạn mức nợ: ${newLimit.toLocaleString('vi-VN')} ₫.` })
+    } catch (err: any) {
+      console.error('Set credit limit error:', err)
+      setAlertMsg({ type: 'error', text: 'Lỗi cập nhật hạn mức: ' + (err.message || 'Không xác định') })
+    } finally {
+      setSavingCreditLimit(false)
     }
   }
 
@@ -1372,6 +1475,8 @@ export default function POSPage() {
         p_payload: {
           ...basePayload,
           paid_amount: paymentMethod === 'credit' ? 0 : effectivePaid,
+          // Khách trả dư + chọn "tính vào công nợ" → server KHÔNG kẹp trần, ghi số dư có.
+          overpay_credit: paymentMethod !== 'credit' && changeDue > 0 && overpayToCredit,
           delivery_address: 'Giao trực tiếp tại quầy POS'
         }
       })
@@ -1628,9 +1733,9 @@ export default function POSPage() {
         {/* Main Work Area */}
         <div className="flex flex-1 overflow-hidden">
           
-          {/* Cart Table Panel: w-[80%] when grid is hidden, w-[45%] when grid is shown */}
+          {/* Cart Table Panel: w-[75%] when grid is hidden, w-[45%] when grid is shown */}
           <div className={`flex flex-col p-3 border-r border-gray-150 overflow-hidden ${
-            showGrid ? 'w-[45%]' : 'w-[80%]'
+            showGrid ? 'w-[45%]' : 'w-[75%]'
           } transition-all duration-300`}>
 
             {/* Antagonism Warnings Alert Bar */}
@@ -1781,13 +1886,26 @@ export default function POSPage() {
                         </div>
                       </td>
                       <td className="py-3 px-2 text-right">
-                        <input
-                          type="text"
-                          value={formatNumberString(item.unitPrice || '')}
-                          placeholder="0"
-                          onChange={e => updateUnitPrice(item.id, parseNumberString(e.target.value))}
-                          className="w-20 text-right bg-transparent border-b border-gray-200 focus:border-[#007edb] focus:outline-none font-semibold text-[13px] py-0.5"
-                        />
+                        <div className="flex flex-col items-end gap-0.5">
+                          <input
+                            type="text"
+                            value={formatNumberString(item.unitPrice || '')}
+                            placeholder="0"
+                            onChange={e => updateUnitPrice(item.id, parseNumberString(e.target.value))}
+                            className="w-20 text-right bg-transparent border-b border-gray-200 focus:border-[#007edb] focus:outline-none font-semibold text-[13px] py-0.5"
+                          />
+                          {/* Giá bán gần nhất cho KH này (chỉ hiện sau khi chọn KH & khác giá hiện tại) */}
+                          {!item.isGift && selectedCustomerId && lastPrices[item.product.id] != null && lastPrices[item.product.id] !== item.unitPrice && (
+                            <button
+                              type="button"
+                              onClick={() => updateUnitPrice(item.id, lastPrices[item.product.id])}
+                              className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline font-semibold whitespace-nowrap"
+                              title="Dùng giá bán gần nhất cho khách này"
+                            >
+                              Gần nhất: {lastPrices[item.product.id].toLocaleString('vi-VN')}
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-2 text-center">
                         <input
@@ -1908,7 +2026,7 @@ export default function POSPage() {
 
           {/* Product Catalog Grid Panel: w-[35%] (only shown when showGrid is true) */}
           {showGrid && (
-            <div className="w-[35%] flex flex-col p-3 border-r border-gray-150 overflow-hidden bg-gray-50/50">
+            <div className="w-[30%] flex flex-col p-3 border-r border-gray-150 overflow-hidden bg-gray-50/50">
               
               {/* Category selector & Product images toggle */}
               <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 shrink-0">
@@ -2023,11 +2141,11 @@ export default function POSPage() {
             </div>
           )}
 
-          {/* Right Sidebar Checkout: w-[20%] - Sticky Bottom Layout */}
-          <aside className="w-[20%] bg-white flex flex-col shadow-lg border-l border-gray-150 overflow-hidden h-full">
-            
-            {/* Scrollable Upper Area */}
-            <div className="flex-1 overflow-y-auto p-3.5 space-y-4">
+          {/* Right Sidebar Checkout: w-[25%] - Sticky Bottom Layout */}
+          <aside className="w-[25%] bg-white flex flex-col shadow-lg border-l border-gray-150 overflow-hidden h-full">
+
+            {/* Khối VÀNG: thông tin KH + bảng giá + thanh toán — chiếm ~50% chiều cao, cuộn riêng nếu thừa */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2.5">
               
               {/* Customer Selector */}
               <div className="relative" ref={customerBoxRef}>
@@ -2098,31 +2216,89 @@ export default function POSPage() {
               </div>
 
               {selectedCustomer && (
-                <div className="flex flex-col gap-1 text-[11px] bg-gray-50 p-2 rounded border border-gray-155">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Hạng:</span>
-                    <span className={`px-1 py-0.2 text-[8px] font-bold rounded uppercase ${
-                      selectedCustomer.value_tier === 'vip' ? 'bg-[#007edb] text-white' : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      {selectedCustomer.value_tier || '-'}
+                <div className="flex flex-col gap-1.5 text-[11px] bg-gray-50 p-2 rounded border border-gray-155">
+                  {/* Dòng 1: Hạng + Mã KH (trái) · SĐT (phải) */}
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="flex items-center gap-1 min-w-0">
+                      <span className={`px-1 py-0.2 text-[8px] font-bold rounded uppercase shrink-0 ${
+                        selectedCustomer.value_tier === 'vip' ? 'bg-[#007edb] text-white' : 'bg-gray-200 text-gray-600'
+                      }`}>
+                        {selectedCustomer.value_tier || '-'}
+                      </span>
+                      <span className="text-[9px] font-mono text-gray-500 truncate">{selectedCustomer.code || 'N/A'}</span>
+                    </span>
+                    {customerDetail?.phone ? (
+                      <a href={`tel:${customerDetail.phone}`} className="font-bold text-blue-600 hover:underline truncate shrink-0">📞 {customerDetail.phone}</a>
+                    ) : (
+                      <span className="text-gray-400 italic shrink-0">SĐT: —</span>
+                    )}
+                  </div>
+                  {/* Dòng 2: Địa chỉ — chiếm trọn bề ngang, tự xuống dòng khi dài */}
+                  <div className="flex gap-1.5">
+                    <span className="text-gray-400 shrink-0">Địa chỉ:</span>
+                    <span className="font-medium text-gray-700 break-words min-w-0" title={customerDetail?.address || ''}>
+                      {customerDetail?.address || <span className="text-gray-400 italic">—</span>}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Nợ hiện tại:</span>
-                    <span className="font-bold text-gray-700">{formatCurrency(customerDebt)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Hạn mức nợ:</span>
-                    <span className="font-bold text-gray-700">{formatCurrency(selectedCustomer.credit_limit)}</span>
+                  {/* Dòng 3: Nợ hiện tại (trái) · Hạn mức nợ + sửa (phải, RPC có audit;
+                      KH chưa có hạn mức (=0) tô đỏ nhắc thiết lập để bán ghi nợ) */}
+                  <div className="flex justify-between items-center gap-2 pt-0.5 border-t border-gray-200/70">
+                    <span className="min-w-0">
+                      <span className="text-gray-400">Nợ: </span>
+                      <span className="font-bold text-gray-700">{formatCurrency(customerDebt)}</span>
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                    <span className="text-gray-400">HM:</span>
+                    {editingCreditLimit ? (
+                      <span className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          type="text"
+                          inputMode="numeric"
+                          value={creditLimitInput}
+                          onChange={e => setCreditLimitInput(formatNumberString(parseNumberString(e.target.value)))}
+                          onKeyDown={e => { if (e.key === 'Enter') handleSaveCreditLimit(); if (e.key === 'Escape') setEditingCreditLimit(false) }}
+                          className="w-20 h-6 text-right px-1 border border-gray-300 rounded text-[11px] font-bold focus:outline-none focus:border-[#007edb]"
+                        />
+                        <button
+                          onClick={handleSaveCreditLimit}
+                          disabled={savingCreditLimit}
+                          className="text-emerald-600 hover:text-emerald-800 disabled:opacity-40"
+                          title="Lưu hạn mức (Enter)"
+                        >
+                          {savingCreditLimit ? <RefreshCw size={13} className="animate-spin" /> : <Check size={14} />}
+                        </button>
+                        <button
+                          onClick={() => setEditingCreditLimit(false)}
+                          disabled={savingCreditLimit}
+                          className="text-gray-400 hover:text-red-500 disabled:opacity-40"
+                          title="Hủy (Esc)"
+                        >
+                          <X size={13} />
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => { setCreditLimitInput(formatNumberString(selectedCustomer.credit_limit || 0)); setEditingCreditLimit(true) }}
+                        className="flex items-center gap-1 group"
+                        title="Bấm để sửa hạn mức nợ"
+                      >
+                        <span className={`font-bold ${selectedCustomer.credit_limit > 0 ? 'text-gray-700' : 'text-red-500'}`}>
+                          {selectedCustomer.credit_limit > 0 ? formatCurrency(selectedCustomer.credit_limit) : 'Chưa thiết lập'}
+                        </span>
+                        <svg className="w-3 h-3 text-gray-400 group-hover:text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                      </button>
+                    )}
+                    </span>
                   </div>
                 </div>
               )}
 
-              {/* Price List Selector */}
+              {/* Price List Selector — bỏ nhãn (NV tự hiểu đây là bảng giá áp dụng) */}
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Bảng giá áp dụng</label>
                 <select
                   value={selectedPriceListId}
+                  title="Bảng giá áp dụng"
                   onChange={e => setSelectedPriceListId(e.target.value)}
                   className="w-full h-8 px-1.5 bg-white border border-gray-200 rounded text-[12px] font-semibold focus:outline-none focus:border-[#007edb] cursor-pointer"
                 >
@@ -2135,90 +2311,65 @@ export default function POSPage() {
                 </select>
               </div>
 
-              {/* Payment Method Selector */}
+              {/* Payment Method Selector — hàng ngang 3 nút (dùng nhiều, hiện sẵn không cuộn) */}
               <div className="space-y-1.5">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Hình thức thanh toán</span>
-                <div className="flex flex-col gap-1 p-0.5 bg-gray-100 border border-gray-200 rounded">
-                  <button
-                    onClick={() => setPaymentMethod('cash')}
-                    className={`w-full py-1.5 rounded text-[11px] font-bold transition-all text-center ${
-                      paymentMethod === 'cash' ? 'bg-[#007edb] text-white shadow-sm' : 'text-gray-505 hover:text-gray-800'
-                    }`}
-                    title="Phím tắt: F3"
-                  >
-                    Tiền mặt (F3)
-                  </button>
-                  <button
-                    onClick={() => setPaymentMethod('bank_transfer')}
-                    className={`w-full py-1.5 rounded text-[11px] font-bold transition-all text-center ${
-                      paymentMethod === 'bank_transfer' ? 'bg-[#007edb] text-white shadow-sm' : 'text-gray-505 hover:text-gray-800'
-                    }`}
-                    title="Phím tắt: F4"
-                  >
-                    Chuyển khoản (F4)
-                  </button>
-                  <button
-                    onClick={() => setPaymentMethod('credit')}
-                    className={`w-full py-1.5 rounded text-[11px] font-bold transition-all text-center ${
-                      paymentMethod === 'credit' ? 'bg-[#007edb] text-white shadow-sm' : 'text-gray-505 hover:text-gray-800'
-                    }`}
-                    title="Phím tắt: F8"
-                  >
-                    Ghi nợ (F8)
-                  </button>
+                <div className="grid grid-cols-3 gap-1 p-0.5 bg-gray-100 border border-gray-200 rounded">
+                  {([
+                    ['cash', 'Tiền mặt', 'F3'],
+                    ['bank_transfer', 'Chuyển khoản', 'F4'],
+                    ['credit', 'Ghi nợ', 'F8'],
+                  ] as const).map(([method, label, key]) => (
+                    <button
+                      key={method}
+                      onClick={() => setPaymentMethod(method)}
+                      className={`flex flex-col items-center justify-center py-1.5 rounded text-[11px] font-bold leading-tight transition-all text-center ${
+                        paymentMethod === method ? 'bg-[#007edb] text-white shadow-sm' : 'text-gray-505 hover:text-gray-800'
+                      }`}
+                      title={`Phím tắt: ${key}`}
+                    >
+                      <span>{label}</span>
+                      <span className={`text-[8px] font-semibold ${paymentMethod === method ? 'text-blue-100' : 'text-gray-400'}`}>{key}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
             </div>
 
-            {/* Sticky Bottom Area - Always Anchored */}
-            <div className="shrink-0 border-t border-gray-200 bg-gray-50 p-3.5 space-y-3 shadow-[0_-2px_8px_rgba(0,0,0,0.05)]">
-              
-              {/* Parallel Row: Tổng tiền hàng & Giảm giá hóa đơn */}
-              <div className="grid grid-cols-2 gap-2 text-tiny">
-                <div>
+            {/* Khối ĐỎ (phần tính tiền): chiếm ~50% chiều cao, cuộn riêng nếu thừa */}
+            <div className="flex-1 min-h-0 overflow-y-auto border-t border-gray-200 bg-gray-50 p-3 space-y-2">
+
+              {/* Tổng tiền + Mã Voucher trên CÙNG 1 dòng (đã bỏ "Giảm giá HĐ" thủ công) */}
+              <div className="flex items-end justify-between gap-2">
+                <div className="shrink-0">
                   <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider mb-0.5">Tổng tiền</span>
                   <div className="font-bold text-gray-700 text-[13px]">{subtotal.toLocaleString('vi-VN')} ₫</div>
                 </div>
-                <div>
-                  <span className="text-[10px] text-gray-400 font-bold block uppercase tracking-wider mb-0.5">Giảm giá HĐ</span>
-                  <input
-                    type="text"
-                    value={formatNumberString(invoiceDiscount || '')}
-                    placeholder="0"
-                    onChange={e => setInvoiceDiscount(parseNumberString(e.target.value))}
-                    className="w-full h-7 text-right px-1.5 border border-gray-200 rounded focus:outline-none focus:border-[#007edb] font-bold text-[12px]"
-                  />
-                </div>
+                {appliedDiscount ? (
+                  <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-2 py-1.5 flex-1 min-w-0">
+                    <span className="text-[10px] font-medium text-green-700 truncate">{appliedDiscount.label}</span>
+                    <button onClick={clearDiscount} className="ml-1 text-green-600 hover:text-green-800 shrink-0"><X size={12} /></button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1 flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={voucherCode}
+                      onChange={e => { setVoucherCode(e.target.value.toUpperCase()); setVoucherError('') }}
+                      onKeyDown={e => e.key === 'Enter' && handleApplyVoucher()}
+                      placeholder="Mã voucher"
+                      className="flex-1 min-w-0 h-7 px-2 border border-gray-200 rounded text-[11px] focus:outline-none focus:border-[#007edb] uppercase"
+                    />
+                    <button
+                      onClick={handleApplyVoucher}
+                      className="px-2 h-7 bg-orange-500 text-white text-[10px] font-bold rounded hover:bg-orange-600 transition-colors shrink-0"
+                    >
+                      Áp
+                    </button>
+                  </div>
+                )}
               </div>
-
-              {/* Applied promotion/voucher badge */}
-              {appliedDiscount && (
-                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-2 py-1.5">
-                  <span className="text-[10px] font-medium text-green-700 truncate">{appliedDiscount.label}</span>
-                  <button onClick={clearDiscount} className="ml-1 text-green-600 hover:text-green-800 shrink-0"><X size={12} /></button>
-                </div>
-              )}
-
-              {/* Voucher code input */}
-              {!appliedDiscount && (
-                <div className="flex gap-1">
-                  <input
-                    type="text"
-                    value={voucherCode}
-                    onChange={e => { setVoucherCode(e.target.value.toUpperCase()); setVoucherError('') }}
-                    onKeyDown={e => e.key === 'Enter' && handleApplyVoucher()}
-                    placeholder="Mã voucher"
-                    className="flex-1 h-7 px-2 border border-gray-200 rounded text-[11px] focus:outline-none focus:border-[#007edb] uppercase"
-                  />
-                  <button
-                    onClick={handleApplyVoucher}
-                    className="px-2 h-7 bg-orange-500 text-white text-[10px] font-bold rounded hover:bg-orange-600 transition-colors"
-                  >
-                    Áp
-                  </button>
-                </div>
-              )}
               {voucherError && <p className="text-[10px] text-red-500">{voucherError}</p>}
 
               {/* Grand Total */}
@@ -2244,7 +2395,6 @@ export default function POSPage() {
                   {/* Denominations suggestion shortcuts as small tag buttons */}
                   {paymentMethod === 'cash' && (
                     <div className="space-y-1">
-                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Gợi ý tiền mặt</span>
                       <div className="flex flex-wrap gap-1">
                         {getCashSuggestions(grandTotal).map(amt => (
                           <button
@@ -2260,14 +2410,53 @@ export default function POSPage() {
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center text-[12px] font-bold pt-1.5 border-t border-dashed border-gray-200">
-                    <span>{debtAmount > 0 ? 'Ghi nợ' : 'Tiền thừa'}</span>
-                    <span className={debtAmount > 0 ? 'text-red-600 text-[13px]' : 'text-emerald-600 text-[13px]'}>
-                      {(debtAmount > 0 ? debtAmount : changeDue).toLocaleString('vi-VN')} ₫
-                    </span>
-                  </div>
+                  {/* Khách trả DƯ → cho chọn: trả lại khách (mặc định) hoặc ghi có công nợ */}
+                  {changeDue > 0 ? (
+                    <div className="pt-1.5 border-t border-dashed border-gray-200 space-y-1.5">
+                      <div className="flex justify-between items-center text-[12px] font-bold">
+                        <span>{overpayToCredit ? 'Ghi có công nợ' : 'Tiền thừa trả khách'}</span>
+                        <span className={overpayToCredit ? 'text-blue-600 text-[13px]' : 'text-emerald-600 text-[13px]'}>
+                          {changeDue.toLocaleString('vi-VN')} ₫
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 p-0.5 bg-gray-100 border border-gray-200 rounded">
+                        {([
+                          [false, 'Trả khách'],
+                          [true, 'Tính vào công nợ'],
+                        ] as const).map(([val, label]) => (
+                          <button
+                            key={String(val)}
+                            type="button"
+                            onClick={() => setOverpayToCredit(val)}
+                            className={`py-1 rounded text-[10px] font-bold transition-all text-center ${
+                              overpayToCredit === val ? 'bg-[#007edb] text-white shadow-sm' : 'text-gray-505 hover:text-gray-800'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {overpayToCredit && (
+                        <p className="text-[10px] text-blue-600 leading-tight">
+                          Phần dư {changeDue.toLocaleString('vi-VN')} ₫ trừ vào nợ cũ; nếu khách không nợ sẽ thành số dư có (nợ âm) cho lần mua sau.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center text-[12px] font-bold pt-1.5 border-t border-dashed border-gray-200">
+                      <span>{debtAmount > 0 ? 'Ghi nợ' : 'Tiền thừa'}</span>
+                      <span className={debtAmount > 0 ? 'text-red-600 text-[13px]' : 'text-emerald-600 text-[13px]'}>
+                        {(debtAmount > 0 ? debtAmount : changeDue).toLocaleString('vi-VN')} ₫
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
+
+            </div>
+
+            {/* Footer GHIM — cảnh báo + nút Thanh toán LUÔN hiển thị (không cuộn) */}
+            <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-3 py-2 space-y-2 shadow-[0_-2px_8px_rgba(0,0,0,0.05)]">
 
               {/* Cảnh báo vượt hạn mức — khi có phần ghi nợ vượt hạn mức (mọi PTTT) */}
               {isCreditLimitExceeded && (
@@ -2295,7 +2484,7 @@ export default function POSPage() {
               )}
 
               {/* Nút thanh toán / tạo đơn — thích ứng theo chế độ bán */}
-              <div className="pt-2 border-t border-gray-200/60">
+              <div>
                 <button
                   id="btn-pos-pay"
                   onClick={handlePayment}
