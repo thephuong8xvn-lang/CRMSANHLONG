@@ -92,6 +92,13 @@ export const qk = {
     stratTargets: (params: object) => ['reports', 'strategic', 'targets', params] as const,
     stratConfig: ['reports', 'strategic', 'config'] as const,
   },
+  gdrive: {
+    sources: ['gdrive', 'sources'] as const,
+    files: (sourceId: string) => ['gdrive', 'files', sourceId] as const,
+    sheetInfo: (fileId: string) => ['gdrive', 'sheet-info', fileId] as const,
+    sheet: (fileId: string, tab: string) => ['gdrive', 'sheet', fileId, tab] as const,
+    aliases: (supplierId: string) => ['gdrive', 'aliases', supplierId] as const,
+  },
   auth: {
     rolePermissions: (userId: string) => ['auth', 'role-permissions', userId] as const,
   },

@@ -13,13 +13,15 @@ import {
   Calendar,
   FileText,
   AlertCircle,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { logger } from '../../lib/logger'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import { colLetterToIndex, parseSheetNumber } from '../../lib/gdriveMapping'
 
 interface ReceiptLine {
   id: string
@@ -48,6 +50,11 @@ interface ReceiptDetail {
   completed_by: string | null
   completed_at: string | null
   created_at: string
+  gsheet_source_id: string | null
+  gsheet_file_id: string | null
+  gsheet_tab: string | null
+  gsheet_synced_at: string | null
+  gsheet_row_map: { product_id: string; row: number }[] | null
   supplier?: { name: string } | null
   warehouse?: { name: string } | null
   creator?: { full_name: string } | null
@@ -90,6 +97,7 @@ export default function GoodsReceiptDetailPage() {
           id, receipt_code, status, po_id, supplier_id, warehouse_id,
           receipt_date, total_amount, notes, received_by,
           verified_by, verified_at, completed_by, completed_at, created_at,
+          gsheet_source_id, gsheet_file_id, gsheet_tab, gsheet_synced_at, gsheet_row_map,
           supplier:suppliers(name),
           warehouse:warehouses(name),
           creator:profiles!goods_receipts_received_by_fkey(full_name),
@@ -139,6 +147,45 @@ export default function GoodsReceiptDetailPage() {
   const handleComplete = () => callRpc('fn_complete_goods_receipt', { p_receipt_id: id }, 'Hoàn thành! Hàng đã được nhập vào kho và ghi thẻ kho.')
   const handleReopen = () => callRpc('fn_reopen_goods_receipt', { p_receipt_id: id }, 'Đã trả phiếu về trạng thái Nháp để chỉnh sửa.')
   const handleCancel = () => callRpc('fn_cancel_goods_receipt', { p_receipt_id: id, p_reason: cancelReason || null }, 'Đã hủy phiếu nhập.')
+
+  // Đồng bộ lại giá nhập từ Google Sheet (CHỈ khi còn nháp). Sau khi duyệt, RPC sẽ raise lỗi.
+  const handleResyncPrices = async () => {
+    if (!id || !receipt?.gsheet_file_id || !receipt.gsheet_source_id || !receipt.gsheet_tab) return
+    setSubmitting(true)
+    setAlertMsg(null)
+    try {
+      const { data: src, error: srcErr } = await supabase
+        .from('gdrive_sources').select('column_map').eq('id', receipt.gsheet_source_id).single()
+      if (srcErr) throw srcErr
+      const priceCol = (src?.column_map as any)?.import_price
+      if (!priceCol) throw new Error('Nguồn chưa cấu hình cột Giá nhập.')
+
+      const { data: sheetRes, error: fErr } = await supabase.functions.invoke('gdrive-proxy', {
+        body: { action: 'read-sheet', source_id: receipt.gsheet_source_id, file_id: receipt.gsheet_file_id, tab: receipt.gsheet_tab },
+      })
+      if (fErr) throw new Error(fErr.message)
+      if ((sheetRes as any)?.error) throw new Error((sheetRes as any).error)
+      const values: any[][] = (sheetRes as any)?.values ?? []
+
+      const colIdx = colLetterToIndex(priceCol)
+      const rowMap = receipt.gsheet_row_map ?? []
+      const prices = rowMap
+        .map((rm) => ({ product_id: rm.product_id, unit_price: parseSheetNumber((values[rm.row - 1] || [])[colIdx]) }))
+        .filter((p) => p.product_id && p.unit_price > 0)
+      if (prices.length === 0) throw new Error('Không đọc được giá hợp lệ từ Sheet.')
+
+      const { error } = await supabase.rpc('fn_sync_gsheet_draft_prices', { p_receipt_id: id, p_prices: prices })
+      if (error) throw error
+      setAlertMsg({ type: 'success', text: `Đã đồng bộ giá ${prices.length} dòng từ Google Sheet.` })
+      await loadReceipt()
+    } catch (err: any) {
+      logger.error('[GoodsReceiptDetail] resync error:', err?.message ?? err)
+      setAlertMsg({ type: 'error', text: 'Đồng bộ giá thất bại: ' + (err.message || err) })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  const canResync = receipt?.status === 'draft' && !!receipt?.gsheet_file_id && (isCreator || isAdmin)
 
   if (loading) {
     return (
@@ -305,8 +352,14 @@ export default function GoodsReceiptDetailPage() {
         </div>
 
         {/* Actions */}
-        {(canEditDraft || canVerify || canComplete || canReopen || canCancel) && (
+        {(canEditDraft || canVerify || canComplete || canReopen || canCancel || canResync) && (
           <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm flex flex-wrap items-center gap-3">
+            {canResync && (
+              <button onClick={handleResyncPrices} disabled={submitting}
+                className="h-11 px-5 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-lg flex items-center gap-2 transition-all disabled:opacity-50">
+                <RefreshCw size={16} /> Đồng bộ lại giá từ Google Sheet
+              </button>
+            )}
             {canComplete && (
               <button onClick={handleComplete} disabled={submitting}
                 className="h-11 px-6 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-lg shadow-md flex items-center gap-2 disabled:opacity-50 active:scale-95 transition-all">

@@ -32,6 +32,8 @@ const SupplierDetailPage         = lazy(() => import('./pages/suppliers/Supplier
 const InventoryPage              = lazy(() => import('./pages/inventory/InventoryPage'))
 const ExpiryPage                 = lazy(() => import('./pages/inventory/ExpiryPage'))
 const ReorderPage                = lazy(() => import('./pages/inventory/ReorderPage'))
+const GdriveImportPage           = lazy(() => import('./pages/inventory/GdriveImportPage'))
+const GdriveSourcesPage          = lazy(() => import('./pages/inventory/GdriveSourcesPage'))
 const PurchaseOrderFormPage      = lazy(() => import('./pages/purchase-orders/PurchaseOrderFormPage'))
 const GoodsReceiptFormPage       = lazy(() => import('./pages/goods-receipts/GoodsReceiptFormPage'))
 const GoodsReceiptDetailPage     = lazy(() => import('./pages/goods-receipts/GoodsReceiptDetailPage'))
@@ -173,6 +175,8 @@ function AppRoutes() {
       <Route path="/suppliers/:id" element={<ProtectedRoute perms={['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive']}><SupplierDetailPage /></ProtectedRoute>} />
       <Route path="/inventory/expiry" element={<ProtectedRoute perms={['inventory.view']}><ExpiryPage /></ProtectedRoute>} />
       <Route path="/inventory/reorder" element={<ProtectedRoute perms={['inventory.view']}><ReorderPage /></ProtectedRoute>} />
+      <Route path="/inventory/gdrive-import" element={<ProtectedRoute perms={['inventory.receive']}><GdriveImportPage /></ProtectedRoute>} />
+      <Route path="/inventory/gdrive-sources" element={<ProtectedRoute adminOnly><GdriveSourcesPage /></ProtectedRoute>} />
       <Route path="/inventory" element={<ProtectedRoute perms={['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer']}><InventoryPage /></ProtectedRoute>} />
       <Route path="/purchase-orders/new" element={<ProtectedRoute perms={['purchase_orders.create']}><PurchaseOrderFormPage /></ProtectedRoute>} />
       <Route path="/goods-receipts/new" element={<ProtectedRoute perms={['inventory.receive']}><GoodsReceiptFormPage /></ProtectedRoute>} />
