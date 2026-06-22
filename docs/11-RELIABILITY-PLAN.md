@@ -1,6 +1,7 @@
 # 11 — Kế hoạch "Đầu tư độ tin cậy" (Reliability)
 
-> Trạng thái: **CHỜ DUYỆT** · Lập 2026-06-22 · Thứ tự thực thi: **B1 → A → B2 → C**
+> Trạng thái: **HOÀN THÀNH B1+A+B2+C (2026-06-23)** · Lập 2026-06-22 · Thứ tự thực thi: **B1 → A → B2 → C**
+> Còn việc [BẠN]: nhập Vault secret Telegram (B2), deploy edge `health` + UptimeRobot (B2), xoay secret đã lộ.
 
 Mục tiêu tổng: giảm rủi ro mất dữ liệu, bắt sớm lỗi toàn vẹn (đặc biệt tồn kho/VAT theo lô),
 và cho phép bán hàng khi rớt mạng. Không làm 2 mục còn lại (HĐĐT, cầu nối MISA) ở đợt này.
@@ -113,7 +114,15 @@ pg_restore --no-owner --no-privileges --clean --if-exists \
 
 ---
 
-## Workstream C — POS offline cơ bản (làm cuối, đứng trên nền A)
+## Workstream C — POS offline cơ bản — ✅ ĐÃ TRIỂN KHAI (2026-06-23)
+
+> Migration `20260724000000_pos_offline_idempotency` (prod+staging): `orders.client_request_id`
+> + unique 1 phần; `fn_pos_quick_sale` dedup theo key. pgTAP `60_pos_idempotency` (12/12).
+> FE: `src/lib/offlineDb.ts` (idb: snapshot 72h + hàng đợi), `useOnlineStatus`,
+> `usePosOfflineQueue` (tự flush, failed giữ lại), `PosOfflineBar`, POSPage wire.
+> Quyết định: đơn lỗi tồn→giữ báo NV; bán nợ offline cho phép kèm cảnh báo; snapshot 72h;
+> bán giao hàng vẫn cần online. Build+tsc+40 unit test PASS.
+
 
 ### Thành phần
 1. [TÔI] **Snapshot danh mục offline** (IndexedDB): sản phẩm + giá theo nhóm + tồn lô theo kho của user; làm tươi khi online; hiển thị "Dữ liệu offline cập nhật lúc …".
