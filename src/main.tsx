@@ -11,6 +11,10 @@ import '@fontsource/be-vietnam-pro/600.css'
 import './index.css'
 import App from './App.tsx'
 import { reportWebVitals } from './lib/reportWebVitals'
+import { installGlobalErrorReporting } from './lib/logger'
+
+// Báo lỗi runtime nghiêm trọng (uncaught/unhandledrejection) về app_error_logs.
+installGlobalErrorReporting()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -86,7 +86,12 @@ pg_restore --no-owner --no-privileges --clean --if-exists \
 
 ---
 
-## Workstream B2 — Monitoring + cảnh báo (Telegram)
+## Workstream B2 — Monitoring + cảnh báo (Telegram) — ✅ ĐÃ TRIỂN KHAI (2026-06-23)
+
+> Migration `20260723000000_monitoring.sql` apply prod+staging. Cron `monitor-integrity-daily`
+> (08:00 VN) chạy `fn_monitor_tick()`. Cảnh báo Telegram chờ nhập Vault secret —
+> xem hướng dẫn **`docs/12-MONITORING-SETUP.md`**. FE `logger.report` + edge `health` cho uptime.
+
 
 ### Việc cần làm
 - [BẠN] Tạo Telegram bot (@BotFather) → lấy `bot_token`; lấy `chat_id` nhóm/cá nhân.

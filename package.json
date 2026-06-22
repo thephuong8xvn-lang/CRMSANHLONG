@@ -14,6 +14,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "db:sync": "node scripts/db/sync-staging.mjs",
+    "db:apply": "node scripts/db/apply-file.mjs",
     "test:db": "node scripts/db/run-tests.mjs"
   },
   "dependencies": {
