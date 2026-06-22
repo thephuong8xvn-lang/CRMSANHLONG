@@ -47,8 +47,8 @@ jobs:
           PROD_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          pg_dump "$PROD_URL" --schema-only --no-owner --no-privileges \
-            --schema=public --schema=auth -f schema.sql || \
+          # Chỉ clone schema public — staging đã có sẵn schema auth của Supabase
+          # (auth.users tồn tại; FK profiles->auth.users vẫn hợp lệ).
           pg_dump "$PROD_URL" --schema-only --no-owner --no-privileges --schema=public -f schema.sql
           wc -l schema.sql
 
