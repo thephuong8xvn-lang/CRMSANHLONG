@@ -500,9 +500,16 @@ export default function GoodsReceiptFormPage() {
 
         const { data: lns, error: lnErr } = await supabase
           .from('goods_receipt_lines')
-          .select(`id, po_line_id, product_id, quantity, unit_price, lot_number, manufacture_date, expiry_date, product:products(id, sku, name, is_lot_managed, category:product_categories(name))`)
+          .select(`id, po_line_id, product_id, quantity, unit_price, lot_number, manufacture_date, expiry_date, is_vat, vat_rate, product:products(id, sku, name, is_lot_managed, category:product_categories(name))`)
           .eq('receipt_id', r.id)
         if (lnErr) throw lnErr
+
+        // Nguồn chuẩn cho lựa chọn hóa đơn: cờ is_vat/vat_rate THỰC của dòng phiếu
+        // (không chỉ dựa vào text notes) → phiếu nháp gdrive cũng hiển thị đúng.
+        if (lns && lns.length > 0) {
+          const first: any = lns[0]
+          setVatOption(!first.is_vat ? 'none' : Number(first.vat_rate) === 10 ? '10' : '5')
+        }
 
         const items: ReceiptVerificationState[] = (lns || []).map((l: any) => ({
           poLineId: l.po_line_id,
@@ -731,8 +738,12 @@ export default function GoodsReceiptFormPage() {
         ? editPoId
         : (receiptMode === 'po' && selectedPOId && !selectedPOId.startsWith('direct-') ? selectedPOId : null)
 
-      const vatLabel = vatOption === 'none' ? 'Không VAT' : `VAT ${vatOption}%`
+      const vatLabel = vatOption === 'none' ? 'Không xuất hóa đơn đỏ' : `Xuất hóa đơn đỏ (VAT ${vatOption}%)`
       const noteText = `${realPoId ? `Nhập kho từ PO` : 'Nhập kho trực tiếp không cần PO'}. [Lựa chọn thuế: ${vatLabel}]. ${notes}`
+
+      // Cờ hóa đơn đỏ áp cho mọi dòng của phiếu (1 phiếu = 1 loại hóa đơn).
+      const lineIsVat = vatOption !== 'none'
+      const lineVatRate = vatOption === '5' ? 5 : vatOption === '10' ? 10 : 0
 
       // Hàm dựng dòng phiếu (carry po_line_id để giữ liên kết PO khi hoàn thành)
       const buildLines = (receiptId: string) => verifiedItems.map(item => ({
@@ -743,7 +754,9 @@ export default function GoodsReceiptFormPage() {
         unit_price: item.unitPrice,
         lot_number: item.lotNumber || null,
         manufacture_date: item.manufactureDate || null,
-        expiry_date: item.expiryDate || null
+        expiry_date: item.expiryDate || null,
+        is_vat: lineIsVat,
+        vat_rate: lineVatRate
       }))
 
       let targetReceiptId: string
@@ -1706,15 +1719,15 @@ export default function GoodsReceiptFormPage() {
                       <span className="font-bold text-gray-700">{verifiedCount} / {totalItemsCount}</span>
                     </div>
                     <div className="flex justify-between items-center text-gray-400 text-body-md">
-                      <span>Lựa chọn VAT</span>
+                      <span>Loại hàng (hóa đơn)</span>
                       <select
                         value={vatOption}
                         onChange={(e) => setVatOption(e.target.value as any)}
                         className="h-8 px-2 border border-gray-200 rounded-lg text-body-md font-semibold text-gray-750 bg-white focus:outline-none focus:border-blue-500 shadow-sm"
                       >
-                        <option value="none">Không VAT (0%)</option>
-                        <option value="5">Có VAT (5%)</option>
-                        <option value="10">Có VAT (10%)</option>
+                        <option value="none">Không xuất hóa đơn đỏ</option>
+                        <option value="5">Xuất hóa đơn đỏ (VAT 5%)</option>
+                        <option value="10">Xuất hóa đơn đỏ (VAT 10%)</option>
                       </select>
                     </div>
                     <div className="flex justify-between items-center text-gray-400 text-body-md border-b border-dashed border-gray-100 pb-3">

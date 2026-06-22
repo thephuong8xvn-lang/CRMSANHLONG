@@ -138,7 +138,7 @@ export default function ProductListPage() {
 
       const headers = [
         'Mã SKU','Tên sản phẩm','Đơn vị tính','Nhóm sản phẩm','Thương hiệu','Quy cách',
-        'Giá bán lẻ','Giá vốn','Tồn kho','Tồn VAT','Tồn không VAT','Khách đặt','Trạng thái kinh doanh','Thời gian tạo'
+        'Giá bán lẻ','Giá vốn','Tồn kho','Tồn HĐ đỏ','Tồn không HĐ','Khách đặt','Trạng thái kinh doanh','Thời gian tạo'
       ]
 
       const exportRows = data.map(prod => [
@@ -218,11 +218,11 @@ export default function ProductListPage() {
       }
     },
     {
-      key: 'vat', header: 'VAT / Không', width: 120, align: 'right', noTruncate: true,
+      key: 'vat', header: 'HĐ đỏ / Không', width: 120, align: 'right', noTruncate: true,
       render: p => (
         <div className="flex flex-col items-end gap-0.5 leading-tight">
-          <span className="text-[11px] font-bold text-emerald-700 tabular-nums" title="Tồn có VAT">VAT {p.vat_stock.toLocaleString('vi-VN')}</span>
-          <span className="text-[11px] text-gray-500 tabular-nums" title="Tồn không VAT (trốn thuế)">Khô {p.nonvat_stock.toLocaleString('vi-VN')}</span>
+          <span className="text-[11px] font-bold text-emerald-700 tabular-nums" title="Tồn xuất hóa đơn đỏ">HĐ đỏ {p.vat_stock.toLocaleString('vi-VN')}</span>
+          <span className="text-[11px] text-gray-500 tabular-nums" title="Tồn không xuất hóa đơn đỏ">Không HĐ {p.nonvat_stock.toLocaleString('vi-VN')}</span>
         </div>
       )
     },

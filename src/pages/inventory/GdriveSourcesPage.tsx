@@ -224,9 +224,9 @@ export default function GdriveSourcesPage() {
                   <input type="number" value={form.data_start_row} onChange={(e) => setForm({ ...form, data_start_row: Number(e.target.value) })} className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-body-md font-semibold text-gray-700">VAT mặc định</label>
+                  <label className="text-body-md font-semibold text-gray-700">Mặc định khi nhập</label>
                   <select value={form.vat_default} onChange={(e) => setForm({ ...form, vat_default: e.target.value as any })} className="w-full h-10 px-2 border border-gray-100 rounded-lg text-body-md bg-white">
-                    <option value="none">Không</option><option value="5">5%</option><option value="10">10%</option>
+                    <option value="none">Không xuất HĐ đỏ</option><option value="5">HĐ đỏ 5%</option><option value="10">HĐ đỏ 10%</option>
                   </select>
                 </div>
               </div>

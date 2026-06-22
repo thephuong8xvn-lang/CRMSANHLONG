@@ -1531,8 +1531,8 @@ export default function POSPage() {
                 <span className="shrink-0 flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 font-bold whitespace-nowrap">
                   <Layers size={11} /> Lô {pendingLot.lotNumber} · HSD {fmtDate(pendingLot.expiry)} · còn {pendingLot.available.toLocaleString('vi-VN')}
                   {pendingLot.isVat
-                    ? <span className="ml-1 px-1 bg-emerald-100 text-emerald-700 rounded text-[9px]">VAT</span>
-                    : <span className="ml-1 px-1 bg-gray-100 text-gray-500 rounded text-[9px]">KHÔNG VAT</span>}
+                    ? <span className="ml-1 px-1 bg-emerald-100 text-emerald-700 rounded text-[9px]">HĐ đỏ</span>
+                    : <span className="ml-1 px-1 bg-gray-100 text-gray-500 rounded text-[9px]">Không HĐ</span>}
                 </span>
               ) : (
                 <span className="text-[11px] text-gray-400 shrink-0 whitespace-nowrap">Tồn: <b className={(productStock[pendingProduct.id]||0)>0?'text-emerald-600':'text-red-500'}>{(productStock[pendingProduct.id]||0).toLocaleString('vi-VN')}</b></span>
@@ -1626,8 +1626,8 @@ export default function POSPage() {
                       <span className="text-[11px] text-gray-500">· HSD {fmtDate(lot.expiry)}</span>
                       <span className="text-[11px] text-gray-500">· còn <b className="text-gray-700">{lot.available.toLocaleString('vi-VN')}</b> {prod.unit || ''}</span>
                       {lot.isVat
-                        ? <span className="px-1 bg-emerald-50 text-emerald-700 rounded text-[9px] font-bold border border-emerald-200">VAT</span>
-                        : <span className="px-1 bg-gray-100 text-gray-500 rounded text-[9px] font-bold border border-gray-200">KHÔNG VAT</span>}
+                        ? <span className="px-1 bg-emerald-50 text-emerald-700 rounded text-[9px] font-bold border border-emerald-200">HĐ đỏ</span>
+                        : <span className="px-1 bg-gray-100 text-gray-500 rounded text-[9px] font-bold border border-gray-200">Không HĐ</span>}
                       {isFefoFirst && <span className="px-1 bg-blue-50 text-blue-600 rounded text-[9px] font-bold border border-blue-100">BÁN TRƯỚC</span>}
                       {expired && <span className="px-1 bg-red-50 text-red-600 rounded text-[9px] font-bold border border-red-100">QUÁ HẠN</span>}
                       {!expired && near && <span className="px-1 bg-amber-50 text-amber-700 rounded text-[9px] font-bold border border-amber-100">CẬN HẠN</span>}

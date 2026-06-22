@@ -53,8 +53,8 @@ export default function VatManagementPage() {
     { key: 'sku', header: 'Mã hàng', width: 120, render: (p) => <span className="font-mono text-[12px] text-gray-500">{p.sku || '—'}</span> },
     { key: 'name', header: 'Tên hàng', flex: true, minWidth: 220, noTruncate: true, render: (p) => <span className="font-semibold text-gray-800">{p.name}</span> },
     { key: 'unit', header: 'ĐVT', width: 70, render: (p) => <span className="text-gray-600">{p.unit || '—'}</span> },
-    { key: 'vat', header: 'Tồn VAT', width: 110, align: 'right', render: (p) => <span className="font-bold text-emerald-700 tabular-nums">{fmtNum(p.vat_stock)}</span> },
-    { key: 'nonvat', header: 'Tồn không VAT', width: 130, align: 'right', render: (p) => <span className="text-gray-500 tabular-nums">{fmtNum(p.nonvat_stock)}</span> },
+    { key: 'vat', header: 'Tồn HĐ đỏ', width: 110, align: 'right', render: (p) => <span className="font-bold text-emerald-700 tabular-nums">{fmtNum(p.vat_stock)}</span> },
+    { key: 'nonvat', header: 'Tồn không HĐ', width: 130, align: 'right', render: (p) => <span className="text-gray-500 tabular-nums">{fmtNum(p.nonvat_stock)}</span> },
   ]
 
   // ── Cột: Chờ xuất VAT ──

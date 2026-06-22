@@ -347,8 +347,8 @@ export default function GdriveImportPage() {
       const lineVatRate = isVatGroup ? vatRate : 0
       const totalAmount = includedRows.reduce((s, r) => s + finalPriceFor(r) * r.qty, 0)
       const vatLabel = isVatGroup
-        ? `Có VAT ${vatRate}%${addCorpTax ? ' + thuế DN' : ''}`
-        : 'Không VAT (trốn thuế)'
+        ? `Xuất hóa đơn đỏ (VAT ${vatRate}%${addCorpTax ? ' + thuế DN' : ''})`
+        : 'Không xuất hóa đơn đỏ'
       const code = `GR-${Math.floor(100000 + Math.random() * 900000)}`
       const rowMap = includedRows.map((r) => ({ product_id: resolvedFor(r), row: r.sheetRow }))
 
@@ -529,11 +529,11 @@ export default function GdriveImportPage() {
               <div className="flex items-center gap-3 flex-wrap">
                 {/* Nhóm VAT */}
                 <div className="flex items-center gap-1.5">
-                  <label className="text-tiny text-gray-500">Nhóm hàng</label>
+                  <label className="text-tiny text-gray-500">Loại hàng</label>
                   <select value={vatGroup} onChange={(e) => setVatGroup(e.target.value as 'vat' | 'none')}
                     className={`h-9 px-2 border rounded-lg text-body-md bg-white font-semibold ${isVatGroup ? 'border-emerald-300 text-emerald-700' : 'border-gray-200 text-gray-600'}`}>
-                    <option value="vat">Có VAT</option>
-                    <option value="none">Không VAT</option>
+                    <option value="vat">Xuất hóa đơn đỏ</option>
+                    <option value="none">Không xuất hóa đơn đỏ</option>
                   </select>
                   {isVatGroup && (
                     <select value={vatRate} onChange={(e) => setVatRate(Number(e.target.value) as 5 | 10)}

@@ -272,7 +272,7 @@ export default function InventoryPage() {
       return {
         value: l.id,
         label: l.product_id ? l.name : `Lô: ${l.lot_number}`,
-        desc: `Lô: ${l.lot_number} | Tồn: ${avail} | Vốn: ${l.cost_price?.toLocaleString()}₫`,
+        desc: `${l.is_vat ? '🔴 HĐ đỏ' : '⚪ Không HĐ'} | Lô: ${l.lot_number} | Tồn: ${avail} | Vốn: ${l.cost_price?.toLocaleString()}₫`,
         disabled: avail <= 0 || isAlreadyAdded
       };
     });
@@ -293,7 +293,7 @@ export default function InventoryPage() {
       return {
         value: l.id,
         label: l.product_id ? l.name : `Lô: ${l.lot_number}`,
-        desc: `Lô: ${l.lot_number} | Tồn: ${avail} | Giá: ${l.cost_price?.toLocaleString()}₫`,
+        desc: `${l.is_vat ? '🔴 HĐ đỏ' : '⚪ Không HĐ'} | Lô: ${l.lot_number} | Tồn: ${avail} | Giá: ${l.cost_price?.toLocaleString()}₫`,
         disabled: avail <= 0 || isAlreadyAdded
       };
     });
@@ -326,6 +326,7 @@ export default function InventoryPage() {
             quantity_reserved,
             expiry_date,
             cost_price,
+            is_vat,
             product:products(id, name, sku, unit)
           `)
           .eq('warehouse_id', newTransfer.fromWarehouse)
@@ -343,6 +344,7 @@ export default function InventoryPage() {
           quantity_reserved: l.quantity_reserved,
           expiry_date: l.expiry_date,
           cost_price: Number(l.cost_price),
+          is_vat: !!l.is_vat,
           product_id: l.product?.id || '',
           name: l.product?.name || '',
           sku: l.product?.sku || '',
@@ -371,6 +373,7 @@ export default function InventoryPage() {
             quantity_reserved,
             expiry_date,
             cost_price,
+            is_vat,
             product:products(id, name, sku, unit)
           `)
           .eq('warehouse_id', newReturn.warehouseId)
@@ -388,6 +391,7 @@ export default function InventoryPage() {
           quantity_reserved: l.quantity_reserved,
           expiry_date: l.expiry_date,
           cost_price: Number(l.cost_price),
+          is_vat: !!l.is_vat,
           product_id: l.product?.id || '',
           name: l.product?.name || '',
           sku: l.product?.sku || '',
