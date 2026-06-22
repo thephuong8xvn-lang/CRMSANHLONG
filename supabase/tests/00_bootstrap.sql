@@ -23,7 +23,7 @@ create function tap.setup() returns void
   language plpgsql
   set search_path = tap, public, extensions
 as $$
-declare v_role uuid;
+declare v_role uuid; v_perm uuid;
 begin
   insert into auth.users(id) values (tap.uid()) on conflict (id) do nothing;
   insert into public.branches(id, code, name)   values (tap.branch(),'TAP-BR','TAP Branch')  on conflict (id) do nothing;
@@ -50,6 +50,13 @@ begin
     insert into public.roles(code, name) values ('admin','Admin') returning id into v_role;
   end if;
   insert into public.user_roles(user_id, role_id) values (tap.uid(), v_role) on conflict do nothing;
+
+  -- Quyền orders.create cho admin (staging clone schema-only → bảng permissions rỗng).
+  if not exists (select 1 from public.permissions where code = 'orders.create') then
+    insert into public.permissions(code, module, action) values ('orders.create','orders','create');
+  end if;
+  select id into v_perm from public.permissions where code = 'orders.create';
+  insert into public.role_permissions(role_id, permission_id) values (v_role, v_perm) on conflict do nothing;
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', tap.uid()::text, 'role', 'authenticated')::text, true);
