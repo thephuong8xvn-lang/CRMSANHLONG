@@ -68,24 +68,24 @@ jobs:
           curl -fsSL https://rclone.org/install.sh | sudo bash
           rclone version | head -1
 
-      - name: Ghi cấu hình rclone
+      - name: Cấu hình rclone qua biến môi trường (tránh lỗi xuống dòng của file conf)
         env:
           RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
         run: |
           set -euo pipefail
           if [ -z "${RCLONE_CONF}" ]; then echo "::error::Thiếu secret RCLONE_CONF"; exit 1; fi
-          mkdir -p "$HOME/.config/rclone"
-          # tr -d '\r': bỏ ký tự CR (Windows CRLF) làm hỏng parse section của rclone.
-          printf '%s' "$RCLONE_CONF" | tr -d '\r' > "$HOME/.config/rclone/rclone.conf"
-          echo "Chẩn đoán conf — số dòng: $(wc -l < "$HOME/.config/rclone/rclone.conf"), số section [..]: $(grep -c '^\[' "$HOME/.config/rclone/rclone.conf" || true)"
-          echo "Remote tìm thấy trong cấu hình:"; rclone listremotes || true
-          # Tự nhận diện remote đầu tiên (không phụ thuộc tên cụ thể).
-          REMOTE="$(rclone listremotes | head -1)"
-          if [ -z "$REMOTE" ]; then
-            echo "::error::rclone.conf không có remote nào — kiểm tra lại nội dung secret RCLONE_CONF (phải có dòng [tên] + type = drive + token = ...)"; exit 1
-          fi
-          echo "Dùng remote: $REMOTE"
-          echo "REMOTE=$REMOTE" >> "$GITHUB_ENV"
+          # Bóc token JSON {...} từ secret — chạy được dù conf 1 dòng hay nhiều dòng.
+          TOKEN="$(printf '%s' "$RCLONE_CONF" | tr -d '\r\n' | grep -o '{.*}' || true)"
+          if [ -z "$TOKEN" ]; then echo "::error::Không tìm thấy token JSON {...} trong RCLONE_CONF"; exit 1; fi
+          echo "Đã bóc token (độ dài ${#TOKEN} ký tự)."
+          # Cấu hình remote 'gdrive' hoàn toàn qua biến môi trường, KHÔNG cần file conf.
+          {
+            echo "RCLONE_CONFIG_GDRIVE_TYPE=drive"
+            echo "RCLONE_CONFIG_GDRIVE_SCOPE=drive"
+            echo "RCLONE_CONFIG_GDRIVE_TOKEN<<__RCLONE_EOT__"
+            echo "$TOKEN"
+            echo "__RCLONE_EOT__"
+          } >> "$GITHUB_ENV"
 
       - name: Upload lên Google Drive
         env:
@@ -93,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${FOLDER_ID}" ]; then echo "::error::Thiếu secret GDRIVE_BACKUP_FOLDER_ID"; exit 1; fi
-          rclone copy "$FILE" "$REMOTE" --drive-root-folder-id "$FOLDER_ID" --no-traverse -v
+          rclone copy "$FILE" "gdrive:" --drive-root-folder-id "$FOLDER_ID" --no-traverse -v
           echo "Đã upload $FILE lên thư mục Drive."
 
       - name: Dọn bản backup cũ hơn 30 ngày
@@ -101,7 +101,7 @@ jobs:
           FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
         run: |
           set -euo pipefail
-          rclone delete "$REMOTE" --drive-root-folder-id "$FOLDER_ID" --min-age 30d --include "crm-*.dump" -v || true
+          rclone delete "gdrive:" --drive-root-folder-id "$FOLDER_ID" --min-age 30d --include "crm-*.dump" -v || true
           echo "Đã dọn bản cũ (giữ 30 ngày gần nhất)."
 
       - name: Lưu thêm 1 bản làm artifact (off-site lớp 2, giữ 14 ngày)
