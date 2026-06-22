@@ -22,6 +22,8 @@ export interface ProductStockRow {
   retail_cost: number
   stock_on_hand: number
   on_order_qty: number
+  vat_stock: number
+  nonvat_stock: number
   sold_30d: number
   days_to_oos: number | null
 }
@@ -87,6 +89,8 @@ export function useProductsList(params: ProductListParams) {
           ...r,
           stock_on_hand: Number(r.stock_on_hand ?? 0),
           on_order_qty:  Number(r.on_order_qty ?? 0),
+          vat_stock:     Number(r.vat_stock ?? 0),
+          nonvat_stock:  Number(r.nonvat_stock ?? 0),
         })),
         total: Number(result.total ?? 0),
         totalStockAll: Number(result.total_stock ?? 0),

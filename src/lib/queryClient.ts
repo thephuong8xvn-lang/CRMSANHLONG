@@ -99,6 +99,12 @@ export const qk = {
     sheet: (fileId: string, tab: string) => ['gdrive', 'sheet', fileId, tab] as const,
     aliases: (supplierId: string) => ['gdrive', 'aliases', supplierId] as const,
   },
+  vat: {
+    config: ['vat', 'config'] as const,
+    pending: (from: string, to: string) => ['vat', 'pending', from, to] as const,
+    issuances: ['vat', 'issuances'] as const,
+    stock: ['vat', 'stock'] as const,
+  },
   auth: {
     rolePermissions: (userId: string) => ['auth', 'role-permissions', userId] as const,
   },

@@ -80,6 +80,7 @@ interface ProductLot {
   lotNumber: string
   expiry: string | null   // expiry_date (HSD), null = không hạn
   available: number       // quantity_on_hand - quantity_reserved
+  isVat: boolean          // lô thuộc nhóm có VAT (xuất hóa đơn được)
 }
 
 interface CartItem {
@@ -629,7 +630,7 @@ export default function POSPage() {
 
       const stockQuery = supabase
         .from('stock_lots')
-        .select('id, product_id, lot_number, expiry_date, quantity_on_hand, quantity_reserved')
+        .select('id, product_id, lot_number, expiry_date, quantity_on_hand, quantity_reserved, is_vat')
         .eq('status', 'active')
         .eq('warehouse_id', mainWhId)
 
@@ -647,6 +648,7 @@ export default function POSPage() {
               lotNumber: item.lot_number || '—',
               expiry: item.expiry_date || null,
               available: avail,
+              isVat: !!item.is_vat,
             })
           }
         })
@@ -1528,6 +1530,9 @@ export default function POSPage() {
               {pendingLot ? (
                 <span className="shrink-0 flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 font-bold whitespace-nowrap">
                   <Layers size={11} /> Lô {pendingLot.lotNumber} · HSD {fmtDate(pendingLot.expiry)} · còn {pendingLot.available.toLocaleString('vi-VN')}
+                  {pendingLot.isVat
+                    ? <span className="ml-1 px-1 bg-emerald-100 text-emerald-700 rounded text-[9px]">VAT</span>
+                    : <span className="ml-1 px-1 bg-gray-100 text-gray-500 rounded text-[9px]">KHÔNG VAT</span>}
                 </span>
               ) : (
                 <span className="text-[11px] text-gray-400 shrink-0 whitespace-nowrap">Tồn: <b className={(productStock[pendingProduct.id]||0)>0?'text-emerald-600':'text-red-500'}>{(productStock[pendingProduct.id]||0).toLocaleString('vi-VN')}</b></span>
@@ -1620,6 +1625,9 @@ export default function POSPage() {
                       <span className="font-bold text-gray-700 text-[12px]">Lô {lot.lotNumber}</span>
                       <span className="text-[11px] text-gray-500">· HSD {fmtDate(lot.expiry)}</span>
                       <span className="text-[11px] text-gray-500">· còn <b className="text-gray-700">{lot.available.toLocaleString('vi-VN')}</b> {prod.unit || ''}</span>
+                      {lot.isVat
+                        ? <span className="px-1 bg-emerald-50 text-emerald-700 rounded text-[9px] font-bold border border-emerald-200">VAT</span>
+                        : <span className="px-1 bg-gray-100 text-gray-500 rounded text-[9px] font-bold border border-gray-200">KHÔNG VAT</span>}
                       {isFefoFirst && <span className="px-1 bg-blue-50 text-blue-600 rounded text-[9px] font-bold border border-blue-100">BÁN TRƯỚC</span>}
                       {expired && <span className="px-1 bg-red-50 text-red-600 rounded text-[9px] font-bold border border-red-100">QUÁ HẠN</span>}
                       {!expired && near && <span className="px-1 bg-amber-50 text-amber-700 rounded text-[9px] font-bold border border-amber-100">CẬN HẠN</span>}

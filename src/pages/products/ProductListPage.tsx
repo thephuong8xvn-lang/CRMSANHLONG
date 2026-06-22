@@ -13,7 +13,9 @@ import {
   Layers,
   Award,
   Filter,
-  X
+  X,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
@@ -136,7 +138,7 @@ export default function ProductListPage() {
 
       const headers = [
         'Mã SKU','Tên sản phẩm','Đơn vị tính','Nhóm sản phẩm','Thương hiệu','Quy cách',
-        'Giá bán lẻ','Giá vốn','Tồn kho','Khách đặt','Trạng thái kinh doanh','Thời gian tạo'
+        'Giá bán lẻ','Giá vốn','Tồn kho','Tồn VAT','Tồn không VAT','Khách đặt','Trạng thái kinh doanh','Thời gian tạo'
       ]
 
       const exportRows = data.map(prod => [
@@ -149,6 +151,8 @@ export default function ProductListPage() {
         prod.retail_price,
         prod.retail_cost,
         prod.stock_on_hand,
+        prod.vat_stock,
+        prod.nonvat_stock,
         prod.on_order_qty,
         prod.is_active ? 'Đang kinh doanh' : 'Ngừng kinh doanh',
         new Date(prod.created_at).toLocaleDateString('vi-VN'),
@@ -213,6 +217,15 @@ export default function ProductListPage() {
         return <span className={`font-bold tabular-nums ${tone}`}>{p.stock_on_hand.toLocaleString('vi-VN')}</span>
       }
     },
+    {
+      key: 'vat', header: 'VAT / Không', width: 120, align: 'right', noTruncate: true,
+      render: p => (
+        <div className="flex flex-col items-end gap-0.5 leading-tight">
+          <span className="text-[11px] font-bold text-emerald-700 tabular-nums" title="Tồn có VAT">VAT {p.vat_stock.toLocaleString('vi-VN')}</span>
+          <span className="text-[11px] text-gray-500 tabular-nums" title="Tồn không VAT (trốn thuế)">Khô {p.nonvat_stock.toLocaleString('vi-VN')}</span>
+        </div>
+      )
+    },
     { key: 'order', header: 'Khách đặt', width: 96, align: 'right', render: p => <span className="text-gray-600 tabular-nums">{p.on_order_qty.toLocaleString('vi-VN')}</span> },
     { key: 'created', header: 'Thời gian tạo', width: 130, render: p => <span className="text-gray-400 text-tiny font-mono">{p.created_at ? new Date(p.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}</span> },
     { key: 'days', header: 'Dự kiến hết', width: 110, noTruncate: true, render: p => {
@@ -230,6 +243,7 @@ export default function ProductListPage() {
       <td className="px-3 py-2 text-tiny italic text-gray-400 whitespace-nowrap">Tổng cộng:</td>
       <td></td><td></td><td></td><td></td>
       <td className="px-3 py-2 text-right font-extrabold text-blue-700 tabular-nums">{totalStockSum.toLocaleString('vi-VN')}</td>
+      <td></td>
       <td className="px-3 py-2 text-right font-extrabold text-blue-700 tabular-nums">{totalOrderedSum.toLocaleString('vi-VN')}</td>
       <td></td><td></td>
     </tr>
@@ -354,7 +368,23 @@ export default function ProductListPage() {
               </button>
             </div>
 
+            {/* Lỗi tải dữ liệu — hiển thị rõ ràng thay vì "Không tìm thấy" */}
+            {productsQuery.isError && (
+              <div className="px-3 py-10 flex flex-col items-center justify-center text-center space-y-3">
+                <AlertTriangle size={40} className="text-amber-500" />
+                <p className="font-bold text-gray-700">Lỗi tải dữ liệu sản phẩm</p>
+                <p className="text-tiny text-gray-400 max-w-md">{(productsQuery.error as any)?.message || 'Không thể kết nối đến máy chủ. Vui lòng thử lại.'}</p>
+                <button
+                  onClick={() => productsQuery.refetch()}
+                  className="mt-2 h-9 px-4 bg-blue-600 text-white rounded text-tiny font-bold flex items-center gap-1.5 hover:bg-blue-700 active:scale-[0.98] transition-all shadow-md"
+                >
+                  <RefreshCw size={14} /> Thử lại
+                </button>
+              </div>
+            )}
+
             {/* Bảng sản phẩm (layout chuẩn DataTable) */}
+            {!productsQuery.isError && (
             <div className="px-3 pb-3">
               <DataTable
                 rows={rows}
@@ -384,6 +414,7 @@ export default function ProductListPage() {
                 emptyText="Không tìm thấy sản phẩm nào khớp với bộ lọc."
               />
             </div>
+            )}
           </div>
         </div>
       </div>

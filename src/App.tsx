@@ -34,6 +34,7 @@ const ExpiryPage                 = lazy(() => import('./pages/inventory/ExpiryPa
 const ReorderPage                = lazy(() => import('./pages/inventory/ReorderPage'))
 const GdriveImportPage           = lazy(() => import('./pages/inventory/GdriveImportPage'))
 const GdriveSourcesPage          = lazy(() => import('./pages/inventory/GdriveSourcesPage'))
+const VatManagementPage          = lazy(() => import('./pages/inventory/VatManagementPage'))
 const PurchaseOrderFormPage      = lazy(() => import('./pages/purchase-orders/PurchaseOrderFormPage'))
 const GoodsReceiptFormPage       = lazy(() => import('./pages/goods-receipts/GoodsReceiptFormPage'))
 const GoodsReceiptDetailPage     = lazy(() => import('./pages/goods-receipts/GoodsReceiptDetailPage'))
@@ -177,6 +178,7 @@ function AppRoutes() {
       <Route path="/inventory/reorder" element={<ProtectedRoute perms={['inventory.view']}><ReorderPage /></ProtectedRoute>} />
       <Route path="/inventory/gdrive-import" element={<ProtectedRoute perms={['inventory.receive']}><GdriveImportPage /></ProtectedRoute>} />
       <Route path="/inventory/gdrive-sources" element={<ProtectedRoute adminOnly><GdriveSourcesPage /></ProtectedRoute>} />
+      <Route path="/inventory/vat" element={<ProtectedRoute perms={['cashbook.view']}><VatManagementPage /></ProtectedRoute>} />
       <Route path="/inventory" element={<ProtectedRoute perms={['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer']}><InventoryPage /></ProtectedRoute>} />
       <Route path="/purchase-orders/new" element={<ProtectedRoute perms={['purchase_orders.create']}><PurchaseOrderFormPage /></ProtectedRoute>} />
       <Route path="/goods-receipts/new" element={<ProtectedRoute perms={['inventory.receive']}><GoodsReceiptFormPage /></ProtectedRoute>} />

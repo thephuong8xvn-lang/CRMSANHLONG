@@ -221,9 +221,11 @@ Deno.serve(async (req) => {
       const tab: string = body.tab
       if (!tab) return json({ error: 'Thiếu tab.' }, 400)
       const range = encodeURIComponent(tab)
+      // dateTimeRenderOption=SERIAL_NUMBER: ô Ngày trả về số serial (không phụ thuộc
+      // locale) → frontend tự quy đổi → tránh nhập nhằng dd/mm vs mm/dd. Ô giá vẫn số thô.
       const data = await gfetch(
         token,
-        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`,
       )
       return json({ values: data.values ?? [] })
     }

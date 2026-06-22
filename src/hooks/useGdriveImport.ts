@@ -155,6 +155,28 @@ export function useProductAliases(supplierId: string | null) {
   })
 }
 
+// ── Kiểm tra lô đã tồn tại (chống nhập trùng theo SP + lô + HSD) ──
+export interface ExistingLotHit {
+  product_id: string
+  lot_number: string
+  expiry_date: string
+  in_stock: boolean
+  stock_warehouse: string | null
+  in_draft: boolean
+  draft_receipt_code: string | null
+  draft_status: string | null
+  draft_by: string | null
+}
+
+export async function checkExistingLots(
+  items: { product_id: string; lot_number: string; expiry_date: string }[],
+): Promise<ExistingLotHit[]> {
+  if (items.length === 0) return []
+  const { data, error } = await supabase.rpc('fn_check_existing_lots', { p_items: items })
+  if (error) { logger.error('[checkExistingLots]', error.message); throw error }
+  return (data as ExistingLotHit[]) ?? []
+}
+
 // Lưu (upsert) bí danh tên → product_id
 export function useUpsertAlias() {
   const qc = useQueryClient()

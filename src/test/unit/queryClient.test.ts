@@ -39,7 +39,8 @@ describe('qk key factory', () => {
   })
 
   it('qk.dashboard.stats is stable', () => {
-    expect(qk.dashboard.stats).toEqual(['dashboard', 'stats'])
+    expect(qk.dashboard.stats()).toEqual(['dashboard', 'stats', null])
+    expect(qk.dashboard.stats('branch-123')).toEqual(['dashboard', 'stats', 'branch-123'])
   })
 
   it('qk.auth.rolePermissions includes userId', () => {
