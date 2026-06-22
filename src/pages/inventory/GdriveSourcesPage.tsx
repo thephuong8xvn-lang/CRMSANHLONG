@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Pencil, Trash2, FolderOpen, AlertCircle, Save, X } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Trash2, FolderOpen, AlertCircle, Save, X, Copy, Check } from 'lucide-react'
 import Layout from '../../components/Layout'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
-import { useGdriveSources, type GdriveSource } from '../../hooks/useGdriveImport'
+import { useGdriveSources, useGdriveSaEmail, type GdriveSource } from '../../hooks/useGdriveImport'
 import { useQueryClient } from '@tanstack/react-query'
 import { qk } from '../../lib/queryClient'
 import { COLUMN_FIELDS, type ColumnMap } from '../../lib/gdriveMapping'
@@ -31,6 +31,8 @@ export default function GdriveSourcesPage() {
   const { profile } = useAuth()
   const qc = useQueryClient()
   const { data: sources = [], isLoading } = useGdriveSources(false)
+  const { data: saEmail = '' } = useGdriveSaEmail()
+  const [copied, setCopied] = useState(false)
 
   const [suppliers, setSuppliers] = useState<Opt[]>([])
   const [warehouses, setWarehouses] = useState<Opt[]>([])
@@ -188,7 +190,21 @@ export default function GdriveSourcesPage() {
               <div className="space-y-1">
                 <label className="text-body-md font-semibold text-gray-700">ID thư mục Google Drive *</label>
                 <input value={form.drive_folder_id} onChange={(e) => setForm({ ...form, drive_folder_id: e.target.value })} placeholder="VD: 1MTBChqIF0-uABQQoypqZ4GiHEvo-RyAb" className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md font-mono focus:border-blue-500 focus:outline-none" />
-                <p className="text-tiny text-gray-400">Lấy từ URL thư mục Drive: drive.google.com/drive/folders/<b>&lt;ID&gt;</b>. Nhớ share thư mục cho email service account (quyền Editor).</p>
+                <p className="text-tiny text-gray-400">Lấy từ URL thư mục Drive: drive.google.com/drive/folders/<b>&lt;ID&gt;</b>. Nhớ chia sẻ thư mục cho service account (quyền Editor) — nếu không, danh sách file sẽ trống.</p>
+                {saEmail && (
+                  <div className="flex items-center gap-2 mt-1 px-2 py-1.5 bg-blue-25 border border-blue-100 rounded-lg">
+                    <span className="text-tiny text-gray-500 shrink-0">Chia sẻ cho:</span>
+                    <code className="text-tiny font-mono text-blue-700 break-all flex-1">{saEmail}</code>
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard?.writeText(saEmail); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+                      className="text-blue-500 hover:text-blue-700 shrink-0"
+                      title="Sao chép email"
+                    >
+                      {copied ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -12,7 +12,7 @@ import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   useGdriveSources, useDriveFiles, useSheetInfo, useSheetValues,
-  useWriteCells, useProductAliases, useUpsertAlias, checkExistingLots,
+  useWriteCells, useProductAliases, useUpsertAlias, checkExistingLots, useGdriveSaEmail,
   type GdriveSource, type ExistingLotHit,
 } from '../../hooks/useGdriveImport'
 import { cellAt, parseSheetNumber, parseSheetDate, formatDateVN, normalizeAlias, computeVatCost } from '../../lib/gdriveMapping'
@@ -54,10 +54,11 @@ export default function GdriveImportPage() {
   const source: GdriveSource | undefined = useMemo(() => sources.find((s) => s.id === sourceId), [sources, sourceId])
   const effectiveSupplierId = mode === 'upload' ? uploadSupplierId : (source?.supplier_id || '')
 
-  const { data: files = [], isLoading: loadingFiles, refetch: refetchFiles } = useDriveFiles(sourceId || null)
-  const { data: sheetInfo } = useSheetInfo(sourceId || null, fileId || null)
+  const { data: files = [], isLoading: loadingFiles, error: filesError, refetch: refetchFiles } = useDriveFiles(sourceId || null)
+  const { data: sheetInfo, error: sheetInfoError } = useSheetInfo(sourceId || null, fileId || null)
   const { data: values = [], isLoading: loadingSheet, refetch: refetchSheet } = useSheetValues(sourceId || null, fileId || null, tab || null)
 
+  const { data: saEmail = '' } = useGdriveSaEmail()
   const { data: aliases = [] } = useProductAliases(effectiveSupplierId || null)
   const writeCells = useWriteCells()
   const upsertAlias = useUpsertAlias()
@@ -461,6 +462,21 @@ export default function GdriveImportPage() {
               <option value="">{loadingFiles ? 'Đang tải…' : '-- Chọn file --'}</option>
               {files.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
+            {filesError && (
+              <p className="text-tiny text-red-600 flex items-start gap-1 mt-1">
+                <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                Lỗi tải danh sách file: {(filesError as Error).message}
+              </p>
+            )}
+            {sourceId && !loadingFiles && !filesError && files.length === 0 && (
+              <p className="text-tiny text-amber-600 flex items-start gap-1 mt-1">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                <span>
+                  Thư mục trống hoặc chưa được chia sẻ cho service account
+                  {saEmail && <> <b>{saEmail}</b></>}. Hãy mở thư mục trên Google Drive → Chia sẻ với tài khoản này (quyền Editor) rồi bấm “Tải lại”.
+                </span>
+              </p>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-body-md font-semibold text-gray-700">Trang tính (tab)</label>
@@ -468,6 +484,12 @@ export default function GdriveImportPage() {
               <option value="">-- Chọn tab --</option>
               {sheetInfo?.tabs?.map((t) => <option key={t.title} value={t.title}>{t.title}</option>)}
             </select>
+            {sheetInfoError && (
+              <p className="text-tiny text-red-600 flex items-start gap-1 mt-1">
+                <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                Lỗi đọc trang tính: {(sheetInfoError as Error).message}
+              </p>
+            )}
           </div>
         </div>
         )}

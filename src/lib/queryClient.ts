@@ -98,6 +98,7 @@ export const qk = {
     sheetInfo: (fileId: string) => ['gdrive', 'sheet-info', fileId] as const,
     sheet: (fileId: string, tab: string) => ['gdrive', 'sheet', fileId, tab] as const,
     aliases: (supplierId: string) => ['gdrive', 'aliases', supplierId] as const,
+    saEmail: ['gdrive', 'sa-email'] as const,
   },
   vat: {
     config: ['vat', 'config'] as const,

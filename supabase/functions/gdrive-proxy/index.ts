@@ -175,8 +175,16 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}))
     const action: string = body.action
+    if (!action) return json({ error: 'Thiếu action.' }, 400)
+
+    // ── whoami: trả email service account để UI nhắc user share thư mục đúng tài khoản ──
+    // (email không phải bí mật; không cần source_id; chỉ cần đã đăng nhập + có quyền nhập kho)
+    if (action === 'whoami') {
+      return json({ sa_email: Deno.env.get('GOOGLE_SA_EMAIL') ?? '' })
+    }
+
     const sourceId: string | undefined = body.source_id
-    if (!action || !sourceId) return json({ error: 'Thiếu action hoặc source_id.' }, 400)
+    if (!sourceId) return json({ error: 'Thiếu source_id.' }, 400)
 
     // Whitelist: source phải tồn tại & active. Dùng service client để đọc folder gốc.
     const admin = createClient(supabaseUrl, serviceKey)

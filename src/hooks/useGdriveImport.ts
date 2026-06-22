@@ -89,6 +89,18 @@ export function useGdriveSources(activeOnly = true) {
   })
 }
 
+// ── Email service account (để nhắc user share thư mục đúng tài khoản) ──
+export function useGdriveSaEmail() {
+  return useQuery<string>({
+    queryKey: qk.gdrive.saEmail,
+    staleTime: 60 * 60_000, // gần như tĩnh
+    queryFn: async () => {
+      const r = await invokeProxy<{ sa_email: string }>({ action: 'whoami' })
+      return r.sa_email ?? ''
+    },
+  })
+}
+
 // ── Danh sách file Sheet trong thư mục source ──
 export function useDriveFiles(sourceId: string | null) {
   return useQuery<DriveFile[]>({
