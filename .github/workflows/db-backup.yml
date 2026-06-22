@@ -36,7 +36,9 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          # Runner đã có client v16 (mặc định) → ép PATH ưu tiên binary v17 cho các bước sau.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Kiểm tra kết nối DB (xác minh SUPABASE_DB_URL)
         env:
