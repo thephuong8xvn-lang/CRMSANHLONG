@@ -1,0 +1,103 @@
+name: DB Backup (Supabase -> Google Drive)
+
+# Sao lưu logic DB hằng ngày: pg_dump (custom format, nén) -> upload Google Drive
+# (qua rclone, dùng TÀI KHOẢN NGƯỜI DÙNG — service account không lưu được trên Drive
+# cá nhân/Gmail). Giữ luân phiên 30 ngày.
+#
+# Secrets cần có (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL          chuỗi kết nối Session pooler (postgresql://...:5432/postgres)
+#   RCLONE_CONF              toàn bộ nội dung file rclone.conf (remote tên "gdrive", type drive)
+#   GDRIVE_BACKUP_FOLDER_ID  ID thư mục Drive đích (folder bạn sở hữu)
+#
+# Chạy tay: tab Actions -> "DB Backup..." -> Run workflow.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 18 * * *' # 18:00 UTC = 01:00 giờ VN hằng ngày
+
+# Chỉ chạy 1 lần đồng thời, không hủy job đang chạy.
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Cài PostgreSQL 17 client
+        run: |
+          set -euo pipefail
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Kiểm tra kết nối DB (xác minh SUPABASE_DB_URL)
+        env:
+          PGCONNECT_TIMEOUT: '15'
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL}" ]; then echo "::error::Thiếu secret SUPABASE_DB_URL"; exit 1; fi
+          # KHÔNG in chuỗi kết nối ra log.
+          psql "$DB_URL" -tAc 'select 1' >/dev/null && echo "Kết nối DB OK."
+
+      - name: Dump database (pg_dump -Fc nén)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          TS=$(date -u +%Y%m%d-%H%M)
+          FILE="crm-${TS}.dump"
+          pg_dump "$DB_URL" --format=custom --compress=6 --no-owner --no-privileges -f "$FILE"
+          SIZE=$(du -h "$FILE" | cut -f1)
+          echo "Đã tạo backup: $FILE ($SIZE)"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+
+      - name: Cài rclone
+        run: |
+          set -euo pipefail
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+          rclone version | head -1
+
+      - name: Ghi cấu hình rclone
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONF }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RCLONE_CONF}" ]; then echo "::error::Thiếu secret RCLONE_CONF"; exit 1; fi
+          mkdir -p "$HOME/.config/rclone"
+          printf '%s' "$RCLONE_CONF" > "$HOME/.config/rclone/rclone.conf"
+          # Kiểm tra remote "gdrive" tồn tại (không lộ nội dung).
+          rclone listremotes | grep -q '^gdrive:' || { echo "::error::rclone.conf không có remote tên 'gdrive'"; exit 1; }
+
+      - name: Upload lên Google Drive
+        env:
+          FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FOLDER_ID}" ]; then echo "::error::Thiếu secret GDRIVE_BACKUP_FOLDER_ID"; exit 1; fi
+          rclone copy "$FILE" "gdrive:" --drive-root-folder-id "$FOLDER_ID" --no-traverse -v
+          echo "Đã upload $FILE lên thư mục Drive."
+
+      - name: Dọn bản backup cũ hơn 30 ngày
+        env:
+          FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
+        run: |
+          set -euo pipefail
+          rclone delete "gdrive:" --drive-root-folder-id "$FOLDER_ID" --min-age 30d --include "crm-*.dump" -v || true
+          echo "Đã dọn bản cũ (giữ 30 ngày gần nhất)."
+
+      - name: Lưu thêm 1 bản làm artifact (off-site lớp 2, giữ 14 ngày)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FILE }}
+          path: ${{ env.FILE }}
+          retention-days: 14
+          if-no-files-found: error
