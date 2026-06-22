@@ -34,6 +34,10 @@ import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromoti
 import { useProductPromotions, evaluateProductPromo, promoShortLabel } from '../../hooks/useProductPromotions'
 import { posTabsKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
 import { genId } from '../../lib/cartUtils'
+import { useOnlineStatus } from '../../hooks/useOnlineStatus'
+import { usePosOfflineQueue } from '../../hooks/usePosOfflineQueue'
+import { savePosSnapshot, loadPosSnapshot, enqueueSale } from '../../lib/offlineDb'
+import PosOfflineBar from '../../components/PosOfflineBar'
 
 interface Customer {
   id: string
@@ -176,6 +180,11 @@ const parseNumberString = (val: string) => {
 export default function POSPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+
+  // ── POS offline: trạng thái mạng + hàng đợi đơn chờ đồng bộ + tuổi snapshot ──
+  const online = useOnlineStatus()
+  const offlineQueue = usePosOfflineQueue(profile?.id)
+  const [snapshotInfo, setSnapshotInfo] = useState<{ at: number | null; stale: boolean }>({ at: null, stale: false })
 
   // Redirect mobile viewports to mobile-specific wizard
   useEffect(() => {
@@ -475,7 +484,25 @@ export default function POSPage() {
 
   // Fetch initial data
   useEffect(() => {
+    // Dựng lại danh mục bán hàng từ snapshot offline (mở quầy khi mất mạng).
+    const hydrateCatalog = async () => {
+      const uid = profile?.id
+      if (!uid) return false
+      const snap = await loadPosSnapshot(uid)
+      if (!snap) return false
+      if (snap.data.customers) setCustomers(snap.data.customers as Customer[])
+      if (snap.data.products) setProducts(snap.data.products as Product[])
+      if (snap.data.categories) setCategories(snap.data.categories as any)
+      if (snap.data.priceLists) setPriceLists(snap.data.priceLists as any)
+      setSnapshotInfo({ at: snap.savedAt, stale: snap.stale })
+      return true
+    }
     const loadData = async () => {
+      // Offline ngay khi mở quầy → dùng snapshot, không cần mạng.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        await hydrateCatalog()
+        return
+      }
       try {
         const custData = await fetchAllRows<Customer>((from, to) =>
           supabase
@@ -579,8 +606,20 @@ export default function POSPage() {
           `)
         if (disData) setDiseases(disData as unknown as Disease[])
 
+        // Lưu snapshot danh mục để bán được khi mất mạng (TTL 72h).
+        if (profile?.id) {
+          await savePosSnapshot(profile.id, {
+            customers: custData,
+            products: prodData,
+            categories: catData ?? [],
+            priceLists: plData ?? [],
+          })
+          setSnapshotInfo({ at: Date.now(), stale: false })
+        }
       } catch (err) {
         console.error('Error fetching data:', err)
+        // Lỗi mạng giữa chừng → vẫn dựng danh mục từ snapshot nếu có.
+        await hydrateCatalog()
       }
     }
     loadData()
@@ -588,6 +627,19 @@ export default function POSPage() {
 
   // Fetch stock levels and warehouses of cashier's branch
   const fetchStockData = useCallback(async () => {
+    // Dựng lại tồn/kho từ snapshot offline.
+    const hydrateStock = async () => {
+      if (!profile?.id) return
+      const snap = await loadPosSnapshot(profile.id)
+      if (!snap) return
+      if (snap.data.productStock) setProductStock(snap.data.productStock as Record<string, number>)
+      if (snap.data.productLots) setProductLots(snap.data.productLots as Record<string, ProductLot[]>)
+      if (snap.data.selectedWarehouseId) setSelectedWarehouseId(snap.data.selectedWarehouseId as string)
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      await hydrateStock()
+      return
+    }
     try {
       let currentBranchId = profile?.branch_id
 
@@ -661,9 +713,18 @@ export default function POSPage() {
         }))
         setProductStock(stockMap)
         setProductLots(lotsMap)
+        // Snapshot tồn/kho cho bán offline.
+        if (profile?.id) {
+          await savePosSnapshot(profile.id, {
+            productStock: stockMap,
+            productLots: lotsMap,
+            selectedWarehouseId: mainWhId,
+          })
+        }
       }
     } catch (err) {
       console.error('Error fetching stock data:', err)
+      await hydrateStock()
     }
   }, [profile])
 
@@ -1461,6 +1522,59 @@ export default function POSPage() {
         lines
       }
 
+      // ── OFFLINE: chỉ Bán nhanh → xếp hàng đợi (idempotent), tự đồng bộ sau ──
+      if (!online || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        if (salesMode === 'delivery') {
+          setAlertMsg({ type: 'error', text: 'Bán giao hàng cần mạng (đơn nháp chờ duyệt giá). Khi offline vui lòng dùng Bán nhanh.' })
+          return
+        }
+        const crid = (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
+          ? (crypto as any).randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0
+              return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+            })
+        const payload = {
+          ...basePayload,
+          paid_amount: paymentMethod === 'credit' ? 0 : effectivePaid,
+          overpay_credit: paymentMethod !== 'credit' && changeDue > 0 && overpayToCredit,
+          delivery_address: 'Giao trực tiếp tại quầy POS',
+        }
+        await enqueueSale({
+          id: crid,
+          userId: profile.id,
+          payload,
+          label: `${selectedCustomer?.farm_name ?? 'Khách lẻ'} · ${grandTotal.toLocaleString('vi-VN')} ₫`,
+        })
+        // Trừ tồn cục bộ để đơn offline kế tiếp không bán vượt cùng lô.
+        setProductStock((prev) => {
+          const next = { ...prev }
+          for (const l of lines) next[l.product_id] = Math.max(0, (next[l.product_id] || 0) - l.quantity)
+          return next
+        })
+        setProductLots((prev) => {
+          const next: Record<string, ProductLot[]> = { ...prev }
+          for (const l of lines) {
+            const lots = (next[l.product_id] || []).map((x) => ({ ...x }))
+            const ordered = l.lot_id ? [...lots].sort((a, b) => (a.lotId === l.lot_id ? -1 : b.lotId === l.lot_id ? 1 : 0)) : lots
+            let remain = l.quantity
+            for (const lot of ordered) {
+              if (remain <= 0) break
+              const take = Math.min(lot.available, remain)
+              lot.available -= take
+              remain -= take
+            }
+            next[l.product_id] = lots.filter((x) => x.available > 0)
+          }
+          return next
+        })
+        await offlineQueue.refresh()
+        resetActiveTab()
+        const creditNote = paymentMethod === 'credit' ? ' (bán NỢ — chưa kiểm tra được hạn mức, sẽ kiểm khi đồng bộ)' : ''
+        setAlertMsg({ type: 'success', text: `Đã lưu đơn offline${creditNote}. Sẽ tự đồng bộ khi có mạng.` })
+        return
+      }
+
       if (salesMode === 'delivery') {
         const { data, error } = await supabase.rpc('fn_create_delivery_draft', {
           p_payload: { ...basePayload, delivery_address: deliveryAddress || null }
@@ -1663,6 +1777,18 @@ export default function POSPage() {
             </button>
           </div>
         )}
+
+        {/* Thanh trạng thái offline: ẩn khi online & không có đơn chờ/lỗi */}
+        <PosOfflineBar
+          online={online}
+          pending={offlineQueue.pending}
+          failed={offlineQueue.failed}
+          syncing={offlineQueue.syncing}
+          snapshotStale={snapshotInfo.stale}
+          snapshotAt={snapshotInfo.at}
+          onSyncNow={() => { void offlineQueue.flush() }}
+          onDiscardFailed={(id) => { void offlineQueue.discard(id).then(() => offlineQueue.refresh()) }}
+        />
 
         {/* KiotViet Blue Header — 2 hàng: (1) logo + tìm kiếm + thao tác · (2) tab hóa đơn */}
         <div className="shrink-0 shadow-md">
