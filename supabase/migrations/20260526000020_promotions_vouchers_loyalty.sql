@@ -28,7 +28,7 @@ ALTER TABLE public.promotions
   ADD COLUMN IF NOT EXISTS tiers           JSONB DEFAULT '[]', -- [{min_qty, discount_percent}]
   ADD COLUMN IF NOT EXISTS customer_tiers  TEXT[] DEFAULT '{}',-- ['vip','gold'] — tier được hưởng
   ADD COLUMN IF NOT EXISTS priority        INTEGER NOT NULL DEFAULT 0, -- cao hơn = áp dụng trước
-  ADD COLUMN IF NOT EXISTS created_by      UUID REFERENCES public.users(id);
+  ADD COLUMN IF NOT EXISTS created_by      UUID REFERENCES public.profiles(id);
 
 COMMENT ON COLUMN public.promotions.tiers IS
   'JSON array: [{min_qty:int, discount_percent:numeric}] sắp xếp tăng dần theo min_qty';
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS public.loyalty_points (
   points       INTEGER       NOT NULL,  -- dương = cộng, âm = trừ (đổi điểm)
   reason       TEXT          NOT NULL,  -- 'order_paid', 'manual_adjust', 'redemption'
   created_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
-  created_by   UUID          REFERENCES public.users(id)
+  created_by   UUID          REFERENCES public.profiles(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_loyalty_customer ON public.loyalty_points (customer_id, created_at DESC);

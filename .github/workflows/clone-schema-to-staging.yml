@@ -1,0 +1,61 @@
+name: Clone schema prod -> staging
+
+# Sao chép CẤU TRÚC (không dữ liệu) của schema public từ prod sang staging.
+# Dùng để staging có schema GIỐNG HỆT prod cho test pgTAP — đáng tin hơn replay
+# lại 93 migration (lịch sử repo bị drift, không replay sạch).
+#
+# Secrets cần có:
+#   SUPABASE_DB_URL   chuỗi Session pooler của PROD   (đã có)
+#   STAGING_DB_URL    chuỗi Session pooler của STAGING (cần tạo)
+#
+# Chạy tay: tab Actions -> "Clone schema prod -> staging" -> Run workflow.
+# ⚠️ Ghi đè toàn bộ schema public của STAGING. KHÔNG bao giờ trỏ vào prod.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  clone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Cài PostgreSQL 17 client
+        run: |
+          set -euo pipefail
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: An toàn — chặn nếu STAGING_DB_URL trùng prod
+        env:
+          PROD_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STAGING_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_URL}" ]; then echo "::error::Thiếu STAGING_DB_URL"; exit 1; fi
+          if [ "${PROD_URL}" = "${STAGING_URL}" ]; then echo "::error::STAGING_DB_URL trùng prod — DỪNG"; exit 1; fi
+          echo "OK — staging khác prod."
+
+      - name: Dump schema prod (chỉ cấu trúc)
+        env:
+          PROD_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          pg_dump "$PROD_URL" --schema-only --no-owner --no-privileges \
+            --schema=public --schema=auth -f schema.sql || \
+          pg_dump "$PROD_URL" --schema-only --no-owner --no-privileges --schema=public -f schema.sql
+          wc -l schema.sql
+
+      - name: Nạp schema vào staging (reset public trước)
+        env:
+          STAGING_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          set -euo pipefail
+          psql "$STAGING_URL" -v ON_ERROR_STOP=1 -c "drop schema if exists public cascade; create schema public; grant usage on schema public to anon, authenticated, service_role; grant all on schema public to postgres, service_role;"
+          # Bỏ qua lỗi 'already exists' của các object hệ thống auth (nếu có) bằng cách KHÔNG dừng cứng ở phần auth.
+          psql "$STAGING_URL" -f schema.sql 2>&1 | tail -30
+          echo "Đã nạp schema vào staging."
