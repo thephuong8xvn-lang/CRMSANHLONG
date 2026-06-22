@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "db:sync": "node scripts/db/sync-staging.mjs",
+    "test:db": "node scripts/db/run-tests.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
