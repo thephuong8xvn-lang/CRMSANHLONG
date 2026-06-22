@@ -44,12 +44,15 @@ Tạo vi phạm giả để thử luồng tick (chỉ làm trên **staging**):
 select public.fn_monitor_tick();   -- → nhận cảnh báo, monitor_runs.ok=false
 ```
 
-## Bước 4 — Deploy edge function health + uptime
+## Bước 4 — Deploy edge function health + uptime — ✅ ĐÃ DEPLOY (2026-06-23)
 ```bash
-supabase functions deploy health --no-verify-jwt --project-ref gdotgcrtivjdpkcchrro
+# Deploy lại khi sửa code (không cần Docker):
+SUPABASE_ACCESS_TOKEN=<sbp_...> npx supabase functions deploy health \
+  --project-ref gdotgcrtivjdpkcchrro --no-verify-jwt
 ```
-Endpoint: `https://gdotgcrtivjdpkcchrro.supabase.co/functions/v1/health`
-→ đăng ký **UptimeRobot** (free) hoặc **cron-job.org** ping mỗi 5'. Trả 503 → báo down.
+Endpoint (đang sống, trả 200 + `{"status":"ok",...}`):
+`https://gdotgcrtivjdpkcchrro.supabase.co/functions/v1/health`
+→ đăng ký **UptimeRobot** (free) ping mỗi 5'; theo dõi keyword `"status":"ok"`. Trả 503/mất keyword → báo down.
 
 ## Vận hành / kiểm tra
 ```sql
