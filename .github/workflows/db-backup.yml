@@ -75,7 +75,9 @@ jobs:
           set -euo pipefail
           if [ -z "${RCLONE_CONF}" ]; then echo "::error::Thiếu secret RCLONE_CONF"; exit 1; fi
           mkdir -p "$HOME/.config/rclone"
-          printf '%s' "$RCLONE_CONF" > "$HOME/.config/rclone/rclone.conf"
+          # tr -d '\r': bỏ ký tự CR (Windows CRLF) làm hỏng parse section của rclone.
+          printf '%s' "$RCLONE_CONF" | tr -d '\r' > "$HOME/.config/rclone/rclone.conf"
+          echo "Chẩn đoán conf — số dòng: $(wc -l < "$HOME/.config/rclone/rclone.conf"), số section [..]: $(grep -c '^\[' "$HOME/.config/rclone/rclone.conf" || true)"
           echo "Remote tìm thấy trong cấu hình:"; rclone listremotes || true
           # Tự nhận diện remote đầu tiên (không phụ thuộc tên cụ thể).
           REMOTE="$(rclone listremotes | head -1)"
