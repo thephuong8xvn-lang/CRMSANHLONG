@@ -7,10 +7,19 @@ import type { ProductPromotion } from '../../hooks/useProductPromotions'
 
 interface Branch { id: string; name: string }
 
+/** Giá trị prefill khi TẠO MỚI (không dùng khi sửa). Vd: cầu nối từ trang Hạn sử dụng. */
+export interface ProductPromoDefaults {
+  name?: string
+  promo_type?: ProductPromotion['promo_type']
+  discount_value?: number
+  valid_to?: string   // 'YYYY-MM-DD'
+}
+
 interface Props {
   productId: string
   productName: string
   promo?: ProductPromotion        // có = chế độ sửa
+  defaults?: ProductPromoDefaults // có = prefill khi tạo mới (bỏ qua nếu đang sửa)
   onClose: () => void
   onSaved: () => void
 }
@@ -21,11 +30,13 @@ const PROMO_TYPE_LABELS: Record<ProductPromotion['promo_type'], string> = {
   fixed_amount: 'Giảm tiền theo số lượng',
 }
 
-export default function ProductPromotionModal({ productId, productName, promo, onClose, onSaved }: Props) {
+export default function ProductPromotionModal({ productId, productName, promo, defaults, onClose, onSaved }: Props) {
   const { profile, userRole } = useAuth()
   const isAdmin = userRole.code === 'admin' || userRole.code === 'ceo'
   const myBranchId = profile?.branch_id ?? null
   const isEdit = Boolean(promo?.id)
+  // Prefill chỉ áp dụng khi TẠO MỚI (đang sửa thì lấy từ promo).
+  const d = isEdit ? undefined : defaults
 
   const [branches, setBranches] = useState<Branch[]>([])
   const [productOptions, setProductOptions] = useState<SmartSearchOption[]>([])
@@ -33,19 +44,19 @@ export default function ProductPromotionModal({ productId, productName, promo, o
   const [error, setError] = useState('')
 
   const [form, setForm] = useState({
-    name: promo?.name ?? '',
-    promo_type: promo?.promo_type ?? ('buy_x_get_y' as ProductPromotion['promo_type']),
+    name: promo?.name ?? d?.name ?? '',
+    promo_type: promo?.promo_type ?? d?.promo_type ?? ('buy_x_get_y' as ProductPromotion['promo_type']),
     buy_qty: String(promo?.buy_qty ?? 10),
     get_qty: String(promo?.get_qty ?? 2),
     giftOther: Boolean(promo?.get_product_id && promo.get_product_id !== productId),
     get_product_id: promo?.get_product_id ?? '',
     giftPaid: Boolean(promo?.get_price && promo.get_price > 0), // true = quà có giá ưu đãi, false = miễn phí
     get_price: String(promo?.get_price ?? ''),
-    discount_value: String(promo?.discount_value ?? ''),
+    discount_value: String(promo?.discount_value ?? d?.discount_value ?? ''),
     min_qty: String(promo?.min_qty ?? 1),
     priority: String(promo?.priority ?? 0),
     valid_from: promo?.valid_from?.slice(0, 10) ?? '',
-    valid_to: promo?.valid_to?.slice(0, 10) ?? '',
+    valid_to: promo?.valid_to?.slice(0, 10) ?? d?.valid_to ?? '',
     is_active: promo?.is_active ?? true,
     branch_ids: promo?.branch_ids ?? (isAdmin ? [] : (myBranchId ? [myBranchId] : [])),
   })

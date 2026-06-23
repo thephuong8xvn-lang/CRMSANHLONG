@@ -57,7 +57,10 @@ export const qk = {
   inventory: {
     expiringLots: (maxDays: number) => ['inventory', 'expiring-lots', maxDays] as const,
     reorder: (params: object) => ['inventory', 'reorder', params] as const,
+    reorderPlanning: (minOrders: number) => ['inventory', 'reorder-planning', minOrders] as const,
+    reorderConfig: ['inventory', 'reorder-config'] as const,
     expiryBuckets: ['inventory', 'expiry-buckets'] as const,
+    expiryDiscountTiers: ['inventory', 'expiry-discount-tiers'] as const,
   },
   branches: {
     all: ['branches'] as const,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   ArrowLeft,
   Store,
@@ -54,6 +54,7 @@ interface POLineItem {
 
 export default function PurchaseOrderFormPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { profile, userRole } = useAuth()
 
   // Selection list states
@@ -120,6 +121,21 @@ export default function PurchaseOrderFormPage() {
       return () => clearTimeout(timer)
     }
   }, [alertMsg])
+
+  // Prefill dòng hàng từ trang Gợi ý đặt hàng (cầu nối). Chỉ nạp 1 lần khi vào.
+  useEffect(() => {
+    const pre = (location.state as { prefillLines?: POLineItem[] } | null)?.prefillLines
+    if (pre && pre.length > 0) {
+      setLineItems(pre.map(l => ({
+        productId: l.productId, sku: l.sku, name: l.name,
+        quantity: Number(l.quantity) || 0, unitPrice: Number(l.unitPrice) || 0,
+      })))
+      setAlertMsg({ type: 'success', text: `Đã nạp ${pre.length} mặt hàng từ gợi ý đặt hàng. Chọn nhà cung cấp & kho để hoàn tất.` })
+      // Xóa state điều hướng để tải lại trang (F5) không nạp lại.
+      window.history.replaceState({}, '')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Filter products for search dropdown — tìm kiếm không dấu (accent-insensitive)
   const filteredProducts = products.filter(p => {
