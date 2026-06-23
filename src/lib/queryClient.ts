@@ -29,6 +29,12 @@ export const qk = {
     tiers: ['customers', 'tiers'] as const,
     orders: (id: string) => ['customers', 'orders', id] as const,
     debts: (id: string) => ['customers', 'debts', id] as const,
+    churnWorklist: (ownerId: string | null) => ['customers', 'churn-worklist', ownerId] as const,
+  },
+  bi: {
+    pivot: (params: object) => ['bi', 'pivot', params] as const,
+    abcXyz: (from: string, to: string) => ['bi', 'abc-xyz', from, to] as const,
+    cohort: (months: number) => ['bi', 'cohort', months] as const,
   },
   products: {
     all: ['products'] as const,

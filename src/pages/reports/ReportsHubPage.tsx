@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target
+  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target, BarChart3
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -66,6 +66,21 @@ const REPORT_CARDS = [
       'Nhóm 1 markup ≥50% (mục tiêu ≥30% doanh số) · nhóm 2 hàng nền',
       'Theo dõi LIVE hôm nay · cảnh báo 7 loại · GMROI · bù chéo',
       'Mục tiêu doanh số tháng theo chi nhánh + gợi ý phân loại',
+    ],
+  },
+  {
+    id: 'bi',
+    title: 'Phân tích BI tương tác',
+    tag: 'BI',
+    tagColor: 'bg-sky-100 text-sky-700',
+    dotColor: 'bg-sky-500',
+    icon: BarChart3,
+    iconBg: 'bg-sky-50 text-sky-600',
+    route: '/reports/bi',
+    features: [
+      'Pivot đa chiều (thời gian/SP/KH/CN/NV) + so sánh kỳ YoY/MoM',
+      'Phân loại ABC/XYZ sản phẩm (80/20 × ổn định cầu)',
+      'Cohort giữ chân khách hàng theo tháng',
     ],
   },
 ]

@@ -29,7 +29,8 @@ import {
   TrendingUp,
   RotateCcw,
   FileSpreadsheet,
-  ReceiptText
+  ReceiptText,
+  HeartHandshake
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -83,6 +84,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
       items: [
         { label: 'Khách hàng', icon: Users, path: '/customers', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
         { label: 'Bản đồ KH', icon: MapPin, path: '/customers/map', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
+        { label: 'Chăm sóc KH', icon: HeartHandshake, path: '/customers/care', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
         { label: 'Cấu hình KH', icon: Settings, path: '/customers/settings', perms: ['users.manage'] },
         { label: 'Chăn nuôi', icon: PawPrint, path: '/herd-projects', perms: ['herd_projects.view_all', 'herd_projects.create'] },
         { label: 'Pipeline', icon: Stethoscope, path: '/pipeline', perms: ['opportunities.view_all', 'opportunities.create'] },

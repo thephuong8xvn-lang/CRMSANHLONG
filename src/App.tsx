@@ -21,6 +21,7 @@ import DashboardPage from './pages/dashboard/DashboardPage'
 const CustomerListPage           = lazy(() => import('./pages/customers/CustomerListPage'))
 const CustomerDetailPage         = lazy(() => import('./pages/customers/CustomerDetailPage'))
 const CustomerSettingsPage       = lazy(() => import('./pages/customers/CustomerSettingsPage'))
+const CustomerCarePage           = lazy(() => import('./pages/customers/CustomerCarePage'))
 const CustomerMapPage            = lazy(() => import('./pages/customers/CustomerMapPage'))
 const ProductListPage            = lazy(() => import('./pages/products/ProductListPage'))
 const ProductDetailPage          = lazy(() => import('./pages/products/ProductDetailPage'))
@@ -50,6 +51,7 @@ const ProfitReportPage           = lazy(() => import('./pages/reports/ProfitRepo
 const CustomerProfileReportPage  = lazy(() => import('./pages/reports/CustomerProfileReportPage'))
 const InventoryValuationReportPage = lazy(() => import('./pages/reports/InventoryValuationReportPage'))
 const StrategicProductsReportPage = lazy(() => import('./pages/reports/StrategicProductsReportPage'))
+const BiAnalyticsPage            = lazy(() => import('./pages/reports/BiAnalyticsPage'))
 const HerdProjectListPage        = lazy(() => import('./pages/herd-projects/HerdProjectListPage'))
 const HerdProjectFormPage        = lazy(() => import('./pages/herd-projects/HerdProjectFormPage'))
 const HerdProjectDetailPage      = lazy(() => import('./pages/herd-projects/HerdProjectDetailPage'))
@@ -166,6 +168,7 @@ function AppRoutes() {
       <Route path="/customers" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerListPage /></ProtectedRoute>} />
       <Route path="/customers/settings" element={<ProtectedRoute perms={['users.manage']}><CustomerSettingsPage /></ProtectedRoute>} />
       <Route path="/customers/map" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerMapPage /></ProtectedRoute>} />
+      <Route path="/customers/care" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerCarePage /></ProtectedRoute>} />
       <Route path="/customers/:id" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerDetailPage /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute perms={['products.view', 'products.manage', 'pricing.manage', 'promotions.manage']}><ProductListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /products/:id */}
@@ -197,6 +200,7 @@ function AppRoutes() {
       <Route path="/reports/customer-profile" element={<ProtectedRoute adminOnly><CustomerProfileReportPage /></ProtectedRoute>} />
       <Route path="/reports/inventory-valuation" element={<ProtectedRoute adminOnly><InventoryValuationReportPage /></ProtectedRoute>} />
       <Route path="/reports/strategic-products" element={<ProtectedRoute adminOnly><StrategicProductsReportPage /></ProtectedRoute>} />
+      <Route path="/reports/bi" element={<ProtectedRoute adminOnly><BiAnalyticsPage /></ProtectedRoute>} />
       <Route path="/herd-projects" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><HerdProjectListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /herd-projects/:id */}
       <Route path="/herd-projects/new" element={<ProtectedRoute perms={['herd_projects.create']}><HerdProjectFormPage /></ProtectedRoute>} />
