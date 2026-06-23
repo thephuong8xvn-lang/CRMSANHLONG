@@ -10,6 +10,7 @@ import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import SmartSearchSelect, { SmartSearchOption } from '../../components/SmartSearchSelect'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 
 // ─────────────────────────────────────────────────────────────
@@ -266,6 +267,60 @@ export default function ProfitReportPage() {
 
   const isProductTab = activeTab === 'product' || activeTab === 'top_ratio' || activeTab === 'top_revenue' || activeTab === 'top_customers'
 
+  // Cột báo cáo (động theo tab) — kế thừa DataTable: desktop bảng + mobile card tự sinh
+  type ProfitRow = CustomerRow | ProductRow | BrandRow
+  const profitColumns: DataTableColumn<ProfitRow>[] = []
+  profitColumns.push({
+    key: 'name', flex: true, minWidth: 180, noTruncate: true,
+    header: activeTab === 'customer' ? 'Khách hàng' : activeTab === 'brand' ? 'Thương hiệu' : 'Sản phẩm',
+    render: (r) => {
+      if (activeTab === 'customer') return (
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-800 truncate">{(r as CustomerRow).customer_name}</div>
+          {(r as CustomerRow).customer_code && <div className="text-tiny text-gray-400">{(r as CustomerRow).customer_code}</div>}
+        </div>
+      )
+      if (activeTab === 'brand') return <span className="font-semibold text-gray-800">{(r as BrandRow).brand_name}</span>
+      return (
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-800 truncate">{(r as ProductRow).product_name}</div>
+          <div className="text-tiny text-gray-400 truncate">{(r as ProductRow).sku}{(r as ProductRow).brand_name ? ` · ${(r as ProductRow).brand_name}` : ''}</div>
+        </div>
+      )
+    },
+  })
+  if (activeTab === 'customer') profitColumns.push({ key: 'orders', header: 'Số đơn', width: 90, align: 'right', render: (r) => <span className="tabular-nums text-gray-600">{num((r as CustomerRow).order_count).toLocaleString('vi-VN')}</span> })
+  if (isProductTab || activeTab === 'brand') profitColumns.push({ key: 'qty', header: 'SL bán', width: 90, align: 'right', render: (r) => <span className="tabular-nums text-gray-600">{num((r as ProductRow).qty_sold).toLocaleString('vi-VN')}</span> })
+  if (isProductTab) profitColumns.push({ key: 'custcount', header: 'Số khách', width: 90, align: 'right', render: (r) => <span className="tabular-nums text-gray-600">{num((r as ProductRow).customer_count).toLocaleString('vi-VN')}</span> })
+  if (activeTab === 'brand') profitColumns.push({ key: 'prodcount', header: 'Số SP', width: 90, align: 'right', render: (r) => <span className="tabular-nums text-gray-600">{num((r as BrandRow).product_count).toLocaleString('vi-VN')}</span> })
+  profitColumns.push({ key: 'revenue', header: 'Doanh thu', width: 130, align: 'right', render: (r) => <span className="tabular-nums text-gray-700">{formatCurrency(r.revenue)}</span> })
+  profitColumns.push({
+    key: 'cogs', header: 'Giá vốn', width: 130, align: 'right',
+    render: (r) => (num(r.cogs) === 0 && num(r.revenue) > 0)
+      ? <span className="text-amber-600 font-semibold text-tiny">Chưa có giá vốn</span>
+      : <span className="text-gray-500 tabular-nums">{formatCurrency(r.cogs)}</span>,
+  })
+  profitColumns.push({
+    key: 'profit', header: 'Lợi nhuận', width: 130, align: 'right',
+    render: (r) => {
+      const noCost = num(r.cogs) === 0 && num(r.revenue) > 0
+      return <span className={`tabular-nums font-bold ${noCost ? 'text-amber-600' : r.profit >= 0 ? 'text-[#143C69]' : 'text-red-600'}`}>{formatCurrency(r.profit)}</span>
+    },
+  })
+  profitColumns.push({
+    key: 'margin', header: 'Biên LN', width: 120, align: 'right', noTruncate: true, mobileHeaderRight: true,
+    render: (r) => {
+      const noCost = num(r.cogs) === 0 && num(r.revenue) > 0
+      const margin = (r as CustomerRow).margin
+      return noCost
+        ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold bg-amber-50 text-amber-700"><AlertTriangle size={11} />Thiếu giá vốn</span>
+        : <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold tabular-nums ${marginClass(margin)}`}>{margin >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}{Number(margin).toLocaleString('vi-VN')}%</span>
+    },
+  })
+  const profitRowKey = (r: ProfitRow) =>
+    (r as ProductRow).sku || (r as CustomerRow).customer_code || (r as BrandRow).brand_name ||
+    (r as CustomerRow).customer_name || (r as ProductRow).product_name || JSON.stringify(r)
+
   return (
     <Layout activeMenu="Báo cáo">
       <div className="p-6 md:p-10 max-w-[1600px] mx-auto flex flex-col space-y-6">
@@ -395,106 +450,15 @@ export default function ProfitReportPage() {
         )}
 
         {/* Data table */}
-        <div className="bg-white border border-gray-150 rounded-xl shadow-sm overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr className="text-tiny text-gray-400 font-bold uppercase tracking-wider">
-                <th className="px-5 py-3 w-10">#</th>
-                {activeTab === 'customer' && <th className="px-5 py-3">Khách hàng</th>}
-                {activeTab === 'brand' && <th className="px-5 py-3">Thương hiệu</th>}
-                {isProductTab && <th className="px-5 py-3">Sản phẩm</th>}
-                {activeTab === 'customer' && <th className="px-5 py-3 text-right">Số đơn</th>}
-                {(isProductTab || activeTab === 'brand') && <th className="px-5 py-3 text-right">SL bán</th>}
-                {isProductTab && <th className="px-5 py-3 text-right">Số khách</th>}
-                {activeTab === 'brand' && <th className="px-5 py-3 text-right">Số SP</th>}
-                <th className="px-5 py-3 text-right">Doanh thu</th>
-                <th className="px-5 py-3 text-right">Giá vốn</th>
-                <th className="px-5 py-3 text-right">Lợi nhuận</th>
-                <th className="px-5 py-3 text-right">Biên LN</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rowsLoading ? (
-                <tr><td colSpan={9} className="px-5 py-10 text-center text-gray-400 text-tiny">
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
-                    Đang tải dữ liệu…
-                  </div>
-                </td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400 text-body-md">
-                  Không có dữ liệu trong khoảng thời gian này
-                </td></tr>
-              ) : rows.map((r, i) => {
-                const margin = (r as CustomerRow).margin
-                // Có doanh thu nhưng giá vốn = 0 → SP chưa có nguồn giá vốn (chưa nhập kho/chưa set giá vốn ở bảng giá).
-                // Biên LN 100% ở đây KHÔNG phải lãi thật → cảnh báo để khỏi hiểu nhầm.
-                const noCost = num(r.cogs) === 0 && num(r.revenue) > 0
-                return (
-                  <tr key={i} className="hover:bg-gray-25 transition-colors text-body-md">
-                    <td className="px-5 py-3 text-gray-400 tabular-nums">{i + 1}</td>
-
-                    {activeTab === 'customer' && (
-                      <td className="px-5 py-3">
-                        <div className="font-semibold text-gray-800">{(r as CustomerRow).customer_name}</div>
-                        {(r as CustomerRow).customer_code && (
-                          <div className="text-tiny text-gray-400">{(r as CustomerRow).customer_code}</div>
-                        )}
-                      </td>
-                    )}
-                    {activeTab === 'brand' && (
-                      <td className="px-5 py-3 font-semibold text-gray-800">{(r as BrandRow).brand_name}</td>
-                    )}
-                    {isProductTab && (
-                      <td className="px-5 py-3">
-                        <div className="font-semibold text-gray-800">{(r as ProductRow).product_name}</div>
-                        <div className="text-tiny text-gray-400">
-                          {(r as ProductRow).sku}{(r as ProductRow).brand_name ? ` · ${(r as ProductRow).brand_name}` : ''}
-                        </div>
-                      </td>
-                    )}
-
-                    {activeTab === 'customer' && (
-                      <td className="px-5 py-3 text-right tabular-nums text-gray-600">{num((r as CustomerRow).order_count).toLocaleString('vi-VN')}</td>
-                    )}
-                    {(isProductTab || activeTab === 'brand') && (
-                      <td className="px-5 py-3 text-right tabular-nums text-gray-600">{num((r as ProductRow).qty_sold).toLocaleString('vi-VN')}</td>
-                    )}
-                    {isProductTab && (
-                      <td className="px-5 py-3 text-right tabular-nums text-gray-600">{num((r as ProductRow).customer_count).toLocaleString('vi-VN')}</td>
-                    )}
-                    {activeTab === 'brand' && (
-                      <td className="px-5 py-3 text-right tabular-nums text-gray-600">{num((r as BrandRow).product_count).toLocaleString('vi-VN')}</td>
-                    )}
-
-                    <td className="px-5 py-3 text-right tabular-nums text-gray-700">{formatCurrency(r.revenue)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums">
-                      {noCost
-                        ? <span className="text-amber-600 font-semibold text-tiny">Chưa có giá vốn</span>
-                        : <span className="text-gray-500">{formatCurrency(r.cogs)}</span>}
-                    </td>
-                    <td className={`px-5 py-3 text-right tabular-nums font-bold ${noCost ? 'text-amber-600' : r.profit >= 0 ? 'text-[#143C69]' : 'text-red-600'}`}>
-                      {formatCurrency(r.profit)}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      {noCost ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold bg-amber-50 text-amber-700" title="Sản phẩm chưa có giá vốn (chưa nhập kho hoặc chưa khai giá vốn ở bảng giá) — biên lợi nhuận chưa phản ánh đúng">
-                          <AlertTriangle size={11} />
-                          Thiếu giá vốn
-                        </span>
-                      ) : (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold tabular-nums ${marginClass(margin)}`}>
-                          {margin >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                          {Number(margin).toLocaleString('vi-VN')}%
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          rows={rows}
+          columns={profitColumns}
+          getRowKey={profitRowKey}
+          loading={rowsLoading}
+          pageSize={0}
+          emptyText="Không có dữ liệu trong khoảng thời gian này"
+          resetSignal={`${activeTab}|${fromTs}|${toTs}`}
+        />
 
         {/* Footnote */}
         <p className="text-tiny text-gray-400 leading-relaxed">

@@ -414,7 +414,7 @@ export default function PurchaseOrderFormPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto tbl-x hidden md:block">
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-gray-25 text-gray-400 font-semibold text-tiny uppercase tracking-wider border-b border-gray-100">
@@ -494,6 +494,44 @@ export default function PurchaseOrderFormPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile: mỗi dòng đặt mua → thẻ dọc (dùng chung handler/state với bảng desktop) */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {lineItems.length === 0 ? (
+                <div className="px-6 py-12 text-center text-gray-400 italic">
+                  <Package className="w-10 h-10 mx-auto text-gray-200 mb-2" />
+                  <span>Chưa có sản phẩm. Nhập mã SKU hoặc tên để tìm sản phẩm đặt hàng.</span>
+                </div>
+              ) : lineItems.map((item, index) => (
+                <div key={item.productId} className="p-4 space-y-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <span className="font-bold text-gray-800 block leading-tight">{item.name}</span>
+                      <span className="text-gray-400 font-semibold text-tiny">SKU: {item.sku}</span>
+                    </div>
+                    <button type="button" onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-600 p-1 shrink-0"><Trash2 size={16} /></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">Số lượng đặt</label>
+                      <div className="flex items-center border border-gray-100 rounded-lg overflow-hidden h-9 bg-white shadow-sm">
+                        <button type="button" onClick={() => handleUpdateItem(index, { quantity: roundQty(Math.max(0, item.quantity - 1)) })} className="w-9 h-full flex items-center justify-center hover:bg-gray-50 border-r border-gray-100 text-gray-500"><Minus size={14} /></button>
+                        <DecimalInput value={item.quantity} onChange={(v) => handleUpdateItem(index, { quantity: v })} className="flex-1 w-full text-center border-none focus:ring-0 p-0 text-body-md font-bold" />
+                        <button type="button" onClick={() => handleUpdateItem(index, { quantity: roundQty(item.quantity + 1) })} className="w-9 h-full flex items-center justify-center hover:bg-gray-50 border-l border-gray-100 text-gray-500"><Plus size={14} /></button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">Đơn giá nhập (₫)</label>
+                      <input type="number" min="0" value={item.unitPrice === 0 ? '' : item.unitPrice} placeholder="0" onChange={(e) => handleUpdateItem(index, { unitPrice: Math.max(0, parseFloat(e.target.value) || 0) })} className="w-full text-right h-9 px-2 border border-gray-100 rounded-lg focus:outline-none focus:border-blue-500 text-body-md font-semibold" />
+                    </div>
+                    <div className="col-span-2 flex justify-between items-center border-t border-gray-50 pt-2">
+                      <span className="text-tiny text-gray-400">Thành tiền</span>
+                      <span className="font-bold text-blue-600">{(item.quantity * item.unitPrice).toLocaleString('vi-VN')} ₫</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

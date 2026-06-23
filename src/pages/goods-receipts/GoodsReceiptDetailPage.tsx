@@ -314,7 +314,7 @@ export default function GoodsReceiptDetailPage() {
           <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
             <h3 className="text-body-lg font-bold text-gray-800">Danh sách sản phẩm ({lines.length})</h3>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto tbl-x">
             <table className="w-full min-w-[680px] text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase">

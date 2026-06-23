@@ -455,7 +455,7 @@ export default function PriceListPage() {
                 <p className="text-body-md text-gray-400">Đang tải bảng giá sản phẩm...</p>
               </div>
             ) : (
-              <div className="flex-1 overflow-auto border border-gray-100 rounded-xl bg-gray-0 shadow-sm">
+              <div className="flex-1 overflow-auto tbl-x border border-gray-100 rounded-xl bg-gray-0 shadow-sm">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">

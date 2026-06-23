@@ -1523,7 +1523,7 @@ export default function InventoryPage() {
 
         {/* Tab Selection Headers */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-100 px-6 overflow-x-auto no-scrollbar">
+          <div className="flex border-b border-gray-100 px-6 overflow-x-auto tbl-x no-scrollbar">
             <button
               onClick={() => setActiveTab('lots')}
               className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
@@ -2352,7 +2352,7 @@ export default function InventoryPage() {
               {/* Items Table */}
               <div className="space-y-2">
                 <h4 className="text-body-md font-bold text-gray-755">Sản phẩm luân chuyển</h4>
-                <div className="border border-gray-100 rounded-lg overflow-x-auto">
+                <div className="border border-gray-100 rounded-lg overflow-x-auto tbl-x">
                   <table className="w-full min-w-[680px] text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-[11px] uppercase">
@@ -2845,7 +2845,7 @@ export default function InventoryPage() {
               {/* Items Table */}
               <div className="space-y-2">
                 <h4 className="text-body-md font-bold text-gray-750">Sản phẩm xuất trả</h4>
-                <div className="border border-gray-150 rounded-lg overflow-x-auto">
+                <div className="border border-gray-150 rounded-lg overflow-x-auto tbl-x">
                   <table className="w-full min-w-[620px] text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-[11px] uppercase">
@@ -2960,7 +2960,7 @@ export default function InventoryPage() {
               {/* Items Table */}
               <div className="space-y-2">
                 <h4 className="text-body-md font-bold text-gray-755">Danh sách sản phẩm nhập</h4>
-                <div className="border border-gray-150 rounded-lg overflow-x-auto">
+                <div className="border border-gray-150 rounded-lg overflow-x-auto tbl-x">
                   <table className="w-full min-w-[680px] text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-[11px] uppercase">

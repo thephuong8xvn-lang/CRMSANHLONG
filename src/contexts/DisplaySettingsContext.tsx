@@ -176,6 +176,20 @@ interface DisplaySettingsContextType {
   }
 }
 
+/**
+ * Tách SỐ ĐIỆN THOẠI ĐẦU TIÊN từ một chuỗi có thể chứa nhiều số hoặc bị ghép CCCD/CMND.
+ * Thuần UI (không phụ thuộc settings) — dùng trước formatPhone/maskData để hiển thị & link tel an toàn.
+ * VD: "0387924862,0335628335" → "0387924862"
+ *     "0392421855cccd:052163007593" → "0392421855"
+ */
+export function primaryPhone(raw: string | null | undefined): string {
+  if (!raw) return ''
+  // Cắt phần định danh bị ghép (cccd / cmnd / căn cước) nếu có
+  const beforeId = raw.split(/cccd|cmnd|c\/c|căn cước/i)[0]
+  // Lấy token đầu theo các dấu phân tách phổ biến (phẩy, chấm phẩy, gạch chéo, gạch đứng, xuống dòng, ≥2 khoảng trắng)
+  return beforeId.split(/[,;/|\n]|\s{2,}/)[0].trim()
+}
+
 const DisplaySettingsContext = createContext<DisplaySettingsContextType | null>(null)
 
 export function DisplaySettingsProvider({ children }: { children: ReactNode }) {

@@ -13,6 +13,7 @@ import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 
 interface SalesRep {
   id: string
@@ -249,6 +250,19 @@ export default function CustomerProfileReportPage() {
   // Pagination Logic
   const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE))
   const paginatedCustomers = filteredCustomers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  // Cột hồ sơ KH — kế thừa DataTable (desktop bảng + mobile card; DataTable tự phân trang)
+  const profileColumns: DataTableColumn<typeof filteredCustomers[number]>[] = [
+    { key: 'code', header: 'Mã KH', width: 110, noTruncate: true, render: (c) => <span className="font-semibold text-blue-500 truncate">{c.code}</span> },
+    { key: 'name', header: 'Tên khách hàng / Trang trại', flex: true, minWidth: 180, noTruncate: true, render: (c) => <span className="font-bold text-gray-800 truncate">{c.farm_name}</span> },
+    { key: 'type', header: 'Phân loại', width: 130, render: (c) => <span className="text-gray-500">{TYPE_LABELS[c.customer_type] || c.customer_type}</span> },
+    { key: 'tier', header: 'Hạng', width: 110, noTruncate: true, render: (c) => <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase ${c.value_tier === 'vip' ? 'bg-amber-100 text-amber-800' : c.value_tier === 'high_potential' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-600'}`}>{TIER_LABELS[c.value_tier] || c.value_tier}</span> },
+    { key: 'lifecycle', header: 'Vòng đời', width: 120, noTruncate: true, mobileHeaderRight: true, render: (c) => <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${LIFECYCLE_COLORS[c.lifecycle_stage] || 'bg-gray-50 text-gray-500 border-gray-100'}`}>{LIFECYCLE_LABELS[c.lifecycle_stage] || c.lifecycle_stage}</span> },
+    { key: 'spend', header: 'Tổng chi tiêu', width: 130, align: 'right', render: (c) => <span className="font-bold text-gray-700 tabular-nums">{formatCurrency(c.totalSpend)}</span> },
+    { key: 'debt', header: 'Số nợ hiện tại', width: 130, align: 'right', render: (c) => <span className="font-semibold text-danger-500 tabular-nums">{formatCurrency(c.totalDebt)}</span> },
+    { key: 'owner', header: 'Sales phụ trách', width: 140, render: (c) => <span className="text-gray-500 font-medium">{c.ownerName}</span> },
+    { key: 'action', header: 'Thao tác', width: 90, align: 'center', noTruncate: true, hideOnMobile: true, render: (c) => <button onClick={(e) => { e.stopPropagation(); navigate(`/customers/${c.id}`) }} className="px-3 h-8 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 rounded-lg font-semibold text-tiny flex items-center gap-1 mx-auto transition-colors"><Eye size={12} />Chi tiết</button> },
+  ]
 
   useEffect(() => {
     setPage(1)
@@ -580,111 +594,19 @@ export default function CustomerProfileReportPage() {
             </div>
           </div>
 
-          {/* Table Data */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-gray-50 border-b border-gray-150">
-                <tr className="text-tiny text-gray-400 font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">Mã KH</th>
-                  <th className="px-6 py-4">Tên khách hàng / Trang trại</th>
-                  <th className="px-6 py-4">Phân loại</th>
-                  <th className="px-6 py-4">Hạng</th>
-                  <th className="px-6 py-4">Vòng đời</th>
-                  <th className="px-6 py-4 text-right">Tổng chi tiêu</th>
-                  <th className="px-6 py-4 text-right">Số nợ hiện tại</th>
-                  <th className="px-6 py-4">Sales phụ trách</th>
-                  <th className="px-6 py-4 text-center">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-6 py-8 text-center text-gray-400">Đang tải danh sách...</td>
-                  </tr>
-                ) : paginatedCustomers.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="px-6 py-8 text-center text-gray-400 italic">Không tìm thấy khách hàng phù hợp bộ lọc.</td>
-                  </tr>
-                ) : (
-                  paginatedCustomers.map(cust => (
-                    <tr key={cust.id} className="hover:bg-gray-25 transition-colors">
-                      <td className="px-6 py-3.5 font-semibold text-gray-700">{cust.code}</td>
-                      <td className="px-6 py-3.5 font-bold text-gray-800">{cust.farm_name}</td>
-                      <td className="px-6 py-3.5 text-gray-500">{TYPE_LABELS[cust.customer_type] || cust.customer_type}</td>
-                      <td className="px-6 py-3.5">
-                        <span className={`px-2 py-0.5 rounded text-tiny font-bold uppercase ${
-                          cust.value_tier === 'vip' 
-                            ? 'bg-amber-100 text-amber-800' 
-                            : cust.value_tier === 'high_potential'
-                            ? 'bg-indigo-100 text-indigo-800'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {TIER_LABELS[cust.value_tier] || cust.value_tier}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${
-                          LIFECYCLE_COLORS[cust.lifecycle_stage] || 'bg-gray-50 text-gray-500 border-gray-100'
-                        }`}>
-                          {LIFECYCLE_LABELS[cust.lifecycle_stage] || cust.lifecycle_stage}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3.5 text-right font-bold text-gray-700 tabular-nums">
-                        {formatCurrency(cust.totalSpend)}
-                      </td>
-                      <td className="px-6 py-3.5 text-right font-semibold text-danger-500 tabular-nums">
-                        {formatCurrency(cust.totalDebt)}
-                      </td>
-                      <td className="px-6 py-3.5 text-gray-500 font-medium">{cust.ownerName}</td>
-                      <td className="px-6 py-3.5 text-center">
-                        <button
-                          onClick={() => navigate(`/customers/${cust.id}`)}
-                          className="px-3 h-8 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-100 rounded-lg font-semibold text-tiny flex items-center gap-1 mx-auto transition-colors"
-                        >
-                          <Eye size={12} />
-                          Chi tiết
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-
-            {/* Pagination Controls */}
-            <div className="px-6 py-4 flex items-center justify-between border-t border-gray-100 bg-gray-25/50">
-              <p className="text-tiny text-gray-400">
-                Hiển thị {paginatedCustomers.length} trên {filteredCustomers.length} khách hàng
-              </p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`w-8 h-8 flex items-center justify-center rounded text-tiny font-semibold transition-colors ${
-                      page === p ? 'bg-[#1E5A9C] text-white' : 'border border-gray-200 hover:bg-gray-100 text-gray-600'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-30 transition-colors"
-                >
-                  <ChevronRightIcon size={14} />
-                </button>
-              </div>
-            </div>
-          </div>
+          {/* Table Data — DataTable (desktop bảng + mobile card, tự phân trang) */}
+          <DataTable
+            rows={filteredCustomers}
+            columns={profileColumns}
+            getRowKey={(c) => c.id}
+            loading={loading}
+            pageSize={PAGE_SIZE}
+            itemLabel="khách hàng"
+            card={false}
+            onRowClick={(c) => navigate(`/customers/${c.id}`)}
+            emptyText="Không tìm thấy khách hàng phù hợp bộ lọc."
+            resetSignal={`${searchQuery}|${filterType}|${filterTier}|${filterLifecycle}|${filterOwner}`}
+          />
         </div>
 
       </div>

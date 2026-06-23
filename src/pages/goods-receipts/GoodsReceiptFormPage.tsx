@@ -1153,7 +1153,7 @@ export default function GoodsReceiptFormPage() {
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto tbl-x hidden md:block">
                     <table className="w-full border-collapse text-left">
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
@@ -1357,6 +1357,77 @@ export default function GoodsReceiptFormPage() {
                         )}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Mobile: mỗi dòng kiểm kho → thẻ dọc (dùng chung handler/state với bảng desktop) */}
+                  <div className="md:hidden divide-y divide-gray-100">
+                    {verificationItems.length === 0 ? (
+                      <div className="px-6 py-12 text-center text-gray-400 italic">
+                        <Package className="w-10 h-10 mx-auto text-gray-200 mb-2" />
+                        <span>{receiptMode === 'po' ? 'Không tìm thấy dòng PO nào.' : 'Gõ tìm kiếm để thêm sản phẩm.'}</span>
+                      </div>
+                    ) : verificationItems.map((item, index) => {
+                      const isCold = checkColdChain(item.productName, item.categoryName)
+                      return (
+                        <div key={item.poLineId || item.productId} className={`p-4 space-y-3 ${item.isVerified ? 'bg-emerald-50/40' : ''}`}>
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="min-w-0">
+                              <span className="font-bold text-gray-800 block leading-tight">{item.productName}</span>
+                              <div className="flex flex-wrap gap-1.5 items-center mt-1">
+                                <span className="text-gray-455 font-mono text-[11px]">SKU: {item.productSku}</span>
+                                {isCold && <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase flex items-center gap-0.5"><AlertTriangle size={9} />Lạnh</span>}
+                                {item.isLotManaged && <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold uppercase">Lô</span>}
+                              </div>
+                              {receiptMode === 'po' && <span className="text-[11px] text-gray-450 block font-medium mt-0.5">PO đặt: {item.quantityOrdered} | Đã nhận: {item.quantityPreviouslyReceived}</span>}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {receiptMode === 'direct' && (
+                                <button type="button" onClick={() => handleRemoveProductDirect(index)} className="text-red-500 hover:text-red-700 p-1" title="Xóa sản phẩm"><Trash2 size={16} /></button>
+                              )}
+                              <button type="button" onClick={() => handleVerifyItem(index)} className={`w-8 h-8 rounded-full border flex items-center justify-center transition-all ${item.isVerified ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm' : 'bg-white border-gray-250 text-gray-350'}`}><Check size={15} strokeWidth={3} /></button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">Thực nhận</label>
+                              <div className="flex items-center border border-gray-100 rounded-lg overflow-hidden h-9 bg-white shadow-sm">
+                                <button type="button" onClick={() => updateItemAtIndex(index, { quantityReceived: roundQty(Math.max(0, item.quantityReceived - 1)), isVerified: false })} className="w-9 h-full flex items-center justify-center hover:bg-gray-50 border-r border-gray-100 text-gray-400"><Minus size={14} /></button>
+                                <DecimalInput value={item.quantityReceived} onChange={(v) => updateItemAtIndex(index, { quantityReceived: v, isVerified: false })} className="flex-1 w-full text-center border-none p-0 text-body-md font-bold focus:ring-0" />
+                                <button type="button" onClick={() => updateItemAtIndex(index, { quantityReceived: roundQty(item.quantityReceived + 1), isVerified: false })} className="w-9 h-full flex items-center justify-center hover:bg-gray-50 border-l border-gray-100 text-gray-400"><Plus size={14} /></button>
+                              </div>
+                            </div>
+                            {receiptMode === 'direct' && (
+                              <div>
+                                <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">Giá nhập (₫)</label>
+                                <input type="number" min="0" value={item.unitPrice === 0 ? '' : item.unitPrice} placeholder="0" onChange={(e) => updateItemAtIndex(index, { unitPrice: Math.max(0, parseFloat(e.target.value) || 0), isVerified: false })} className="w-full text-right h-9 px-2 border border-gray-100 rounded-lg text-body-md font-semibold focus:border-blue-500 focus:outline-none" />
+                              </div>
+                            )}
+                            <div>
+                              <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">Mã số lô</label>
+                              <input type="text" placeholder={item.isLotManaged ? 'Bắt buộc *' : 'Tùy chọn'} value={item.lotNumber} onChange={(e) => updateItemAtIndex(index, { lotNumber: e.target.value, isVerified: false })} className={`w-full h-9 px-2 border rounded-lg text-body-md focus:border-blue-500 focus:outline-none ${item.isLotManaged && !item.lotNumber.trim() ? 'border-amber-250 bg-amber-25/5' : 'border-gray-100'}`} />
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">NSX</label>
+                              <input type="date" value={item.manufactureDate} onChange={(e) => updateItemAtIndex(index, { manufactureDate: e.target.value, isVerified: false })} className="w-full h-9 px-1.5 border border-gray-100 rounded-lg text-tiny focus:border-blue-500 focus:outline-none bg-white" />
+                            </div>
+                            <div>
+                              <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">HSD</label>
+                              <input type="date" value={item.expiryDate} onChange={(e) => updateItemAtIndex(index, { expiryDate: e.target.value, isVerified: false })} className="w-full h-9 px-1.5 border border-gray-100 rounded-lg text-tiny focus:border-blue-500 focus:outline-none bg-white" />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">Kho &amp; Vị trí</label>
+                              <select value={item.warehouseId} onChange={(e) => updateItemAtIndex(index, { warehouseId: e.target.value, isVerified: false })} className="w-full h-9 px-2 border border-gray-100 rounded-lg text-tiny bg-white focus:border-blue-500 focus:outline-none mb-1.5">
+                                {warehouses.map(wh => <option key={wh.id} value={wh.id}>{wh.name}</option>)}
+                              </select>
+                              <input type="text" placeholder="Vị trí kệ (Bin)" value={item.shelfBin} onChange={(e) => updateItemAtIndex(index, { shelfBin: e.target.value, isVerified: false })} className="w-full h-8 px-2 border border-gray-100 rounded-md text-tiny focus:border-blue-500 focus:outline-none" />
+                              {isCold && !warehouses.find(w => w.id === item.warehouseId)?.name.toLowerCase().match(/(lạnh|mát)/) && (
+                                <span className="text-[10px] text-amber-600 font-semibold block leading-tight mt-1">⚠️ Vaccine: Nên chọn kho mát/lạnh</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
 
                   {/* Summary amount calculation under Table */}

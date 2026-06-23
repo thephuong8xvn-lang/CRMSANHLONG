@@ -75,8 +75,10 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
     {
       label: 'Tổng quan',
       items: [
-        { label: 'Bảng điều khiển', icon: LayoutDashboard, path: '/dashboard', perms: [] },
-        { label: 'Hoạt động', icon: Activity, path: '#', perms: [] }
+        { label: 'Bảng điều khiển', icon: LayoutDashboard, path: '/dashboard', perms: [] }
+        // Mục 'Hoạt động' (path:'#') tạm ẩn — chưa có route /activities (stub tính năng tương lai).
+        // Khôi phục khi xây trang dòng thời gian hoạt động:
+        // , { label: 'Hoạt động', icon: Activity, path: '#', perms: [] }
       ]
     },
     {

@@ -1409,7 +1409,7 @@ export default function HerdProjectDetailPage() {
 
                           {/* Photos */}
                           {step.photos && step.photos.length > 0 && (
-                            <div className="flex gap-2 overflow-x-auto py-1">
+                            <div className="flex gap-2 overflow-x-auto tbl-x py-1">
                               {step.photos.map((photo, pidx) => (
                                 <div key={pidx} className="w-20 h-20 rounded-lg border border-gray-150 overflow-hidden relative group/img cursor-zoom-in flex-shrink-0">
                                   <img src={photo} alt="Step evidence" className="w-full h-full object-cover" />
@@ -1726,7 +1726,7 @@ export default function HerdProjectDetailPage() {
                         Chưa ghi nhận chi phí nào cho dự án này.
                       </div>
                     ) : (
-                      <div className="overflow-x-auto border border-gray-150 rounded-xl bg-gray-0 shadow-sm">
+                      <div className="overflow-x-auto tbl-x border border-gray-150 rounded-xl bg-gray-0 shadow-sm">
                         <table className="w-full text-left border-collapse text-body-md">
                           <thead>
                             <tr className="bg-gray-25 text-gray-400 font-bold border-b border-gray-150 uppercase tracking-wider text-[10px]">

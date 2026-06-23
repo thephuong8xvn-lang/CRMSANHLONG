@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import ManageHerdCatalogModal from './ManageHerdCatalogModal'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
@@ -117,6 +118,49 @@ export default function HerdProjectListPage() {
     }
     return Array.from(map.values())
   }, [rows])
+
+  // Cột dự án — kế thừa DataTable: desktop bảng + mobile card tự sinh (hết bể cột)
+  const projectColumns: DataTableColumn<typeof rows[number]>[] = [
+    {
+      key: 'name', header: 'Mã / Tên dự án', flex: true, minWidth: 200, noTruncate: true,
+      render: (proj) => (
+        <div className="min-w-0">
+          <div className="font-bold text-gray-700 line-clamp-1 group-hover:text-blue-600">{proj.name}</div>
+          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{proj.project_code}</div>
+        </div>
+      ),
+    },
+    {
+      key: 'species', header: 'Vật nuôi', width: 150,
+      render: (proj) => <span className="text-gray-600">{proj.species_name || proj.project_type_name || 'Đàn'}{proj.breed ? <span className="text-gray-400"> · {proj.breed}</span> : ''}</span>,
+    },
+    { key: 'region', header: 'Khu vực', width: 150, render: (proj) => <span className="text-gray-600">{proj.region_name || [proj.district, proj.province].filter(Boolean).join(', ') || '—'}</span> },
+    { key: 'head', header: 'Tổng đàn', width: 90, align: 'right', render: (proj) => <span className="tabular-nums font-semibold text-gray-700">{proj.head_count.toLocaleString('vi-VN')}</span> },
+    { key: 'age', header: 'Tuổi đàn', width: 96, align: 'right', render: (proj) => <span className="tabular-nums text-gray-600">{ageLabel(proj.age_days)}</span> },
+    { key: 'cost', header: 'Chi phí', width: 120, align: 'right', render: (proj) => <span className="tabular-nums font-semibold text-blue-700">{formatCurrency(proj.cost_to_date)}</span> },
+    { key: 'mortality', header: 'Hao hụt', width: 90, align: 'right', render: (proj) => <span className="tabular-nums font-semibold text-rose-600">{proj.mortality_rate}%</span> },
+    { key: 'owner', header: 'Người phụ trách', width: 140, render: (proj) => <span className="text-gray-600">{proj.owner_name || 'Hệ thống'}</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 150, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: (proj) => {
+        const StatusIcon = STATUS_ICONS[proj.status] || FileText
+        const today = new Date().toISOString().split('T')[0]
+        const isOverdue = proj.status !== 'completed' && proj.status !== 'cancelled' && !!proj.end_date && proj.end_date < today
+        return (
+          <span className="inline-flex items-center gap-1">
+            {isOverdue && <span className="inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200 align-middle"><AlertTriangle size={9} /></span>}
+            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[11px] font-bold align-middle ${STATUS_COLORS[proj.status]}`}>
+              <StatusIcon size={11} />{STATUS_LABELS[proj.status]}
+            </span>
+          </span>
+        )
+      },
+    },
+    {
+      key: 'arrow', header: '', width: 36, align: 'right', noTruncate: true, hideOnMobile: true,
+      render: () => <ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500" />,
+    },
+  ]
 
   return (
     <Layout activeMenu="Chăn nuôi">
@@ -328,56 +372,14 @@ export default function HerdProjectListPage() {
                     </h3>
                     <span className="text-tiny text-gray-400 font-semibold">{group.items.length} dự án</span>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-[13px]">
-                      <thead>
-                        <tr className="border-b border-gray-100 text-gray-500 uppercase text-[10px] font-bold tracking-wider whitespace-nowrap">
-                          <th className="py-2 px-4">Mã / Tên dự án</th>
-                          <th className="py-2 px-3">Vật nuôi</th>
-                          <th className="py-2 px-3">Khu vực</th>
-                          <th className="py-2 px-3 text-right">Tổng đàn</th>
-                          <th className="py-2 px-3 text-right">Tuổi đàn</th>
-                          <th className="py-2 px-3 text-right">Chi phí</th>
-                          <th className="py-2 px-3 text-right">Hao hụt</th>
-                          <th className="py-2 px-3">Người phụ trách</th>
-                          <th className="py-2 px-3 text-center">Trạng thái</th>
-                          <th className="py-2 px-3"></th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {group.items.map(proj => {
-                          const StatusIcon = STATUS_ICONS[proj.status] || FileText
-                          const today = new Date().toISOString().split('T')[0]
-                          const isOverdue = proj.status !== 'completed' && proj.status !== 'cancelled' && !!proj.end_date && proj.end_date < today
-                          return (
-                            <tr key={proj.id} onClick={() => navigate(`/herd-projects/${proj.id}`)}
-                              className="hover:bg-blue-50/30 cursor-pointer transition-colors group">
-                              <td className="py-3 px-4">
-                                <div className="font-bold text-gray-700 line-clamp-1 group-hover:text-blue-600">{proj.name}</div>
-                                <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{proj.project_code}</div>
-                              </td>
-                              <td className="py-3 px-3 text-gray-600 whitespace-nowrap">
-                                {proj.species_name || proj.project_type_name || 'Đàn'}{proj.breed ? <span className="text-gray-400"> · {proj.breed}</span> : ''}
-                              </td>
-                              <td className="py-3 px-3 text-gray-600 max-w-[140px] truncate">{proj.region_name || [proj.district, proj.province].filter(Boolean).join(', ') || '—'}</td>
-                              <td className="py-3 px-3 text-right tabular-nums font-semibold text-gray-700">{proj.head_count.toLocaleString('vi-VN')}</td>
-                              <td className="py-3 px-3 text-right tabular-nums text-gray-600">{ageLabel(proj.age_days)}</td>
-                              <td className="py-3 px-3 text-right tabular-nums font-semibold text-blue-700">{formatCurrency(proj.cost_to_date)}</td>
-                              <td className="py-3 px-3 text-right tabular-nums font-semibold text-rose-600">{proj.mortality_rate}%</td>
-                              <td className="py-3 px-3 text-gray-600 max-w-[130px] truncate">{proj.owner_name || 'Hệ thống'}</td>
-                              <td className="py-3 px-3 text-center whitespace-nowrap">
-                                {isOverdue && <span className="mr-1 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-200 align-middle"><AlertTriangle size={9} /></span>}
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[11px] font-bold align-middle ${STATUS_COLORS[proj.status]}`}>
-                                  <StatusIcon size={11} />{STATUS_LABELS[proj.status]}
-                                </span>
-                              </td>
-                              <td className="py-3 px-3 text-right"><ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500" /></td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  <DataTable
+                    rows={group.items}
+                    columns={projectColumns}
+                    getRowKey={(proj) => proj.id}
+                    onRowClick={(proj) => navigate(`/herd-projects/${proj.id}`)}
+                    pageSize={0}
+                    card={false}
+                  />
                 </div>
               ))}
             </div>

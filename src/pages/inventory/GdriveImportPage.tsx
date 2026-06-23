@@ -574,7 +574,7 @@ export default function GdriveImportPage() {
                   : 'Không đọc được dòng dữ liệu nào. Kiểm tra lại ánh xạ cột / dòng dữ liệu bắt đầu trong Cấu hình nguồn.'}
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto tbl-x">
                 <table className="w-full text-left text-body-md">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase">

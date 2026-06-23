@@ -1864,9 +1864,20 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Main Work Area */}
-        <div className="flex flex-1 overflow-hidden">
-          
+        {/* Mobile: layout POS 3 panel không hợp điện thoại → điều hướng sang "Lên đơn di động" */}
+        <div className="flex md:hidden flex-1 flex-col items-center justify-center gap-4 p-6 text-center bg-gray-25">
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-500 flex items-center justify-center"><Receipt size={30} /></div>
+          <h2 className="text-lg font-bold text-gray-700">POS tối ưu cho máy tính &amp; máy tính bảng</h2>
+          <p className="text-body-md text-gray-500 max-w-xs">Trên điện thoại, hãy dùng <b>Lên đơn di động</b> để thao tác nhanh và vừa màn hình.</p>
+          <button onClick={() => navigate('/orders/mobile')} className="h-11 px-5 bg-blue-500 text-white rounded-lg font-semibold flex items-center gap-2 active:scale-95 transition-all shadow-sm">
+            <Receipt size={18} /> Mở Lên đơn di động
+          </button>
+          <button onClick={() => navigate('/dashboard')} className="text-tiny text-gray-400 underline">Về trang chủ</button>
+        </div>
+
+        {/* Main Work Area (desktop/tablet) */}
+        <div className="hidden md:flex flex-1 overflow-hidden">
+
           {/* Cart Table Panel: w-[75%] when grid is hidden, w-[45%] when grid is shown */}
           <div className={`flex flex-col p-3 border-r border-gray-150 overflow-hidden ${
             showGrid ? 'w-[45%]' : 'w-[75%]'

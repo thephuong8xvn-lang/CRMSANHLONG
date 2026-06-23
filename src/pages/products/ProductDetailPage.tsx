@@ -651,7 +651,7 @@ export default function ProductDetailPage() {
                           <span>Không có biến thể phụ. Sản phẩm sử dụng quy cách đóng gói cơ bản: <strong>{product.package_specs || 'Mặc định'}</strong>.</span>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                        <div className="overflow-x-auto tbl-x border border-gray-100 rounded-lg">
                           <table className="w-full text-left border-collapse bg-gray-0 text-body-md">
                             <thead>
                               <tr className="bg-gray-50 border-b border-gray-100">
@@ -862,7 +862,7 @@ export default function ProductDetailPage() {
                            Chưa có giao dịch xuất nhập kho nào được ghi nhận cho sản phẩm này.
                          </div>
                        ) : (
-                         <div className="overflow-x-auto border border-gray-100 rounded-xl shadow-sm">
+                         <div className="overflow-x-auto tbl-x border border-gray-100 rounded-xl shadow-sm">
                            <table className="w-full text-left border-collapse bg-gray-0 text-body-md">
                              <thead>
                                <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold">

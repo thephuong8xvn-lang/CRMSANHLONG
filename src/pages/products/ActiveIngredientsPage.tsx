@@ -17,6 +17,7 @@ import {
   ChevronUp
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 
 interface ProductActiveIngredientLink {
@@ -89,7 +90,6 @@ export default function ActiveIngredientsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [groupFilter, setGroupFilter] = useState<string>('all')
-  const [expandedIngId, setExpandedIngId] = useState<string | null>(null)
 
   // Compatibility Search & Filter
   const [compatSearch, setCompatSearch] = useState('')
@@ -593,6 +593,44 @@ export default function ActiveIngredientsPage() {
     return matchesSearch && matchesType
   })
 
+  // Cột danh sách hoạt chất — kế thừa DataTable (desktop bảng + mobile card tự sinh + mở rộng chi tiết)
+  const ingredientColumns: DataTableColumn<ActiveIngredient>[] = [
+    {
+      key: 'name', header: 'Hoạt chất', flex: true, minWidth: 200, noTruncate: true,
+      render: (ing, expanded) => (
+        <div className={`flex items-start gap-2 min-w-0 ${!ing.is_active ? 'opacity-65' : ''}`}>
+          <ChevronDown size={16} className={`text-gray-300 mt-0.5 shrink-0 transition-transform ${expanded ? 'rotate-180 text-blue-500' : ''}`} />
+          <div className="min-w-0">
+            <div className="font-semibold text-gray-800 truncate">{ing.name}</div>
+            <div className="text-tiny font-mono uppercase text-gray-400 font-bold">{ing.code || '---'}</div>
+          </div>
+        </div>
+      ),
+    },
+    { key: 'group', header: 'Nhóm Dược Lý', width: 160, render: (ing) => <span className="font-medium text-gray-700">{(ing as any).pharmacological_groups?.name || ing.pharmacological_group || '---'}</span> },
+    { key: 'dosage', header: 'Hàm lượng chuẩn', width: 150, render: (ing) => <span className="text-gray-600">{ing.standard_dosage || '---'}</span> },
+    { key: 'meat', header: 'Ngưng thịt (Ngày)', width: 120, align: 'center', render: (ing) => <span className="font-semibold text-gray-700">{ing.withdrawal_period_meat !== null ? `${ing.withdrawal_period_meat} ngày` : '---'}</span> },
+    { key: 'milk', header: 'Ngưng Sữa/Trứng (Ngày)', width: 150, align: 'center', render: (ing) => <span className="font-semibold text-gray-700">{ing.withdrawal_period_milk_egg !== null ? `${ing.withdrawal_period_milk_egg} ngày` : '---'}</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 100, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: (ing) => (
+        <button type="button" onClick={(e) => { e.stopPropagation(); handleToggleIngredientActive(ing) }}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${ing.is_active ? 'bg-blue-500' : 'bg-gray-200'}`}>
+          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${ing.is_active ? 'translate-x-5' : 'translate-x-0'}`} />
+        </button>
+      ),
+    },
+    {
+      key: 'actions', header: 'Hành động', width: 100, align: 'center', noTruncate: true,
+      render: (ing) => (
+        <div className="flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => openEditIngredient(ing)} className="text-gray-450 hover:text-blue-650 transition-colors p-1" title="Sửa"><Edit size={16} /></button>
+          <button onClick={() => handleDeleteIngredient(ing)} className="text-gray-400 hover:text-red-500 transition-colors p-1" title="Xóa"><X size={16} /></button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <Layout activeMenu="Hoạt chất">
       <div className="p-4 md:p-10 max-w-7xl mx-auto space-y-6">
@@ -761,138 +799,53 @@ export default function ActiveIngredientsPage() {
                   <p className="text-body-md text-gray-400">Thử thay đổi bộ lọc hoặc thêm hoạt chất mới.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
-                        <th className="px-6 py-4 w-12"></th>
-                        <th className="px-6 py-4">Hoạt chất</th>
-                        <th className="px-6 py-4">Nhóm Dược Lý</th>
-                        <th className="px-6 py-4">Hàm lượng chuẩn</th>
-                        <th className="px-6 py-4">Ngưng thịt (Ngày)</th>
-                        <th className="px-6 py-4">Ngưng Sữa/Trứng (Ngày)</th>
-                        <th className="px-6 py-4 text-center">Trạng thái</th>
-                        <th className="px-6 py-4 w-28 text-center">Hành động</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-body-md text-gray-650">
-                      {filteredIngredients.map((ing) => {
-                        const isExpanded = expandedIngId === ing.id
-                        const connectedProductsCount = ing.product_active_ingredients?.length || 0
-
-                        return (
-                          <React.Fragment key={ing.id}>
-                            <tr 
-                              className={`hover:bg-gray-25/50 transition-colors ${!ing.is_active ? 'opacity-65 bg-gray-50/45' : ''} ${isExpanded ? 'bg-blue-50/20' : ''}`}
-                            >
-                              <td className="px-6 py-4 text-center">
-                                <button
-                                  onClick={() => setExpandedIngId(isExpanded ? null : ing.id)}
-                                  className="text-gray-400 hover:text-blue-500"
-                                >
-                                  {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                </button>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-gray-800">{ing.name}</span>
-                                  <span className="text-tiny font-mono uppercase text-gray-400 font-bold">{ing.code || '---'}</span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 font-medium text-gray-700">
-                                {(ing as any).pharmacological_groups?.name || ing.pharmacological_group || '---'}
-                              </td>
-                              <td className="px-6 py-4">
-                                {ing.standard_dosage || '---'}
-                              </td>
-                              <td className="px-6 py-4 text-center font-semibold text-gray-700">
-                                {ing.withdrawal_period_meat !== null ? `${ing.withdrawal_period_meat} ngày` : '---'}
-                              </td>
-                              <td className="px-6 py-4 text-center font-semibold text-gray-700">
-                                {ing.withdrawal_period_milk_egg !== null ? `${ing.withdrawal_period_milk_egg} ngày` : '---'}
-                              </td>
-                              <td className="px-6 py-4 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleIngredientActive(ing)}
-                                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    ing.is_active ? 'bg-blue-500' : 'bg-gray-200'
-                                  }`}
-                                >
-                                  <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                      ing.is_active ? 'translate-x-5' : 'translate-x-0'
-                                    }`}
-                                  />
-                                </button>
-                              </td>
-                              <td className="px-6 py-4 text-center">
-                                <div className="flex justify-center gap-2">
-                                  <button
-                                    onClick={() => openEditIngredient(ing)}
-                                    className="text-gray-450 hover:text-blue-650 transition-colors p-1"
-                                    title="Sửa"
-                                  >
-                                    <Edit size={16} />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteIngredient(ing)}
-                                    className="text-gray-400 hover:text-red-500 transition-colors p-1"
-                                    title="Xóa"
-                                  >
-                                    <X size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                            
-                            {/* Expanded Details section */}
-                            {isExpanded && (
-                              <tr className="bg-gray-25/30">
-                                <td colSpan={8} className="px-10 py-5 border-y border-gray-100">
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                      <h4 className="text-tiny font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                                        <Info size={14} className="text-blue-500" />
-                                        Chống chỉ định & Độc tính
-                                      </h4>
-                                      <p className="text-body-md text-gray-700 bg-white border border-gray-100 p-3 rounded-lg shadow-sm leading-relaxed">
-                                        {ing.contraindications || 'Chưa cấu hình chống chỉ định.'}
-                                      </p>
+                <DataTable
+                  rows={filteredIngredients}
+                  columns={ingredientColumns}
+                  getRowKey={(ing) => ing.id}
+                  pageSize={0}
+                  card={false}
+                  resetSignal={`${searchTerm}|${statusFilter}|${groupFilter}`}
+                  expandedRowRender={(ing) => {
+                    const connectedProductsCount = ing.product_active_ingredients?.length || 0
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
+                        <div className="space-y-2">
+                          <h4 className="text-tiny font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                            <Info size={14} className="text-blue-500" />
+                            Chống chỉ định & Độc tính
+                          </h4>
+                          <p className="text-body-md text-gray-700 bg-white border border-gray-100 p-3 rounded-lg shadow-sm leading-relaxed">
+                            {ing.contraindications || 'Chưa cấu hình chống chỉ định.'}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <h4 className="text-tiny font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                            <Link size={14} className="text-emerald-500" />
+                            Sản phẩm thương mại chứa hoạt chất ({connectedProductsCount})
+                          </h4>
+                          <div className="bg-white border border-gray-100 p-3 rounded-lg shadow-sm">
+                            {connectedProductsCount === 0 ? (
+                              <p className="text-body-md text-gray-400 italic">Chưa có sản phẩm nào liên kết.</p>
+                            ) : (
+                              <ul className="divide-y divide-gray-50 max-h-40 overflow-y-auto pr-2">
+                                {ing.product_active_ingredients?.map((link, idx) => (
+                                  <li key={idx} className="py-2 flex justify-between items-center text-body-md">
+                                    <span className="font-semibold text-gray-800">{link.product?.name}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-body-sm font-mono text-gray-400">SKU: {link.product?.sku}</span>
+                                      <span className="bg-blue-50 text-blue-700 text-tiny px-2 py-0.5 rounded font-bold">{link.percentage_or_dosage}</span>
                                     </div>
-                                    <div className="space-y-2">
-                                      <h4 className="text-tiny font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                                        <Link size={14} className="text-emerald-500" />
-                                        Sản phẩm thương mại chứa hoạt chất ({connectedProductsCount})
-                                      </h4>
-                                      <div className="bg-white border border-gray-100 p-3 rounded-lg shadow-sm">
-                                        {connectedProductsCount === 0 ? (
-                                          <p className="text-body-md text-gray-400 italic">Chưa có sản phẩm nào liên kết.</p>
-                                        ) : (
-                                          <ul className="divide-y divide-gray-50 max-h-40 overflow-y-auto pr-2">
-                                            {ing.product_active_ingredients?.map((link, idx) => (
-                                              <li key={idx} className="py-2 flex justify-between items-center text-body-md">
-                                                <span className="font-semibold text-gray-800">{link.product?.name}</span>
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-body-sm font-mono text-gray-400">SKU: {link.product?.sku}</span>
-                                                  <span className="bg-blue-50 text-blue-700 text-tiny px-2 py-0.5 rounded font-bold">{link.percentage_or_dosage}</span>
-                                                </div>
-                                              </li>
-                                            ))}
-                                          </ul>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
+                                  </li>
+                                ))}
+                              </ul>
                             )}
-                          </React.Fragment>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  }}
+                />
               )}
             </div>
           </div>
@@ -915,7 +868,7 @@ export default function ActiveIngredientsPage() {
             </div>
 
             <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto tbl-x">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
@@ -978,7 +931,7 @@ export default function ActiveIngredientsPage() {
         {activeTab === 'interaction_types' && (
           <div className="space-y-6">
             <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto tbl-x">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
@@ -1073,7 +1026,7 @@ export default function ActiveIngredientsPage() {
                   <p className="text-body-md text-gray-400">Thiết lập mối quan hệ Hiệp lực hoặc Đối kháng cho hoạt chất.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto tbl-x">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">

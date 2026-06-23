@@ -499,7 +499,7 @@ export default function CustomerSettingsPage() {
 
         {/* Tab Horizontal Select */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-100 px-6 overflow-x-auto no-scrollbar">
+          <div className="flex border-b border-gray-100 px-6 overflow-x-auto tbl-x no-scrollbar">
             <button
               onClick={() => setActiveTab('teams')}
               className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
@@ -628,7 +628,7 @@ export default function CustomerSettingsPage() {
                       <p className="text-body-md">Bấm "Thêm phân loại KH" để quản lý danh mục phân loại.</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto tbl-x">
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
@@ -693,7 +693,7 @@ export default function CustomerSettingsPage() {
                       <p className="text-body-md">Bấm "Thêm hạng KH" để quản lý hạng khách hàng.</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto tbl-x">
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">

@@ -5,7 +5,7 @@ import Layout from '../../components/Layout'
 import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
-import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import { useDisplaySettings, primaryPhone } from '../../contexts/DisplaySettingsContext'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import {
@@ -29,7 +29,17 @@ function suggestAction(r: ChurnWorklistRow): string {
 export default function CustomerCarePage() {
   const navigate = useNavigate()
   const { profile, userRole, hasPermission } = useAuth()
-  const { formatCurrency } = useDisplaySettings()
+  const { formatCurrency, formatPhone, maskData } = useDisplaySettings()
+  // Hiển thị SĐT an toàn: tách số đầu (bỏ số phụ/CCCD ghép) → format → áp chính sách che số
+  const renderPhone = (raw: string | null, cls: string) => {
+    const p = primaryPhone(raw)
+    if (!p) return null
+    return (
+      <a href={`tel:${p.replace(/\D/g, '')}`} onClick={(e) => e.stopPropagation()} className={cls}>
+        {maskData(formatPhone(p), 'phone')}
+      </a>
+    )
+  }
   const isAdmin = userRole.code === 'admin' || userRole.code === 'ceo'
   const isManager = isAdmin || userRole.code === 'branch_manager' || userRole.code === 'team_lead'
   const canManageUsers = hasPermission('users.manage') || isAdmin
@@ -102,7 +112,7 @@ export default function CustomerCarePage() {
           <div className="font-bold text-gray-700 truncate">{r.farm_name}</div>
           <div className="flex items-center gap-2 text-[11px] text-gray-400">
             {r.code && <span className="uppercase tracking-wider">{r.code}</span>}
-            {r.phone && <a href={`tel:${r.phone}`} onClick={e => e.stopPropagation()} className="text-blue-500 hover:underline">{r.phone}</a>}
+            {renderPhone(r.phone, 'text-blue-500 hover:underline')}
           </div>
           {r.total_debt > 0 && <div className="text-[11px] text-rose-600 font-semibold">Nợ: {formatCurrency(r.total_debt)}</div>}
         </div>
@@ -237,7 +247,7 @@ export default function CustomerCarePage() {
             <div className="p-5 space-y-3">
               <div className="text-body-md">
                 <span className="text-gray-500">Khách: </span><span className="font-bold text-gray-800">{callRow.farm_name}</span>
-                {callRow.phone && <a href={`tel:${callRow.phone}`} className="ml-2 text-blue-600 text-tiny hover:underline">{callRow.phone}</a>}
+                {renderPhone(callRow.phone, 'ml-2 text-blue-600 text-tiny hover:underline')}
               </div>
               {callErr && <p className="text-rose-600 text-tiny">{callErr}</p>}
               <label className="block text-tiny font-semibold text-gray-600">

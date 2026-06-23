@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, Plus, Search, Pencil, Trash2, ToggleLeft, ToggleRight, X, Bird } from 'lucide-react'
 import Layout from '../../components/Layout'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { logger } from '../../lib/logger'
@@ -153,6 +154,34 @@ export default function HerdsManagePage() {
 
   const fmtDate = (s: string | null) => s ? s.split('-').reverse().join('/') : '—'
 
+  // Cột đàn — kế thừa DataTable (desktop bảng + mobile card tự sinh)
+  const columns: DataTableColumn<HerdRow>[] = [
+    { key: 'name', header: 'Tên đàn', flex: true, minWidth: 160, noTruncate: true, render: (h) => <span className={`font-bold text-gray-700 ${!h.is_active ? 'opacity-50' : ''}`}>{h.name}</span> },
+    { key: 'species', header: 'Loài', width: 110, render: (h) => <span className="text-gray-600">{h.species?.name || '—'}</span> },
+    { key: 'breed', header: 'Con giống', width: 120, render: (h) => <span className="text-gray-600">{h.breed || '—'}</span> },
+    { key: 'price', header: 'Giá giống', width: 110, align: 'right', render: (h) => <span className="tabular-nums text-gray-600">{h.breed_price ? formatCurrency(h.breed_price) : '—'}</span> },
+    { key: 'qty', header: 'SL', width: 80, align: 'right', render: (h) => <span className="tabular-nums font-semibold text-gray-700">{h.current_quantity.toLocaleString('vi-VN')}</span> },
+    { key: 'dates', header: 'Vào / Dự kiến xuất', width: 150, render: (h) => <span className="text-tiny text-gray-500">{fmtDate(h.entry_date)} → {fmtDate(h.expected_exit_date)}</span> },
+    { key: 'farm', header: 'Khách / Trại', width: 160, render: (h) => <span className="text-tiny text-gray-600">{h.farm?.customer?.farm_name || '—'}{h.farm?.name ? ` · ${h.farm.name}` : ''}</span> },
+    {
+      key: 'status', header: 'Trạng thái', width: 90, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: (h) => (
+        <button onClick={(e) => { e.stopPropagation(); toggle(h) }} title={h.is_active ? 'Đang nuôi' : 'Ngừng'}>
+          {h.is_active ? <ToggleRight size={20} className="text-blue-600" /> : <ToggleLeft size={20} className="text-gray-400" />}
+        </button>
+      ),
+    },
+    {
+      key: 'actions', header: 'Thao tác', width: 80, align: 'right', noTruncate: true,
+      render: (h) => (
+        <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => openEdit(h)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Pencil size={14} /></button>
+          <button onClick={() => remove(h)} className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <Layout activeMenu="Chăn nuôi">
       <div className="p-4 md:p-8 max-w-[1400px] w-full mx-auto space-y-5">
@@ -176,49 +205,16 @@ export default function HerdsManagePage() {
                 className="w-full h-9 pl-9 pr-3 bg-gray-25 border border-gray-200 rounded-lg text-tiny focus:border-blue-500 focus:outline-none" />
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[13px]">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 uppercase text-[10px] font-bold tracking-wider">
-                  <th className="py-2.5 px-4">Tên đàn</th>
-                  <th className="py-2.5 px-3">Loài</th>
-                  <th className="py-2.5 px-3">Con giống</th>
-                  <th className="py-2.5 px-3 text-right">Giá giống</th>
-                  <th className="py-2.5 px-3 text-right">SL</th>
-                  <th className="py-2.5 px-3">Vào / Dự kiến xuất</th>
-                  <th className="py-2.5 px-3">Khách / Trại</th>
-                  <th className="py-2.5 px-3 text-center">Trạng thái</th>
-                  <th className="py-2.5 px-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {herdsQuery.isLoading ? (
-                  <tr><td colSpan={9} className="py-12 text-center text-gray-400">Đang tải...</td></tr>
-                ) : rows.length === 0 ? (
-                  <tr><td colSpan={9} className="py-12 text-center text-gray-400 italic">Chưa có đàn nào.</td></tr>
-                ) : rows.map(h => (
-                  <tr key={h.id} className={`hover:bg-gray-50/50 ${!h.is_active ? 'opacity-50' : ''}`}>
-                    <td className="py-3 px-4 font-bold text-gray-700">{h.name}</td>
-                    <td className="py-3 px-3 text-gray-600">{h.species?.name || '—'}</td>
-                    <td className="py-3 px-3 text-gray-600">{h.breed || '—'}</td>
-                    <td className="py-3 px-3 text-right tabular-nums text-gray-600">{h.breed_price ? formatCurrency(h.breed_price) : '—'}</td>
-                    <td className="py-3 px-3 text-right tabular-nums font-semibold text-gray-700">{h.current_quantity.toLocaleString('vi-VN')}</td>
-                    <td className="py-3 px-3 text-tiny text-gray-500">{fmtDate(h.entry_date)} → {fmtDate(h.expected_exit_date)}</td>
-                    <td className="py-3 px-3 text-tiny text-gray-600 max-w-[160px] truncate">{h.farm?.customer?.farm_name || '—'}{h.farm?.name ? ` · ${h.farm.name}` : ''}</td>
-                    <td className="py-3 px-3 text-center">
-                      <button onClick={() => toggle(h)} title={h.is_active ? 'Đang nuôi' : 'Ngừng'}>
-                        {h.is_active ? <ToggleRight size={20} className="text-blue-600" /> : <ToggleLeft size={20} className="text-gray-400" />}
-                      </button>
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <button onClick={() => openEdit(h)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Pencil size={14} /></button>
-                      <button onClick={() => remove(h)} className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            rows={rows}
+            columns={columns}
+            getRowKey={(h) => h.id}
+            loading={herdsQuery.isLoading}
+            pageSize={0}
+            card={false}
+            emptyText="Chưa có đàn nào."
+            resetSignal={debounced}
+          />
         </div>
       </div>
 

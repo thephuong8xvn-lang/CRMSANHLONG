@@ -1120,7 +1120,7 @@ export default function DiseasesPage() {
         {activeTab === 'species' && (
           <div className="space-y-6">
             <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto tbl-x">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
@@ -1168,7 +1168,7 @@ export default function DiseasesPage() {
         {activeTab === 'etiologies' && (
           <div className="space-y-6">
             <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto tbl-x">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">

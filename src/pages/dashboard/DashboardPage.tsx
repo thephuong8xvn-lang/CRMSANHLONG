@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import Layout from '../../components/Layout'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useDashboardStats } from '../../hooks/queries/useDashboardStats'
 import { usePendingDisbursements, useTodayAppointments, useAtRiskRegulars, useUpcomingDebts } from '../../hooks/queries/useDashboardLists'
@@ -91,6 +92,64 @@ export default function DashboardPage() {
   const scopeLabel = effectiveBranchId
     ? `chi nhánh ${currentBranchName ?? ''}`.trim()
     : 'toàn hệ thống'
+
+  // ── Cột bảng (kế thừa DataTable: desktop bảng + mobile card tự sinh) ──
+  const herdTaskColumns: DataTableColumn<typeof herdTasks[number]>[] = [
+    {
+      key: 'task', header: 'Công việc', width: 130, noTruncate: true,
+      render: (t) => <span className={`font-bold ${t.days_left <= 3 ? 'text-danger-600' : 'text-blue-700'}`}>{t.step_name}</span>,
+    },
+    {
+      key: 'project', header: 'Dự án', flex: true, minWidth: 180, noTruncate: true,
+      render: (t) => (
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-700 line-clamp-1">{t.project_name}</div>
+          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{t.project_code}</div>
+        </div>
+      ),
+    },
+    { key: 'customer', header: 'Khách hàng', width: 160, render: (t) => <span className="text-gray-600">{t.customer_name || 'Khách lẻ'}</span> },
+    { key: 'assignee', header: 'Người phụ trách', width: 140, render: (t) => <span className="text-gray-600">{t.assigned_name || '—'}</span> },
+    {
+      key: 'due', header: 'Hạn', width: 104, align: 'right', noTruncate: true, mobileHeaderRight: true,
+      render: (t) => (
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${t.days_left <= 3 ? 'bg-red-50 text-danger-600 border-red-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+          {taskDayLabel(t.days_left)}
+        </span>
+      ),
+    },
+    {
+      key: 'arrow', header: '', width: 36, align: 'right', noTruncate: true, hideOnMobile: true,
+      render: () => <ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500" />,
+    },
+  ]
+
+  const expiringColumns: DataTableColumn<typeof expiringLots[number]>[] = [
+    {
+      key: 'product', header: 'Sản phẩm', flex: true, minWidth: 200, noTruncate: true,
+      render: (l) => (
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-700 truncate">{l.product_name}</div>
+          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{l.sku}</div>
+        </div>
+      ),
+    },
+    { key: 'warehouse', header: 'Kho', width: 130, render: (l) => <span className="text-gray-600">{l.warehouse_name}</span> },
+    { key: 'lot', header: 'Lô', width: 110, render: (l) => <span className="text-gray-600">{l.lot_number}</span> },
+    { key: 'qty', header: 'SL tồn', width: 110, align: 'right', render: (l) => <span className="tabular-nums font-semibold text-gray-700">{l.qty.toLocaleString('vi-VN')} {l.unit}</span> },
+    {
+      key: 'left', header: 'Còn lại', width: 124, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: (l) => {
+        const c = expiryColors[bucketForDays(l.daysLeft).key] || '#64748b'
+        return (
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap"
+            style={{ color: c, borderColor: c + '55', backgroundColor: c + '14' }}>
+            {l.daysLeft < 0 ? `Hết hạn ${Math.abs(l.daysLeft)}n` : l.daysLeft === 0 ? 'Hôm nay' : `Còn ${l.daysLeft} ngày`}
+          </span>
+        )
+      },
+    },
+  ]
 
   // Skeleton cho lần tải đầu — mượt hơn spinner toàn trang
   const renderSkeleton = () => (
@@ -190,48 +249,14 @@ export default function DashboardPage() {
                 Tất cả
               </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-[13px]">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 uppercase text-[10px] font-bold tracking-wider whitespace-nowrap">
-                    <th className="py-2.5 px-5">Công việc</th>
-                    <th className="py-2.5 px-3">Dự án</th>
-                    <th className="py-2.5 px-3">Khách hàng</th>
-                    <th className="py-2.5 px-3">Người phụ trách</th>
-                    <th className="py-2.5 px-3 text-right">Hạn</th>
-                    <th className="py-2.5 px-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {herdTasks.slice(0, 10).map((t) => {
-                    const urgent = t.days_left <= 3
-                    return (
-                      <tr
-                        key={t.step_id}
-                        onClick={() => navigate(`/herd-projects/${t.project_id}`)}
-                        className="hover:bg-blue-50/30 cursor-pointer transition-colors group"
-                      >
-                        <td className="py-3 px-5">
-                          <span className={`font-bold ${urgent ? 'text-danger-600' : 'text-blue-700'}`}>{t.step_name}</span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="font-semibold text-gray-700 line-clamp-1">{t.project_name}</div>
-                          <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{t.project_code}</div>
-                        </td>
-                        <td className="py-3 px-3 text-gray-600 max-w-[160px] truncate">{t.customer_name || 'Khách lẻ'}</td>
-                        <td className="py-3 px-3 text-gray-600 max-w-[140px] truncate">{t.assigned_name || '—'}</td>
-                        <td className="py-3 px-3 text-right whitespace-nowrap">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${urgent ? 'bg-red-50 text-danger-600 border-red-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
-                            {taskDayLabel(t.days_left)}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-right"><ArrowRight size={14} className="text-gray-300 group-hover:text-blue-500" /></td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              rows={herdTasks.slice(0, 10)}
+              columns={herdTaskColumns}
+              getRowKey={(t) => t.step_id}
+              onRowClick={(t) => navigate(`/herd-projects/${t.project_id}`)}
+              pageSize={0}
+              card={false}
+            />
           </div>
         ) : null}
 
@@ -321,40 +346,14 @@ export default function DashboardPage() {
                   </h3>
                   <button onClick={() => navigate('/inventory/expiry')} className="text-blue-500 text-body-md font-semibold hover:underline flex-shrink-0">Tất cả</button>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-[13px]">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 uppercase text-[10px] font-bold tracking-wider whitespace-nowrap">
-                        <th className="py-2.5 px-5">Sản phẩm</th>
-                        <th className="py-2.5 px-3">Kho</th>
-                        <th className="py-2.5 px-3">Lô</th>
-                        <th className="py-2.5 px-3 text-right">SL tồn</th>
-                        <th className="py-2.5 px-3 text-center">Còn lại</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {expiringLots.slice(0, 8).map((l) => {
-                        const c = expiryColors[bucketForDays(l.daysLeft).key] || '#64748b'
-                        return (
-                          <tr key={l.lot_id} onClick={() => navigate('/inventory/expiry')} className="hover:bg-gray-25 cursor-pointer transition-colors">
-                            <td className="py-3 px-5">
-                              <div className="font-semibold text-gray-700 truncate max-w-[260px]">{l.product_name}</div>
-                              <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{l.sku}</div>
-                            </td>
-                            <td className="py-3 px-3 text-gray-600 max-w-[120px] truncate">{l.warehouse_name}</td>
-                            <td className="py-3 px-3 text-gray-600">{l.lot_number}</td>
-                            <td className="py-3 px-3 text-right tabular-nums font-semibold text-gray-700">{l.qty.toLocaleString('vi-VN')} {l.unit}</td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border" style={{ color: c, borderColor: c + '55', backgroundColor: c + '14' }}>
-                                {l.daysLeft < 0 ? `Hết hạn ${Math.abs(l.daysLeft)}n` : l.daysLeft === 0 ? 'Hôm nay' : `Còn ${l.daysLeft} ngày`}
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  rows={expiringLots.slice(0, 8)}
+                  columns={expiringColumns}
+                  getRowKey={(l) => l.lot_id}
+                  onRowClick={() => navigate('/inventory/expiry')}
+                  pageSize={0}
+                  card={false}
+                />
               </div>
             )}
           </div>

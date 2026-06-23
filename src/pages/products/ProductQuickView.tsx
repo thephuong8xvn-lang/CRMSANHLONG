@@ -117,7 +117,7 @@ export default function ProductQuickView({ row, branchId, onClose, onOpenDetail,
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-100 bg-white px-2 overflow-x-auto">
+      <div className="flex border-b border-gray-100 bg-white px-2 overflow-x-auto tbl-x">
         <TabButton id="info" icon={<Info size={14} />} label="Thông tin" />
         <TabButton id="lots" icon={<Layers size={14} />} label="Phiên bản & Lô hàng" />
         <TabButton id="ledger" icon={<Warehouse size={14} />} label="Thẻ kho" />
@@ -217,7 +217,7 @@ export default function ProductQuickView({ row, branchId, onClose, onOpenDetail,
               <div className="py-8 text-center text-gray-400 text-tiny">Chưa có biến động xuất nhập kho nào.</div>
             ) : (
               <div className="space-y-2">
-                <div className="overflow-x-auto border border-gray-100 rounded-lg bg-white">
+                <div className="overflow-x-auto tbl-x border border-gray-100 rounded-lg bg-white">
                   <table className="w-full text-left text-[12px] border-collapse">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] uppercase tracking-wider">

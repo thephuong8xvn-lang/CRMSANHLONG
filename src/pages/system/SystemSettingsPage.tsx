@@ -1037,7 +1037,7 @@ export default function SystemSettingsPage() {
 
         {/* Tab Horizontal Select */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-100 px-6 overflow-x-auto no-scrollbar">
+          <div className="flex border-b border-gray-100 px-6 overflow-x-auto tbl-x no-scrollbar">
             <button
               onClick={() => setActiveTab('employees')}
               className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
@@ -1165,7 +1165,7 @@ export default function SystemSettingsPage() {
                   </div>
 
                   {/* Employees Table Grid */}
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto tbl-x">
                     {filteredEmployees.length === 0 ? (
                       <div className="p-12 text-center text-gray-400 space-y-2">
                         <Users className="w-12 h-12 text-gray-300 mx-auto" />
@@ -1385,7 +1385,7 @@ export default function SystemSettingsPage() {
                       <p className="text-body-md">Bấm "Thêm kho hàng" để quản lý vị trí lưu trữ hàng hóa.</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto tbl-x">
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
@@ -1493,7 +1493,7 @@ export default function SystemSettingsPage() {
                         <p className="text-tiny">Bấm "Thêm tài khoản" để khai báo số tài khoản nhận chuyển khoản.</p>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                      <div className="overflow-x-auto tbl-x border border-gray-100 rounded-xl">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">
@@ -1573,7 +1573,7 @@ export default function SystemSettingsPage() {
                         <p className="text-tiny">Bấm "Thêm quỹ tiền mặt" để khai báo quỹ thu tiền mặt tại chi nhánh.</p>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                      <div className="overflow-x-auto tbl-x border border-gray-100 rounded-xl">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-gray-25 border-b border-gray-100 text-gray-400 font-semibold text-tiny uppercase tracking-wider">

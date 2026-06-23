@@ -48,7 +48,7 @@ import { logger } from '../../lib/logger'
 import ExportDebtStatementModal from './ExportDebtStatementModal'
 import CollectDebtModal from './CollectDebtModal'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
-import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import { useDisplaySettings, primaryPhone } from '../../contexts/DisplaySettingsContext'
 
 // ─────────────────────────────────────────────────────────────
 // Type Definitions
@@ -1700,7 +1700,7 @@ export default function CustomerDetailPage() {
                         <div className="grid grid-cols-3 gap-2">
                           <span className="text-gray-400">Số điện thoại:</span>
                           <span className="col-span-2 font-semibold text-gray-700">
-                            {primaryContact?.phone || 'Chưa cung cấp'}
+                            {primaryContact?.phone ? maskData(formatPhone(primaryPhone(primaryContact.phone)), 'phone') : 'Chưa cung cấp'}
                           </span>
                         </div>
                         <div className="grid grid-cols-3 gap-2">
@@ -1803,7 +1803,7 @@ export default function CustomerDetailPage() {
                           </div>
 
                           <div className="flex items-center gap-4">
-                            <span className="font-semibold text-body-md text-gray-700 tabular-nums">{c.phone || 'N/A'}</span>
+                            <span className="font-semibold text-body-md text-gray-700 tabular-nums">{c.phone ? maskData(formatPhone(primaryPhone(c.phone)), 'phone') : 'N/A'}</span>
                             <button
                               onClick={() => handleDeleteContact(c.id)}
                               className="text-gray-300 hover:text-danger-500 p-1.5 rounded hover:bg-gray-50 transition-colors"
@@ -2143,7 +2143,7 @@ export default function CustomerDetailPage() {
                           </div>
                         ) : (
                           /* Actual orders table */
-                          <div className="overflow-x-auto">
+                          <div className="overflow-x-auto tbl-x">
                             <table className="w-full text-left border-collapse">
                               <thead>
                                 <tr className="bg-gray-25 border-b border-gray-100">
@@ -2202,7 +2202,7 @@ export default function CustomerDetailPage() {
                             Chưa phát sinh giao dịch nào trong sổ chi tiết của khách hàng này.
                           </div>
                         ) : (
-                          <div className="overflow-x-auto">
+                          <div className="overflow-x-auto tbl-x">
                             <table className="w-full text-left border-collapse">
                               <thead>
                                 <tr className="bg-gray-25 border-b border-gray-100 text-gray-500 font-semibold text-body-md">

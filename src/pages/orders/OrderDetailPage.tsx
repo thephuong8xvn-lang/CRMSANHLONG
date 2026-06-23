@@ -17,6 +17,7 @@ import {
   Ban
 } from 'lucide-react'
 import Layout from '../../components/Layout'
+import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
 import DecimalInput from '../../components/DecimalInput'
 import { useAuth } from '../../contexts/AuthContext'
@@ -635,6 +636,32 @@ export default function OrderDetailPage() {
   const formatShortDate = (d: string | null | undefined) =>
     d ? new Date(d).toLocaleDateString('vi-VN') : null
 
+  // Cột dòng sản phẩm đơn hàng — kế thừa DataTable (desktop bảng + mobile card)
+  const lineColumns: DataTableColumn<any>[] = [
+    {
+      key: 'product', header: 'Sản phẩm', flex: true, minWidth: 180, noTruncate: true,
+      render: (line) => {
+        const expiry = formatShortDate(line.expiry_date)
+        return (
+          <div className="min-w-0">
+            <p className="font-bold text-gray-800 truncate">{line.product_snapshot?.name || 'Sản phẩm'}</p>
+            {(line.product_snapshot?.sku || line.lot_number || expiry) && (
+              <p className="text-[11px] text-gray-400 truncate">
+                {line.product_snapshot?.sku && <span className="font-mono">{line.product_snapshot.sku}</span>}
+                {line.lot_number && <span className="ml-2">Lô: <span className="font-mono">{line.lot_number}</span></span>}
+                {expiry && <span className="ml-2">HSD: {expiry}</span>}
+              </p>
+            )}
+          </div>
+        )
+      },
+    },
+    { key: 'qty', header: 'SL', width: 96, align: 'right', render: (line) => <span className="font-semibold text-gray-700 whitespace-nowrap">{line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || ''}</span> },
+    { key: 'price', header: 'Đơn giá', width: 116, align: 'right', render: (line) => <span className="text-gray-600 whitespace-nowrap">{line.unit_price.toLocaleString('vi-VN')} ₫</span> },
+    { key: 'ck', header: 'CK', width: 96, align: 'right', render: (line) => <span className="text-red-500 whitespace-nowrap">{line.discount > 0 ? `-${(line.discount * line.quantity).toLocaleString('vi-VN')} ₫` : '—'}</span> },
+    { key: 'total', header: 'Thành tiền', width: 124, align: 'right', noTruncate: true, mobileHeaderRight: true, render: (line) => <span className="font-bold text-gray-800 whitespace-nowrap">{line.line_total.toLocaleString('vi-VN')} ₫</span> },
+  ]
+
   return (
     <Layout activeMenu="Đơn hàng">
       <div className="p-4 md:p-10 max-w-[1600px] mx-auto space-y-6">
@@ -780,56 +807,14 @@ export default function OrderDetailPage() {
                 <span className="text-tiny bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-bold">{lines.length} sản phẩm</span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full table-fixed border-collapse text-left text-[13px]">
-                  <colgroup>
-                    <col style={{ width: 44 }} />
-                    <col />
-                    <col style={{ width: 96 }} />
-                    <col style={{ width: 116 }} />
-                    <col style={{ width: 96 }} />
-                    <col style={{ width: 124 }} />
-                  </colgroup>
-                  <thead>
-                    <tr className="bg-gray-25 text-gray-400 font-semibold text-tiny uppercase tracking-wider border-b border-gray-100">
-                      <th className="px-3 py-2 text-center">STT</th>
-                      <th className="px-3 py-2">Sản phẩm</th>
-                      <th className="px-3 py-2 text-right">SL</th>
-                      <th className="px-3 py-2 text-right">Đơn giá</th>
-                      <th className="px-3 py-2 text-right">CK</th>
-                      <th className="px-3 py-2 text-right">Thành tiền</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 text-gray-700">
-                    {lines.length === 0 ? (
-                      <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400 italic">Đơn chưa có sản phẩm</td></tr>
-                    ) : lines.map((line, idx) => {
-                      const expiry = formatShortDate(line.expiry_date)
-                      return (
-                        <tr key={line.id} className="hover:bg-gray-25/50 transition-colors align-top">
-                          <td className="px-3 py-1.5 text-center text-gray-400 font-medium">{idx + 1}</td>
-                          <td className="px-3 py-1.5 overflow-hidden">
-                            <p className="font-bold text-gray-800 truncate">{line.product_snapshot?.name || 'Sản phẩm'}</p>
-                            {(line.product_snapshot?.sku || line.lot_number || expiry) && (
-                              <p className="text-[11px] text-gray-400 truncate">
-                                {line.product_snapshot?.sku && <span className="font-mono">{line.product_snapshot.sku}</span>}
-                                {line.lot_number && <span className="ml-2">Lô: <span className="font-mono">{line.lot_number}</span></span>}
-                                {expiry && <span className="ml-2">HSD: {expiry}</span>}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-right font-semibold text-gray-700 whitespace-nowrap">
-                            {line.quantity.toLocaleString('vi-VN')} {line.product_snapshot?.unit || ''}
-                          </td>
-                          <td className="px-3 py-1.5 text-right text-gray-600 whitespace-nowrap">{line.unit_price.toLocaleString('vi-VN')} ₫</td>
-                          <td className="px-3 py-1.5 text-right text-red-500 whitespace-nowrap">{line.discount > 0 ? `-${(line.discount * line.quantity).toLocaleString('vi-VN')} ₫` : '—'}</td>
-                          <td className="px-3 py-1.5 text-right font-bold text-gray-800 whitespace-nowrap">{line.line_total.toLocaleString('vi-VN')} ₫</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                rows={lines}
+                columns={lineColumns}
+                getRowKey={(line) => line.id}
+                pageSize={0}
+                card={false}
+                emptyText="Đơn chưa có sản phẩm"
+              />
 
               <div className="pt-4 mt-4 border-t border-gray-100 space-y-2 text-tiny max-w-xs ml-auto">
                 <div className="flex justify-between text-gray-400">

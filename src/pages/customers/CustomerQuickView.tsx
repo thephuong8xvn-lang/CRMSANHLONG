@@ -125,7 +125,7 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-100 bg-white px-2 overflow-x-auto">
+      <div className="flex border-b border-gray-100 bg-white px-2 overflow-x-auto tbl-x">
         <TabButton id="orders" icon={<Receipt size={14} />} label="Lịch sử giao dịch" />
         <TabButton id="debts" icon={<Wallet size={14} />} label="Công nợ" badge={overdueCount} />
       </div>
@@ -142,7 +142,7 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="overflow-x-auto border border-gray-100 rounded-lg bg-white">
+                <div className="overflow-x-auto tbl-x border border-gray-100 rounded-lg bg-white">
                   <table className="w-full text-left text-[12px] border-collapse">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] uppercase tracking-wider">
@@ -208,7 +208,7 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
               {unsettled.length === 0 ? (
                 <div className="py-6 text-center text-gray-400 text-tiny">Khách hàng không có công nợ chưa tất toán.</div>
               ) : (
-                <div className="overflow-x-auto border border-gray-100 rounded-lg bg-white">
+                <div className="overflow-x-auto tbl-x border border-gray-100 rounded-lg bg-white">
                   <table className="w-full text-left text-[12px] border-collapse">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] uppercase tracking-wider">

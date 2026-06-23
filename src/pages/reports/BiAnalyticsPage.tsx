@@ -264,7 +264,7 @@ function AbcTab({ range, formatCurrency }: { range: { from: string; to: string }
   return (
     <div className="space-y-4">
       {/* Ma trận 3×3 */}
-      <div className="bg-gray-0 border border-gray-100 rounded-xl p-4 shadow-sm overflow-x-auto">
+      <div className="bg-gray-0 border border-gray-100 rounded-xl p-4 shadow-sm overflow-x-auto tbl-x">
         <div className="text-tiny font-bold text-gray-500 mb-2">Ma trận ABC × XYZ (số SKU) — A=doanh thu cao · X=cầu ổn định</div>
         <table className="text-tiny border-collapse">
           <thead>
@@ -350,7 +350,7 @@ function CohortTab() {
         </div>
       )}
 
-      <div className="bg-gray-0 border border-gray-100 rounded-xl shadow-sm overflow-x-auto">
+      <div className="bg-gray-0 border border-gray-100 rounded-xl shadow-sm overflow-x-auto tbl-x">
         {query.isLoading ? (
           <div className="p-12 text-center text-gray-400">Đang tải...</div>
         ) : cohorts.length === 0 ? (

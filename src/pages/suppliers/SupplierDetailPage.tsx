@@ -581,7 +581,7 @@ export default function SupplierDetailPage() {
 
           {/* Tab 1: Products */}
           {activeTab === 'products' && (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto tbl-x">
               {productsSupplied.length === 0 ? (
                 <div className="p-12 text-center text-gray-400 space-y-2">
                   <Layers className="w-12 h-12 text-gray-300 mx-auto" />
@@ -702,7 +702,7 @@ export default function SupplierDetailPage() {
 
           {/* Tab 3: History */}
           {activeTab === 'history' && (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto tbl-x">
               {purchaseOrders.length === 0 ? (
                 <div className="p-12 text-center text-gray-400 space-y-2">
                   <FileText className="w-12 h-12 text-gray-300 mx-auto" />

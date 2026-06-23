@@ -40,12 +40,38 @@
   overflow: hidden;
 }
 
+/* ──────────────────────────────────────────────────────────────
+ * Bảng chi tiết/báo cáo rộng (giữ <table>, KHÔNG cardify):
+ * trên MOBILE giữ cột đầu cố định khi cuộn ngang + cuộn quán tính.
+ * Chỉ cần thêm class "tbl-x" vào <div overflow-x-auto> bọc bảng.
+ * ────────────────────────────────────────────────────────────── */
+.tbl-x {
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 767px) {
+  .tbl-x table td:first-child,
+  .tbl-x table th:first-child {
+    position: sticky;
+    left: 0;
+    background: #FFFFFF;            /* gray-0 cho thân bảng */
+    z-index: 1;
+    box-shadow: 1px 0 0 0 #E5E9EE;  /* vạch ngăn gray-100 */
+  }
+  .tbl-x table thead th:first-child {
+    background: #FAFBFC;            /* gray-25 cho header */
+    z-index: 2;
+  }
+}
+
 /* Base root container */
 #root {
   min-height: 100vh;
   width: 100%;
   display: flex;
   flex-direction: column;
+  /* Chặn tràn ngang toàn cục: không trang nào làm cả màn hình trượt ngang ngoài ý muốn.
+   * Dùng "clip" (KHÔNG tạo scroll-container) → không phá position:sticky; modal fixed vẫn thoát. */
+  overflow-x: clip;
 }
 
 /* ──────────────────────────────────────────────────────────────
