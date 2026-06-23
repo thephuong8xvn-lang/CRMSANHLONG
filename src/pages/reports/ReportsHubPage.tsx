@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target, BarChart3
+  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target, BarChart3, Activity
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -81,6 +81,21 @@ const REPORT_CARDS = [
       'Pivot đa chiều (thời gian/SP/KH/CN/NV) + so sánh kỳ YoY/MoM',
       'Phân loại ABC/XYZ sản phẩm (80/20 × ổn định cầu)',
       'Cohort giữ chân khách hàng theo tháng',
+    ],
+  },
+  {
+    id: 'demand-forecast',
+    title: 'Dự báo nhu cầu',
+    tag: 'Dự báo',
+    tagColor: 'bg-cyan-100 text-cyan-700',
+    dotColor: 'bg-cyan-500',
+    icon: Activity,
+    iconBg: 'bg-cyan-50 text-cyan-600',
+    route: '/reports/demand-forecast',
+    features: [
+      'Dự báo cầu theo SKU (làm mượt SES / Croston cầu cách quãng)',
+      'Độ tin cậy theo lịch sử + dải bất định + MAPE',
+      'Gợi ý đặt theo dự báo kỳ tới (4/8/12 tuần)',
     ],
   },
 ]

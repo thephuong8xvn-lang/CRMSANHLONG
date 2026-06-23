@@ -36,6 +36,10 @@ export const qk = {
     abcXyz: (from: string, to: string) => ['bi', 'abc-xyz', from, to] as const,
     cohort: (months: number) => ['bi', 'cohort', months] as const,
   },
+  forecast: {
+    demandHistory: (weeks: number) => ['forecast', 'demand-history', weeks] as const,
+    config: ['forecast', 'config'] as const,
+  },
   products: {
     all: ['products'] as const,
     list: (params: object) => ['products', 'list', params] as const,
