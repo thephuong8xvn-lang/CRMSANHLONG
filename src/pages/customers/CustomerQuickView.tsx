@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Receipt,
@@ -13,16 +14,14 @@ import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { qk } from '../../lib/queryClient'
 import {
-  useCustomerOrders,
   useCustomerDebts,
   type CustomerSummaryRow,
 } from '../../hooks/queries/useCustomers'
+import { fetchCustomerStatement, type StatementRow } from '../../lib/customerStatement'
 import ExportDebtStatementModal from './ExportDebtStatementModal'
 import CollectDebtModal from './CollectDebtModal'
 
-const COLLECT_ROLES = ['admin', 'ceo', 'accountant', 'branch_manager']
-
-type QuickTab = 'orders' | 'debts'
+type QuickTab = 'ledger' | 'debts'
 
 interface CustomerQuickViewProps {
   customer: CustomerSummaryRow
@@ -30,27 +29,18 @@ interface CustomerQuickViewProps {
   onOpenDetail: () => void
 }
 
-const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
-  draft:            { label: 'Nháp',          cls: 'bg-gray-50 text-gray-600 border-gray-200' },
-  confirmed:        { label: 'Đã xác nhận',   cls: 'bg-blue-50 text-blue-700 border-blue-100' },
-  shipping:         { label: 'Đang giao',     cls: 'bg-amber-50 text-amber-700 border-amber-100' },
-  delivered:        { label: 'Đã giao',       cls: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
-  paid:             { label: 'Đã thanh toán', cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-  completed:        { label: 'Hoàn tất',      cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-  cancelled:        { label: 'Đã hủy',        cls: 'bg-red-50 text-red-600 border-red-100' },
-  returned_partial: { label: 'Trả 1 phần',   cls: 'bg-orange-50 text-orange-700 border-orange-100' },
-}
-
-const PAYMENT_STATUS: Record<string, { label: string; cls: string }> = {
-  unpaid:         { label: 'Chưa TT',  cls: 'bg-red-50 text-red-600' },
-  partially_paid: { label: 'TT 1 phần', cls: 'bg-amber-50 text-amber-700' },
-  paid:           { label: 'Đã TT đủ', cls: 'bg-emerald-50 text-emerald-700' },
-}
-
 const DEBT_TYPE_LABEL: Record<string, string> = {
   order_debt: 'Nợ đơn hàng',
   advance_from_customer: 'Khách trả trước',
   refund_due: 'Phải hoàn trả',
+}
+
+const KIND_BADGE: Record<StatementRow['kind'], string> = {
+  invoice: 'bg-blue-50 text-blue-700 border-blue-100',
+  payment: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  return: 'bg-purple-50 text-purple-700 border-purple-100',
+  adjustment: 'bg-amber-50 text-amber-700 border-amber-100',
+  advance: 'bg-gray-50 text-gray-500 border-gray-150',
 }
 
 function Spinner() {
@@ -63,22 +53,56 @@ function Spinner() {
 
 export default function CustomerQuickView({ customer, onClose, onOpenDetail }: CustomerQuickViewProps) {
   const { formatCurrency } = useDisplaySettings()
-  const { userRole } = useAuth()
+  const { hasPermission } = useAuth()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<QuickTab>('orders')
+  const [tab, setTab] = useState<QuickTab>('ledger')
   const [showExport, setShowExport] = useState(false)
   const [showCollect, setShowCollect] = useState(false)
   const [collectMsg, setCollectMsg] = useState('')
 
-  const ordersQuery = useCustomerOrders(customer.id, tab === 'orders')
+  // Sổ chi tiết giao dịch đầy đủ (tái dùng builder dùng chung với trang chi tiết)
+  const [rows, setRows] = useState<StatementRow[]>([])
+  const [ledgerLoading, setLedgerLoading] = useState(false)
+  const [closing, setClosing] = useState(0)
+
   const debtsQuery = useCustomerDebts(customer.id, tab === 'debts')
 
   const todayStr = new Date().toISOString().split('T')[0]
   const debts = debtsQuery.data ?? []
   const unsettled = debts.filter(d => !d.is_settled)
-  const outstanding = unsettled.reduce((s, d) => s + Number(d.amount || 0), 0)
   const overdueCount = unsettled.filter(d => d.due_date && d.due_date < todayStr).length
-  const canCollect = !!userRole && COLLECT_ROLES.includes(userRole.code)
+  // Nguồn sự thật công nợ = customer_summary_view.total_debt (đồng bộ mọi nơi)
+  const currentDebt = Number(customer.total_debt || 0)
+  // Gate theo PERMISSION (pilot) — khớp guard server fn_collect_customer_debt.
+  const canCollect = hasPermission('customers.collect_debt')
+
+  const loadLedger = useCallback(async () => {
+    setLedgerLoading(true)
+    try {
+      const fromISO = '1970-01-01T00:00:00.000Z'
+      const to = new Date(); to.setHours(23, 59, 59, 999)
+      const st = await fetchCustomerStatement(customer.id, fromISO, to.toISOString())
+      // Mới nhất lên đầu, giới hạn 30 dòng cho gọn
+      setRows([...st.rows].reverse().slice(0, 30))
+      setClosing(st.closing)
+    } catch {
+      setRows([])
+    } finally {
+      setLedgerLoading(false)
+    }
+  }, [customer.id])
+
+  useEffect(() => {
+    if (tab === 'ledger') loadLedger()
+  }, [tab, loadLedger])
+
+  const refetchAll = () => {
+    queryClient.invalidateQueries({ queryKey: qk.customers.debts(customer.id) })
+    queryClient.invalidateQueries({ queryKey: qk.customers.all })
+    queryClient.invalidateQueries({ queryKey: ['customers', 'kpis'] })
+    loadLedger()
+  }
 
   const TabButton = ({ id, icon, label, badge }: { id: QuickTab; icon: React.ReactNode; label: string; badge?: number }) => (
     <button
@@ -98,19 +122,29 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
   return (
     <div className="bg-gray-25 border border-gray-150 rounded-lg overflow-hidden animate-in fade-in duration-150 my-1">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-white border-b border-gray-100 gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="font-bold text-gray-800 truncate">{customer.farm_name}</span>
           <span className="px-2 py-0.5 bg-gray-50 border border-gray-100 text-blue-600 text-[10px] font-bold rounded uppercase shrink-0">
             {customer.code || '—'}
           </span>
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 tabular-nums ${
-            customer.is_overdue ? 'bg-red-50 text-red-600 border border-red-100' : Number(customer.total_debt) > 0 ? 'bg-gray-50 text-gray-600 border border-gray-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+            customer.is_overdue ? 'bg-red-50 text-red-600 border border-red-100' : currentDebt > 0 ? 'bg-orange-50 text-orange-700 border border-orange-100' : currentDebt < 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-50 text-gray-600 border border-gray-100'
           }`}>
-            Nợ: {formatCurrency(Number(customer.total_debt || 0))}
+            {currentDebt < 0 ? `Trả trước: ${formatCurrency(-currentDebt)}` : `Nợ: ${formatCurrency(currentDebt)}`}
           </span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {canCollect && (
+            <button
+              onClick={() => { setCollectMsg(''); setShowCollect(true) }}
+              className="h-8 px-3 bg-emerald-500 text-white rounded text-tiny font-bold hover:bg-emerald-600 active:scale-95 shadow-sm transition-all flex items-center gap-1.5"
+              title={currentDebt > 0 ? 'Thu công nợ — ghi vào sổ quỹ' : 'Ghi nhận khách trả tiền (thu trước) — ghi vào sổ quỹ'}
+            >
+              <Wallet size={13} />
+              {currentDebt > 0 ? 'Thu nợ' : 'Thu / Trả trước'}
+            </button>
+          )}
           <button
             onClick={onOpenDetail}
             className="h-8 px-3 border border-gray-200 bg-white hover:bg-gray-50 rounded text-tiny font-semibold text-gray-700 flex items-center gap-1.5 transition-all"
@@ -126,19 +160,26 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
 
       {/* Tabs */}
       <div className="flex border-b border-gray-100 bg-white px-2 overflow-x-auto tbl-x">
-        <TabButton id="orders" icon={<Receipt size={14} />} label="Lịch sử giao dịch" />
+        <TabButton id="ledger" icon={<Receipt size={14} />} label="Sổ chi tiết giao dịch" />
         <TabButton id="debts" icon={<Wallet size={14} />} label="Công nợ" badge={overdueCount} />
       </div>
 
       {/* Content */}
       <div className="p-4">
-        {/* ── Lịch sử giao dịch ── */}
-        {tab === 'orders' && (
-          ordersQuery.isLoading ? <Spinner /> : (
-            (ordersQuery.data ?? []).length === 0 ? (
+        {collectMsg && (
+          <div className="mb-3 flex items-start gap-2 text-tiny text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+            <span>{collectMsg}</span>
+          </div>
+        )}
+
+        {/* ── Sổ chi tiết giao dịch ── */}
+        {tab === 'ledger' && (
+          ledgerLoading ? <Spinner /> : (
+            rows.length === 0 ? (
               <div className="py-8 text-center text-gray-400 text-tiny flex flex-col items-center gap-2">
                 <Receipt size={28} className="text-gray-300" />
-                Khách hàng chưa có đơn hàng nào.
+                Khách hàng chưa phát sinh giao dịch nào.
               </div>
             ) : (
               <div className="space-y-2">
@@ -146,37 +187,45 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
                   <table className="w-full text-left text-[12px] border-collapse">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] uppercase tracking-wider">
-                        <th className="p-2.5">Mã đơn</th>
                         <th className="p-2.5">Thời gian</th>
-                        <th className="p-2.5 text-right">Giá trị</th>
-                        <th className="p-2.5">Trạng thái</th>
-                        <th className="p-2.5">Thanh toán</th>
+                        <th className="p-2.5">Mã chứng từ</th>
+                        <th className="p-2.5">Loại</th>
+                        <th className="p-2.5 text-right">Ghi nợ</th>
+                        <th className="p-2.5 text-right">Ghi có</th>
+                        <th className="p-2.5 text-right">Dư nợ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-gray-600">
-                      {(ordersQuery.data ?? []).map(o => {
-                        const st = ORDER_STATUS[o.status] || { label: o.status, cls: 'bg-gray-50 text-gray-600 border-gray-200' }
-                        const pm = PAYMENT_STATUS[o.payment_status]
+                      {rows.map((r, i) => {
+                        const canOpen = !!r.refId && (r.kind === 'invoice' || r.kind === 'return' || r.kind === 'payment')
                         return (
-                          <tr key={o.id} className="hover:bg-gray-50/50">
-                            <td className="p-2.5 font-mono font-semibold text-blue-600">{o.order_code}</td>
+                          <tr key={`${r.code}-${i}`} className={r.info ? 'bg-amber-25/40' : 'hover:bg-gray-50/50'}>
                             <td className="p-2.5 whitespace-nowrap tabular-nums text-[11px] text-gray-500">
-                              {new Date(o.created_at).toLocaleDateString('vi-VN')}
+                              {new Date(r.date).toLocaleDateString('vi-VN')}
                             </td>
-                            <td className="p-2.5 text-right font-bold tabular-nums text-gray-700">{formatCurrency(Number(o.grand_total || 0))}</td>
+                            <td className="p-2.5 font-mono font-semibold">
+                              {canOpen ? (
+                                <button onClick={() => navigate(`/orders/${r.refId}`)} className="text-blue-600 hover:underline" title="Xem chi tiết">{r.code}</button>
+                              ) : <span className="text-gray-500">{r.code}</span>}
+                            </td>
                             <td className="p-2.5">
-                              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${st.cls}`}>{st.label}</span>
+                              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${KIND_BADGE[r.kind]}`}>{r.typeLabel}</span>
                             </td>
-                            <td className="p-2.5">
-                              {pm ? <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${pm.cls}`}>{pm.label}</span> : '—'}
-                            </td>
+                            <td className="p-2.5 text-right tabular-nums font-semibold text-red-600">{r.debit ? formatCurrency(r.debit) : '—'}</td>
+                            <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.credit ? formatCurrency(r.credit) : '—'}</td>
+                            <td className="p-2.5 text-right tabular-nums font-bold text-gray-700">{r.info ? '—' : formatCurrency(r.balance)}</td>
                           </tr>
                         )
                       })}
                     </tbody>
                   </table>
                 </div>
-                <p className="text-[10px] text-gray-400 italic">Chỉ hiển thị 20 đơn gần nhất — xem đầy đủ ở trang chi tiết.</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] text-gray-400 italic">30 giao dịch gần nhất — xem đầy đủ ở trang chi tiết.</p>
+                  <span className={`text-tiny font-bold tabular-nums ${closing > 0 ? 'text-orange-600' : closing < 0 ? 'text-emerald-600' : 'text-gray-600'}`}>
+                    Dư nợ cuối: {closing < 0 ? `${formatCurrency(-closing)} (trả trước)` : formatCurrency(closing)}
+                  </span>
+                </div>
               </div>
             )
           )
@@ -190,7 +239,7 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-white border border-gray-100 rounded-lg p-3">
                   <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Dư nợ hiện tại</span>
-                  <span className={`font-bold tabular-nums ${outstanding > 0 ? 'text-gray-800' : 'text-emerald-600'}`}>{formatCurrency(outstanding)}</span>
+                  <span className={`font-bold tabular-nums ${currentDebt > 0 ? 'text-gray-800' : 'text-emerald-600'}`}>{currentDebt < 0 ? `${formatCurrency(-currentDebt)} (trả trước)` : formatCurrency(currentDebt)}</span>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-lg p-3">
                   <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Hạn mức công nợ</span>
@@ -237,33 +286,16 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
                   </table>
                 </div>
               )}
-              {collectMsg && (
-                <div className="flex items-start gap-2 text-tiny text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
-                  <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
-                  <span>{collectMsg}</span>
-                </div>
-              )}
               <div className="flex items-center justify-between gap-2 pt-1">
-                <div className="flex items-center gap-2">
-                  {canCollect && outstanding > 0 && (
-                    <button
-                      onClick={() => { setCollectMsg(''); setShowCollect(true) }}
-                      className="h-8 px-3 bg-emerald-500 text-white rounded-lg text-tiny font-bold hover:bg-emerald-600 active:scale-95 shadow-sm transition-all flex items-center gap-1.5"
-                    >
-                      <Wallet size={14} />
-                      Thanh toán
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setShowExport(true)}
-                    className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-tiny font-bold hover:bg-emerald-100 transition-all flex items-center gap-1.5"
-                  >
-                    <FileSpreadsheet size={14} />
-                    Xuất file công nợ
-                  </button>
-                </div>
+                <button
+                  onClick={() => setShowExport(true)}
+                  className="h-8 px-3 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-lg text-tiny font-bold hover:bg-emerald-100 transition-all flex items-center gap-1.5"
+                >
+                  <FileSpreadsheet size={14} />
+                  Xuất file công nợ
+                </button>
                 <p className="text-[10px] text-gray-400 italic">
-                  {canCollect ? 'Thu tiền sẽ tự ghi vào sổ quỹ & giảm công nợ.' : 'Điều chỉnh / thu công nợ tại trang chi tiết khách hàng.'}
+                  {canCollect ? 'Thu tiền sẽ tự ghi vào sổ quỹ & giảm công nợ.' : 'Cần quyền kế toán/quản lý để thu nợ.'}
                 </p>
               </div>
             </div>
@@ -281,14 +313,12 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
       {showCollect && (
         <CollectDebtModal
           customer={{ id: customer.id, name: customer.farm_name, code: customer.code || undefined }}
-          currentDebt={outstanding}
+          currentDebt={currentDebt}
           onClose={() => setShowCollect(false)}
           onSuccess={(msg) => {
             setShowCollect(false)
             setCollectMsg(msg)
-            queryClient.invalidateQueries({ queryKey: qk.customers.debts(customer.id) })
-            queryClient.invalidateQueries({ queryKey: qk.customers.all })
-            queryClient.invalidateQueries({ queryKey: ['customers', 'kpis'] })
+            refetchAll()
           }}
         />
       )}

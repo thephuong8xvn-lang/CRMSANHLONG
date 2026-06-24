@@ -27,10 +27,12 @@ interface AuthContextType {
   isAuthenticated: boolean
 
   // RBAC: tải 1 lần qua TanStack Query (Sprint P1-6, cache 15 phút)
-  userRole: { code: string; name: string }
+  userRole: { code: string; name: string }   // role đại diện (hiển thị)
+  userRoles: string[]                         // TẤT CẢ role codes (gating chính xác đa role)
   userPermissions: string[]
   permissionsLoading: boolean
   hasPermission: (code: string) => boolean
+  hasAnyRole: (codes: string[]) => boolean    // true nếu user có BẤT KỲ role nào trong danh sách
 
   // Actions
   signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>
@@ -209,13 +211,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ─────────────────────────────────────────────────────────
   const rolePerms = useUserRolePermissions(profile?.id ?? null)
   const userRole         = rolePerms.data?.role        ?? { code: 'admin', name: 'Quản trị viên' }
+  const userRoles        = rolePerms.data?.roleCodes   ?? [userRole.code]
   const userPermissions  = rolePerms.data?.permissions ?? []
   const permissionsLoading = rolePerms.isLoading
 
+  const isSuperRole = userRoles.includes('admin') || userRoles.includes('ceo')
+    || userRole.code === 'admin' || userRole.code === 'ceo'
+
   const hasPermission = (code: string): boolean => {
-    if (userRole.code === 'admin' || userRole.code === 'ceo') return true
+    if (isSuperRole) return true
     return userPermissions.includes(code)
   }
+
+  // Gating theo role có xét TẤT CẢ role của user (đa role).
+  const hasAnyRole = (codes: string[]): boolean =>
+    isSuperRole || codes.some(c => userRoles.includes(c) || userRole.code === c)
 
   // ─────────────────────────────────────────────────────────
   // Value
@@ -227,9 +237,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     isAuthenticated: !!session && !!user,
     userRole,
+    userRoles,
     userPermissions,
     permissionsLoading,
     hasPermission,
+    hasAnyRole,
     signInWithEmail,
     signUpWithEmail,
     signInWithGoogle,

@@ -14,7 +14,8 @@ import {
   Printer,
   Wallet,
   Landmark,
-  Star
+  Star,
+  ShieldCheck
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -22,6 +23,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { createClient } from '@supabase/supabase-js'
 import DisplaySettingsTab from './DisplaySettingsTab'
 import PrintSettingsTab from './PrintSettingsTab'
+import RolePermissionMatrix from './RolePermissionMatrix'
 
 // Interface declarations
 interface Branch {
@@ -153,7 +155,7 @@ const formatMoney = (value: number | null | undefined) =>
 
 export default function SystemSettingsPage() {
   const { profile } = useAuth()
-  const [activeTab, setActiveTab] = useState<'employees' | 'branches' | 'warehouses' | 'funds' | 'display' | 'print'>('employees')
+  const [activeTab, setActiveTab] = useState<'employees' | 'roles' | 'branches' | 'warehouses' | 'funds' | 'display' | 'print'>('employees')
 
   // Lists
   const [employees, setEmployees] = useState<Profile[]>([])
@@ -1089,6 +1091,18 @@ export default function SystemSettingsPage() {
 
 
             <button
+              onClick={() => setActiveTab('roles')}
+              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'roles'
+                  ? 'border-blue-500 text-blue-600 font-bold'
+                  : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <ShieldCheck size={16} />
+              <span>Vai trò & Phân quyền</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('display')}
               className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'display'
@@ -1466,6 +1480,13 @@ export default function SystemSettingsPage() {
               )}
 
 
+
+              {/* TAB: VAI TRÒ & PHÂN QUYỀN */}
+              {activeTab === 'roles' && (
+                <div className="p-6">
+                  <RolePermissionMatrix />
+                </div>
+              )}
 
               {/* TAB 4: CASH FUNDS & BANK ACCOUNTS */}
               {activeTab === 'funds' && (

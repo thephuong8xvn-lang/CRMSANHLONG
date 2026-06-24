@@ -284,8 +284,9 @@ export default function CustomerListPage() {
       render: customer => {
         const totalDebt = Number(customer.total_debt || 0)
         return (
-          <span className={`font-bold tabular-nums ${customer.is_overdue ? 'text-danger-500' : totalDebt > 0 ? 'text-gray-600' : 'text-gray-400'}`}>
-            {totalDebt > 0 ? formatVND(totalDebt) : '0 ₫'}
+          <span className={`font-bold tabular-nums ${customer.is_overdue ? 'text-danger-500' : totalDebt > 0 ? 'text-gray-600' : totalDebt < 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+            {totalDebt > 0 ? formatVND(totalDebt) : totalDebt < 0 ? formatVND(-totalDebt) : '0 ₫'}
+            {totalDebt < 0 && <span className="block text-[10px] text-emerald-600 font-normal mt-0.5">Trả trước</span>}
             {customer.is_overdue && <span className="block text-[10px] text-danger-500 font-normal mt-0.5">Quá hạn</span>}
           </span>
         )

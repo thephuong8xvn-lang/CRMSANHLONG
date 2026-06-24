@@ -33,6 +33,9 @@ export interface StatementRow {
   balance: number     // Dư nợ sau giao dịch
   notes: string
   lines: StatementLineItem[]  // chỉ có ở hóa đơn bán hàng
+  kind: 'invoice' | 'payment' | 'return' | 'adjustment' | 'advance' // phục vụ click → chi tiết
+  refId: string | null  // order_id / return_id / payment_id… để mở chi tiết
+  info?: boolean        // true = dòng thông tin, KHÔNG ảnh hưởng số dư (vd Khách trả trước)
 }
 
 export interface CustomerStatement {
@@ -54,6 +57,11 @@ interface LedgerEntry {
   debtImpact: number          // + = ghi nợ, − = ghi có
   notes: string
   orderId: string | null      // để gắn line item cho hóa đơn
+  kind: StatementRow['kind']
+  refId: string | null
+  // false = dòng phái sinh (Khách trả trước / Phải hoàn trả) — tiền đã nằm ở
+  // dòng thanh toán nên KHÔNG cộng vào số dư, chỉ hiển thị thông tin.
+  affectsBalance: boolean
 }
 
 /**
@@ -91,6 +99,9 @@ export function buildStatement(input: {
         debtImpact: Number(o.grand_total || 0),
         notes: o.notes || '',
         orderId: o.id,
+        kind: 'invoice',
+        refId: o.id,
+        affectsBalance: true,
       })
     }
   })
@@ -105,6 +116,9 @@ export function buildStatement(input: {
       debtImpact: -Number(op.amount || 0),
       notes: op.notes || (oCode ? `Thanh toán cho đơn ${oCode}` : ''),
       orderId: null,
+      kind: 'payment',
+      refId: op.order_id || null,
+      affectsBalance: true,
     })
   })
 
@@ -117,6 +131,9 @@ export function buildStatement(input: {
       debtImpact: -Number(dp.amount || 0),
       notes: dp.notes || 'Khách thanh toán nợ',
       orderId: null,
+      kind: 'payment',
+      refId: null,
+      affectsBalance: true,
     })
   })
 
@@ -131,12 +148,20 @@ export function buildStatement(input: {
       debtImpact: isCreditNote ? -Number(r.total_amount || 0) : 0,
       notes: r.reason || (oCode ? `Khách trả hàng đơn ${oCode}` : ''),
       orderId: null,
+      kind: 'return',
+      refId: r.order_id || null,
+      affectsBalance: true,
     })
   })
 
-  // 5) Điều chỉnh nợ (không gắn với đơn)
+  // 5) customer_debts không gắn đơn:
+  //    • order_debt (order_id NULL) = ĐIỀU CHỈNH THỦ CÔNG → ảnh hưởng số dư.
+  //    • advance_from_customer / refund_due = bút toán PHÁI SINH của thanh toán
+  //      (tiền đã được tính ở dòng thanh toán). Hiển thị THÔNG TIN, KHÔNG cộng
+  //      vào số dư → tránh đếm trùng (lỗi dư nợ sai trước đây).
   debts.forEach(cd => {
     if (!cd.order_id || cd.debt_type !== 'order_debt') {
+      const isManualAdjust = cd.debt_type === 'order_debt' // tới đây ⇒ order_id NULL
       let label = 'Điều chỉnh nợ'
       if (cd.debt_type === 'advance_from_customer') label = 'Khách trả trước'
       else if (cd.debt_type === 'refund_due') label = 'Phải hoàn trả'
@@ -147,12 +172,21 @@ export function buildStatement(input: {
         debtImpact: Number(cd.amount || 0),
         notes: cd.notes || '',
         orderId: null,
+        kind: isManualAdjust ? 'adjustment' : 'advance',
+        refId: null,
+        affectsBalance: isManualAdjust,
       })
     }
   })
 
-  // Sắp xếp tăng dần theo thời gian để cộng dồn dư nợ
-  entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  // Sắp xếp tăng dần theo thời gian để cộng dồn dư nợ. Tie-break ổn định: dòng
+  // ảnh hưởng số dư trước dòng thông tin, ghi nợ trước ghi có → số dư đọc tự nhiên.
+  entries.sort((a, b) => {
+    const dt = new Date(a.date).getTime() - new Date(b.date).getTime()
+    if (dt !== 0) return dt
+    if (a.affectsBalance !== b.affectsBalance) return a.affectsBalance ? -1 : 1
+    return b.debtImpact - a.debtImpact
+  })
 
   let running = 0
   let opening = 0
@@ -162,17 +196,17 @@ export function buildStatement(input: {
 
   for (const e of entries) {
     const t = new Date(e.date).getTime()
-    running += e.debtImpact
+    if (e.affectsBalance) running += e.debtImpact
 
     if (t < fromMs) {
-      // Trước kỳ → gộp vào nợ đầu kỳ
-      opening = running
+      // Trước kỳ → gộp vào nợ đầu kỳ (chỉ dòng ảnh hưởng số dư)
+      if (e.affectsBalance) opening = running
       continue
     }
     if (t > toMs) continue // sau kỳ → bỏ qua
 
-    const debit = e.debtImpact > 0 ? e.debtImpact : 0
-    const credit = e.debtImpact < 0 ? -e.debtImpact : 0
+    const debit = e.affectsBalance && e.debtImpact > 0 ? e.debtImpact : 0
+    const credit = e.affectsBalance && e.debtImpact < 0 ? -e.debtImpact : 0
     totalDebit += debit
     totalCredit += credit
     rows.push({
@@ -184,6 +218,9 @@ export function buildStatement(input: {
       balance: running,
       notes: e.notes,
       lines: e.orderId ? (linesByOrder.get(e.orderId) ?? []) : [],
+      kind: e.kind,
+      refId: e.refId,
+      info: !e.affectsBalance,
     })
   }
 
