@@ -15,7 +15,8 @@ import {
   Wallet,
   Landmark,
   Star,
-  ShieldCheck
+  ShieldCheck,
+  KeyRound
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -186,6 +187,13 @@ export default function SystemSettingsPage() {
   const [showReassignModal, setShowReassignModal] = useState(false)
   const [showCashFundModal, setShowCashFundModal] = useState(false)
   const [showBankModal, setShowBankModal] = useState(false)
+
+  // Đặt lại mật khẩu (admin → user khác)
+  const [showResetPwModal, setShowResetPwModal] = useState(false)
+  const [resetTarget, setResetTarget] = useState<Profile | null>(null)
+  const [resetPw, setResetPw] = useState('')
+  const [resetPwConfirm, setResetPwConfirm] = useState('')
+  const [resettingPw, setResettingPw] = useState(false)
 
   // Selected item for Edit
   const [selectedEmployee, setSelectedEmployee] = useState<Profile | null>(null)
@@ -609,6 +617,51 @@ export default function SystemSettingsPage() {
       showToast('error', 'Lỗi bàn giao: ' + err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Đặt lại mật khẩu (admin → user khác) qua Edge Function admin-reset-password.
+  // service_role nằm trong function, không bao giờ ra client. Function tự kiểm
+  // tra người gọi là admin (defense-in-depth).
+  // ─────────────────────────────────────────────────────────────
+  const openResetPassword = (emp: Profile) => {
+    setResetTarget(emp)
+    setResetPw('')
+    setResetPwConfirm('')
+    setShowResetPwModal(true)
+  }
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!resetTarget) return
+    if (resetPw.length < 6) {
+      showToast('error', 'Mật khẩu mới phải có ít nhất 6 ký tự.')
+      return
+    }
+    if (resetPw !== resetPwConfirm) {
+      showToast('error', 'Hai ô mật khẩu không khớp.')
+      return
+    }
+
+    setResettingPw(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-reset-password', {
+        body: { target_user_id: resetTarget.id, new_password: resetPw },
+      })
+      // functions.invoke không throw cho lỗi HTTP 4xx/5xx có body JSON → kiểm tra cả 2.
+      if (error) throw new Error(error.message)
+      if (data?.error) throw new Error(data.error)
+
+      showToast('success', `Đã đặt lại mật khẩu cho ${resetTarget.full_name || resetTarget.email}.`)
+      setShowResetPwModal(false)
+      setResetTarget(null)
+      setResetPw('')
+      setResetPwConfirm('')
+    } catch (err: any) {
+      showToast('error', 'Lỗi đặt lại mật khẩu: ' + (err.message || ''))
+    } finally {
+      setResettingPw(false)
     }
   }
 
@@ -1255,13 +1308,23 @@ export default function SystemSettingsPage() {
                                   />
                                 </button>
                               </td>
-                              <td className="px-6 py-4 text-center">
-                                <button
-                                  onClick={() => openEditEmployee(emp)}
-                                  className="text-gray-400 hover:text-blue-600 transition-colors p-1"
-                                >
-                                  <Edit size={16} />
-                                </button>
+                              <td className="px-6 py-4">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => openResetPassword(emp)}
+                                    title="Đặt lại mật khẩu"
+                                    className="text-gray-400 hover:text-amber-600 transition-colors p-1"
+                                  >
+                                    <KeyRound size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => openEditEmployee(emp)}
+                                    title="Sửa thông tin"
+                                    className="text-gray-400 hover:text-blue-600 transition-colors p-1"
+                                  >
+                                    <Edit size={16} />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1840,6 +1903,78 @@ export default function SystemSettingsPage() {
                     className="px-5 h-10 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md disabled:opacity-50"
                   >
                     {saving ? 'Đang lưu...' : 'Lưu thông tin'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: ĐẶT LẠI MẬT KHẨU (admin → user khác) */}
+        {showResetPwModal && resetTarget && (
+          <div className="fixed inset-0 bg-gray-900/60 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-gray-100 flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex items-center gap-3">
+                <span className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+                  <KeyRound size={18} />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-body-lg font-bold text-gray-800 leading-tight">Đặt lại mật khẩu</h3>
+                  <p className="text-tiny text-gray-400 truncate">{resetTarget.full_name || resetTarget.email}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowResetPwModal(false)}
+                  className="ml-auto text-gray-400 hover:text-gray-650 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleResetPassword} className="p-6 space-y-4">
+                <div className="p-3 bg-amber-50 border border-amber-100 text-amber-800 rounded-lg text-tiny font-medium">
+                  Mật khẩu mới sẽ có hiệu lực ngay. Hãy báo lại cho nhân viên để đăng nhập và tự đổi.
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mật khẩu mới <span className="text-red-500">*</span></label>
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    placeholder="Tối thiểu 6 ký tự..."
+                    value={resetPw}
+                    onChange={(e) => setResetPw(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Nhập lại mật khẩu <span className="text-red-500">*</span></label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Nhập lại để xác nhận..."
+                    value={resetPwConfirm}
+                    onChange={(e) => setResetPwConfirm(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2 border-t border-gray-150">
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPwModal(false)}
+                    className="px-5 h-10 border border-gray-100 text-gray-500 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resettingPw}
+                    className="px-5 h-10 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg active:scale-95 transition-all shadow-md disabled:opacity-50"
+                  >
+                    {resettingPw ? 'Đang đặt lại...' : 'Đặt lại mật khẩu'}
                   </button>
                 </div>
               </form>

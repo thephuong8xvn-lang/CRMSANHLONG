@@ -127,10 +127,15 @@ function AccessDenied() {
 // ProtectedRoute: Kiểm tra trạng thái đăng nhập & phân quyền module
 // ─────────────────────────────────────────────────────────────
 function ProtectedRoute({ children, perms = [], adminOnly = false }: { children: React.ReactNode; perms?: string[]; adminOnly?: boolean }) {
-  const { isAuthenticated, loading, userRole, userPermissions } = useAuth()
+  const { isAuthenticated, loading, rbacReady, userRole, userPermissions } = useAuth()
 
   if (loading) return <FullPageSpinner />
   if (!isAuthenticated) return <Navigate to="/login" replace />
+
+  // ⚠️ Chờ RBAC giải quyết xong TRƯỚC khi gating. Nếu không, role mặc định tạm thời
+  // ('guest' fail-closed) sẽ khiến admin bị "Không có quyền" nhấp nháy; còn nếu fail-open
+  // sẽ rò rỉ trang cho user thường. Vì vậy hiển thị spinner cho tới khi rbacReady.
+  if (!rbacReady) return <FullPageSpinner />
 
   // Route chỉ dành cho admin (vd: Trung tâm Báo cáo) — kể cả CEO cũng bị chặn
   if (adminOnly) {
@@ -210,7 +215,8 @@ function AppRoutes() {
       <Route path="/herd-projects/:id" element={<ProtectedRoute perms={['herd_projects.view_all']}><HerdProjectDetailPage /></ProtectedRoute>} />
       {/* /products/ingredients đã được khai báo ở trên, không cần lặp lại */}
       <Route path="/diseases" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><DiseasesPage /></ProtectedRoute>} />
-      <Route path="/system-settings" element={<ProtectedRoute perms={['users.manage', 'users.assign_role', 'audit.view']}><SystemSettingsPage /></ProtectedRoute>} />
+      {/* Cấu hình Hệ thống & Tổ chức: CHỈ Admin (quyền cao nhất), loại cả CEO. */}
+      <Route path="/system-settings" element={<ProtectedRoute adminOnly><SystemSettingsPage /></ProtectedRoute>} />
       <Route path="/promotions" element={<ProtectedRoute perms={['promotions.manage']}><PromotionsPage /></ProtectedRoute>} />
       <Route path="/print-preview" element={<ProtectedRoute><PrintPreviewPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

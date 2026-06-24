@@ -31,6 +31,7 @@ interface AuthContextType {
   userRoles: string[]                         // TẤT CẢ role codes (gating chính xác đa role)
   userPermissions: string[]
   permissionsLoading: boolean
+  rbacReady: boolean                          // RBAC đã giải quyết xong (chờ trước khi gating)
   hasPermission: (code: string) => boolean
   hasAnyRole: (codes: string[]) => boolean    // true nếu user có BẤT KỲ role nào trong danh sách
 
@@ -210,10 +211,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Trước đây Layout.tsx fetch lại trên mỗi page navigation → đã bỏ.
   // ─────────────────────────────────────────────────────────
   const rolePerms = useUserRolePermissions(profile?.id ?? null)
-  const userRole         = rolePerms.data?.role        ?? { code: 'admin', name: 'Quản trị viên' }
-  const userRoles        = rolePerms.data?.roleCodes   ?? [userRole.code]
+  // ⚠️ Fail-CLOSED: khi RBAC chưa tải (hoặc query lỗi) → mặc định 'guest' (KHÔNG admin).
+  // Trước đây mặc định 'admin' (fail-open) khiến route/menu bị rò rỉ trong lúc tải.
+  // Mọi gating PHẢI chờ `rbacReady` trước khi đọc role (xem ProtectedRoute/Layout).
+  const userRole         = rolePerms.data?.role        ?? { code: 'guest', name: 'Khách' }
+  const userRoles        = rolePerms.data?.roleCodes   ?? []
   const userPermissions  = rolePerms.data?.permissions ?? []
   const permissionsLoading = rolePerms.isLoading
+  // RBAC sẵn sàng khi đã có profile và query role/permission không còn loading.
+  const rbacReady = !!profile && !rolePerms.isLoading
 
   const isSuperRole = userRoles.includes('admin') || userRoles.includes('ceo')
     || userRole.code === 'admin' || userRole.code === 'ceo'
@@ -240,6 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userRoles,
     userPermissions,
     permissionsLoading,
+    rbacReady,
     hasPermission,
     hasAnyRole,
     signInWithEmail,
