@@ -54,9 +54,38 @@ export default function OrderListPage() {
   const [selectedStatus, setSelectedStatus] = useState('')
   const [selectedChannel, setSelectedChannel] = useState('') // '', 'pos_quick', 'delivery'
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
-  const [selectedDateRange, setSelectedDateRange] = useState('all') // 'all', 'today', '7days', '30days'
+  // Mặc định 'today' — đa số thao tác là đơn trong ngày, giảm egress vì lọc server-side.
+  const [selectedDateRange, setSelectedDateRange] = useState('today') // 'all','today','7days','30days','custom'
+  const [customFrom, setCustomFrom] = useState('') // yyyy-mm-dd
+  const [customTo, setCustomTo] = useState('')     // yyyy-mm-dd
   const [quickDeliveryPending, setQuickDeliveryPending] = useState(false) // lọc nhanh đơn giao chờ xác nhận
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+
+  // ── Tính mốc [start, end) theo bộ lọc để LỌC SERVER-SIDE (giảm egress) ──
+  // Dùng nửa-đêm local → toISOString() ra đúng mốc UTC cho cột timestamptz.
+  const computeDateBounds = (): { start: string | null; end: string | null } => {
+    const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+    const now = new Date()
+    if (selectedDateRange === 'all') return { start: null, end: null }
+    if (selectedDateRange === 'today') {
+      const s = startOfDay(now); const e = new Date(s); e.setDate(e.getDate() + 1)
+      return { start: s.toISOString(), end: e.toISOString() }
+    }
+    if (selectedDateRange === '7days' || selectedDateRange === '30days') {
+      const days = selectedDateRange === '7days' ? 6 : 29
+      const s = startOfDay(now); s.setDate(s.getDate() - days)
+      const e = new Date(startOfDay(now)); e.setDate(e.getDate() + 1)
+      return { start: s.toISOString(), end: e.toISOString() }
+    }
+    if (selectedDateRange === 'custom') {
+      const start = customFrom ? startOfDay(new Date(customFrom)).toISOString() : null
+      let end: string | null = null
+      if (customTo) { const e = startOfDay(new Date(customTo)); e.setDate(e.getDate() + 1); end = e.toISOString() }
+      return { start, end }
+    }
+    return { start: null, end: null }
+  }
+  const { start: dateStart, end: dateEnd } = computeDateBounds()
 
   // Fetch Orders
   const loadOrders = useCallback(async () => {
@@ -86,6 +115,8 @@ export default function OrderListPage() {
         if (restrictBranch) {
           query = query.eq('branch_id', profile!.branch_id)
         }
+        if (dateStart) query = query.gte('created_at', dateStart)
+        if (dateEnd) query = query.lt('created_at', dateEnd)
         return query.order('created_at', { ascending: false }).order('id').range(from, to)
       })
       setOrders(data)
@@ -94,7 +125,7 @@ export default function OrderListPage() {
     } finally {
       setLoading(false)
     }
-  }, [profile?.branch_id, userRole?.code])
+  }, [profile?.branch_id, userRole?.code, dateStart, dateEnd])
 
   useEffect(() => {
     loadOrders()
@@ -119,34 +150,19 @@ export default function OrderListPage() {
     // 3. Payment status match
     const matchesPaymentStatus = !selectedPaymentStatus || order.payment_status === selectedPaymentStatus
 
-    // 4. Date range match
-    let matchesDate = true
-    if (selectedDateRange !== 'all') {
-      const createdDate = new Date(order.created_at)
-      const now = new Date()
-      const diffTime = Math.abs(now.getTime() - createdDate.getTime())
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-      if (selectedDateRange === 'today') {
-        matchesDate = createdDate.toDateString() === now.toDateString()
-      } else if (selectedDateRange === '7days') {
-        matchesDate = diffDays <= 7
-      } else if (selectedDateRange === '30days') {
-        matchesDate = diffDays <= 30
-      }
-    }
+    // 4. Khoảng thời gian: ĐÃ lọc server-side qua created_at (xem loadOrders).
 
     // 5. Quick view: đơn giao hàng đang chờ Admin xác nhận
     const matchesQuick = !quickDeliveryPending || (order.sale_channel === 'delivery' && order.status === 'draft')
 
-    return matchesSearch && matchesStatus && matchesChannel && matchesPaymentStatus && matchesDate && matchesQuick
+    return matchesSearch && matchesStatus && matchesChannel && matchesPaymentStatus && matchesQuick
   })
 
   // Số đơn giao chờ xác nhận (cho badge quick view)
   const deliveryPendingCount = orders.filter(o => o.sale_channel === 'delivery' && o.status === 'draft').length
 
   // Tín hiệu reset phân trang về trang 1 khi đổi bộ lọc/tìm kiếm (DataTable lo phân trang)
-  const filterSignal = `${debouncedSearch}|${selectedStatus}|${selectedChannel}|${selectedPaymentStatus}|${selectedDateRange}|${quickDeliveryPending}`
+  const filterSignal = `${debouncedSearch}|${selectedStatus}|${selectedChannel}|${selectedPaymentStatus}|${selectedDateRange}|${customFrom}|${customTo}|${quickDeliveryPending}`
 
   // Helper to format currency
   const formatCurrency = (value: number) => {
@@ -371,7 +387,7 @@ export default function OrderListPage() {
             >
               <Filter size={16} className="text-gray-400" />
               <span>Lọc</span>
-              {(selectedStatus || selectedChannel || selectedPaymentStatus || selectedDateRange !== 'all') && (
+              {(selectedStatus || selectedChannel || selectedPaymentStatus || selectedDateRange !== 'today') && (
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
               )}
             </button>
@@ -437,12 +453,30 @@ export default function OrderListPage() {
               value={selectedDateRange}
               onChange={e => setSelectedDateRange(e.target.value)}
             >
-              <option value="all">Mọi thời gian</option>
               <option value="today">Hôm nay</option>
               <option value="7days">7 ngày qua</option>
               <option value="30days">30 ngày qua</option>
+              <option value="custom">Khoảng thời gian…</option>
+              <option value="all">Mọi thời gian</option>
             </select>
           </div>
+
+          {selectedDateRange === 'custom' && (
+            <div className="hidden md:flex items-end gap-2">
+              <div className="min-w-[140px]">
+                <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Từ ngày</label>
+                <input type="date" value={customFrom} max={customTo || undefined}
+                  onChange={e => setCustomFrom(e.target.value)}
+                  className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 transition-all" />
+              </div>
+              <div className="min-w-[140px]">
+                <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">Đến ngày</label>
+                <input type="date" value={customTo} min={customFrom || undefined}
+                  onChange={e => setCustomTo(e.target.value)}
+                  className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 transition-all" />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Empty State */}
@@ -554,12 +588,30 @@ export default function OrderListPage() {
                     value={selectedDateRange}
                     onChange={e => setSelectedDateRange(e.target.value)}
                   >
-                    <option value="all">Mọi thời gian</option>
                     <option value="today">Hôm nay</option>
                     <option value="7days">7 ngày qua</option>
                     <option value="30days">30 ngày qua</option>
+                    <option value="custom">Khoảng thời gian…</option>
+                    <option value="all">Mọi thời gian</option>
                   </select>
                 </div>
+
+                {selectedDateRange === 'custom' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Từ ngày</label>
+                      <input type="date" value={customFrom} max={customTo || undefined}
+                        onChange={e => setCustomFrom(e.target.value)}
+                        className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Đến ngày</label>
+                      <input type="date" value={customTo} min={customFrom || undefined}
+                        onChange={e => setCustomTo(e.target.value)}
+                        className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none" />
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-4 flex gap-3">
                   <button
@@ -567,7 +619,9 @@ export default function OrderListPage() {
                       setSelectedStatus('')
                       setSelectedChannel('')
                       setSelectedPaymentStatus('')
-                      setSelectedDateRange('all')
+                      setSelectedDateRange('today')
+                      setCustomFrom('')
+                      setCustomTo('')
                       setMobileFiltersOpen(false)
                     }}
                     className="flex-1 h-10 border border-gray-200 text-gray-500 bg-gray-0 rounded-lg text-body-md font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"

@@ -160,6 +160,17 @@ Sau khi module hoàn thiện (S1–S4), audit lại toàn diện toàn vẹn/ph�
 - **Self-approval lịch sử**: `outflow > 10tr, approved, source_table IS NULL, created_by = approved_by`.
 - **Lô vi phạm threshold**: đã bị RLS chặn từ 2026-06-10; query giám sát phòng hạng mục is_internal bị lạm dụng để né.
 
+### ⚖️ Nguyên tắc bảng kê công nợ KH ↔ sổ quỹ (2026-06-24)
+Hệ thống có **2 sổ song song** cho công nợ KH:
+1. **Canonical** = `customer_debts` → `customer_summary_view.total_debt = SUM(amount WHERE is_settled=false)`. Đây là **nguồn sự thật** (QuickView, danh sách KH, hạn mức nợ đều đọc cột này).
+2. **Bảng kê tái dựng** (`src/lib/customerStatement.ts`, ledger trang chi tiết KH) = double-entry từ giao dịch thô: Ghi nợ = Σ `grand_total` hóa đơn; Ghi có = Σ `order_payments` + `debt_payments` + trả hàng credit_note.
+
+**BẪY đếm trùng (đã sửa):** khi KH trả vượt nợ, RPC `fn_collect_customer_debt` / `fn_pos_settle_payment` ghi **toàn bộ tiền thật** vào `order_payments`/`debt_payments` **VÀ** sinh thêm dòng `customer_debts` loại `advance_from_customer` (số âm) — đây chỉ là **bút toán phái sinh** của chính khoản tiền đó. Nếu bảng kê cộng cả hai → trừ 2 lần phần vượt (vd dư nợ −198k bị thành −396k).
+
+**Quy tắc bất biến:** bảng kê tái dựng **KHÔNG được cộng** `advance_from_customer` / `refund_due` vào số dư (chỉ hiển thị dòng thông tin). Chỉ `order_debt` có `order_id IS NULL` (điều chỉnh thủ công) mới là bút toán độc lập. Khi đó closing bảng kê **≡** `customer_summary_view.total_debt`.
+
+**Sổ quỹ KHÔNG dính advance_from_customer** (dòng này không sinh phiếu quỹ) → sổ quỹ luôn = tiền thật, vốn đã đúng. Mọi lệch "công nợ" trước đây nằm ở bảng kê, không phải sổ quỹ.
+
 ### Việc HOÃN (ghi nợ — không thuộc phạm vi bảo mật)
 - Ngưỡng 10tr cấu hình hóa qua `system_settings` (hiện hardcode ở RLS + frontend `APPROVAL_THRESHOLD`).
 - RPC tất toán tạm ứng NV `fn_settle_employee_advance` (hiện hoàn ứng tạo phiếu thu rời, `employee_advances.settled_amount` không tự cập nhật).

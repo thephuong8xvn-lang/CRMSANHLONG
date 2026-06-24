@@ -212,6 +212,10 @@ interface LedgerItem {
   debtImpact: number
   runningBalance: number
   notes: string
+  refOrderId: string | null   // điều hướng → chi tiết đơn / phiếu trả
+  // false = dòng phái sinh (Khách trả trước / Phải hoàn trả): tiền đã nằm ở dòng
+  // thanh toán → KHÔNG cộng vào số dư, chỉ hiển thị thông tin.
+  affectsBalance: boolean
 }
 
 interface Activity {
@@ -720,7 +724,9 @@ export default function CustomerDetailPage() {
               actualPaid: 0,
               debtImpact: Number(o.grand_total || 0),
               notes: o.notes || 'Hóa đơn mua hàng',
-              runningBalance: 0
+              runningBalance: 0,
+              refOrderId: o.id,
+              affectsBalance: true
             })
           }
         })
@@ -739,7 +745,9 @@ export default function CustomerDetailPage() {
           actualPaid: Number(op.amount || 0),
           debtImpact: -Number(op.amount || 0),
           notes: op.notes || `Thanh toán cho đơn hàng ${oCode}`,
-          runningBalance: 0
+          runningBalance: 0,
+          refOrderId: op.order_id || null,
+          affectsBalance: true
         })
       })
 
@@ -755,7 +763,9 @@ export default function CustomerDetailPage() {
           actualPaid: Number(dp.amount || 0),
           debtImpact: -Number(dp.amount || 0),
           notes: dp.notes || 'Khách hàng thanh toán nợ',
-          runningBalance: 0
+          runningBalance: 0,
+          refOrderId: null,
+          affectsBalance: true
         })
       })
 
@@ -773,14 +783,21 @@ export default function CustomerDetailPage() {
           actualPaid: isCreditNote ? 0 : Number(r.total_amount || 0),
           debtImpact: isCreditNote ? -Number(r.total_amount || 0) : 0,
           notes: r.reason || `Khách trả hàng cho đơn ${oCode}`,
-          runningBalance: 0
+          runningBalance: 0,
+          refOrderId: r.order_id || null,
+          affectsBalance: true
         })
       })
 
-      // 5. Customer Debts (adjustments only)
+      // 5. Customer Debts không gắn đơn:
+      //    • order_debt (order_id NULL) = điều chỉnh thủ công → ảnh hưởng số dư.
+      //    • advance_from_customer / refund_due = bút toán phái sinh của thanh
+      //      toán (tiền đã nằm ở dòng thu) → hiển thị THÔNG TIN, không cộng số dư
+      //      (tránh đếm trùng — lỗi dư nợ sai trước đây).
       if (custData.customer_debts) {
         custData.customer_debts.forEach((cd: any) => {
           if (!cd.order_id || cd.debt_type !== 'order_debt') {
+            const isManualAdjust = cd.debt_type === 'order_debt' // tới đây ⇒ order_id NULL
             let label = 'Điều chỉnh nợ'
             if (cd.debt_type === 'advance_from_customer') label = 'Khách trả trước'
             else if (cd.debt_type === 'refund_due') label = 'Phải hoàn trả'
@@ -791,21 +808,29 @@ export default function CustomerDetailPage() {
               code: `DC-${cd.id.substring(0, 8).toUpperCase()}`,
               type: 'debt_adjustment',
               typeLabel: label,
-              value: Number(cd.amount || 0),
+              value: isManualAdjust ? Number(cd.amount || 0) : 0,
               actualPaid: 0,
               debtImpact: Number(cd.amount || 0),
               notes: cd.notes || 'Điều chỉnh số dư nợ',
-              runningBalance: 0
+              runningBalance: 0,
+              refOrderId: null,
+              affectsBalance: isManualAdjust
             })
           }
         })
       }
 
-      // Sort earliest first to compute running balance
-      items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      // Sort earliest first to compute running balance. Tie-break ổn định:
+      // dòng ảnh hưởng số dư trước dòng thông tin, ghi nợ trước ghi có.
+      items.sort((a, b) => {
+        const dt = new Date(a.date).getTime() - new Date(b.date).getTime()
+        if (dt !== 0) return dt
+        if (a.affectsBalance !== b.affectsBalance) return a.affectsBalance ? -1 : 1
+        return b.debtImpact - a.debtImpact
+      })
       let runningSum = 0
       const itemsWithBalance = items.map(item => {
-        runningSum += item.debtImpact
+        if (item.affectsBalance) runningSum += item.debtImpact
         return {
           ...item,
           runningBalance: runningSum
@@ -1541,14 +1566,14 @@ export default function CustomerDetailPage() {
                 {formatVND(totalDebt)}
               </p>
               <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                {canCollectDebt() && totalDebt > 0 && (
+                {canCollectDebt() && (
                   <button
                     onClick={() => { setCollectSuccessMsg(''); setIsCollectDebtModalOpen(true) }}
                     className="h-7 px-2.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-bold text-[11px] rounded-md shadow-sm transition-all flex items-center gap-1"
-                    title="Thu công nợ khách hàng — ghi vào sổ quỹ"
+                    title={totalDebt > 0 ? 'Thu công nợ khách hàng — ghi vào sổ quỹ' : 'Ghi nhận khách trả tiền (thu trước / ghi có) — ghi vào sổ quỹ'}
                   >
                     <Wallet size={12} />
-                    Thanh toán
+                    {totalDebt > 0 ? 'Thu nợ' : 'Thu / Trả trước'}
                   </button>
                 )}
                 {canAdjustDebt() && (
@@ -2100,10 +2125,10 @@ export default function CustomerDetailPage() {
                       <div className="flex items-center justify-between w-full bg-blue-50/50 p-2.5 rounded-lg border border-blue-100">
                         <div className="flex gap-4 text-body-md font-semibold">
                           <div className="text-gray-600">
-                            Tổng nợ phát sinh: <span className="text-danger-500 font-bold">{formatVND(ledgerItems.reduce((s, i) => s + (i.debtImpact > 0 ? i.debtImpact : 0), 0))}</span>
+                            Tổng nợ phát sinh: <span className="text-danger-500 font-bold">{formatVND(ledgerItems.reduce((s, i) => s + (i.affectsBalance && i.debtImpact > 0 ? i.debtImpact : 0), 0))}</span>
                           </div>
                           <div className="text-gray-600 border-l border-blue-200 pl-4">
-                            Tổng thu/trả: <span className="text-emerald-700 font-bold">{formatVND(Math.abs(ledgerItems.reduce((s, i) => s + (i.debtImpact < 0 ? i.debtImpact : 0), 0)))}</span>
+                            Tổng thu/trả: <span className="text-emerald-700 font-bold">{formatVND(Math.abs(ledgerItems.reduce((s, i) => s + (i.affectsBalance && i.debtImpact < 0 ? i.debtImpact : 0), 0)))}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2218,16 +2243,27 @@ export default function CustomerDetailPage() {
                               </thead>
                               <tbody className="divide-y divide-gray-100 text-body-md text-gray-600">
                                 {ledgerItems.map((item) => {
-                                  const isDebtIncrease = item.debtImpact > 0
-                                  const isDebtDecrease = item.debtImpact < 0
+                                  const isDebtIncrease = item.affectsBalance && item.debtImpact > 0
+                                  const isDebtDecrease = item.affectsBalance && item.debtImpact < 0
+                                  const canOpen = !!item.refOrderId && (item.type === 'invoice' || item.type === 'return' || item.type === 'payment')
 
                                   return (
-                                    <tr key={item.id} className="hover:bg-gray-25/50 transition-colors">
+                                    <tr key={item.id} className={`transition-colors ${item.affectsBalance ? 'hover:bg-gray-25/50' : 'bg-amber-25/40 hover:bg-amber-25/60'}`}>
                                       <td className="px-6 py-4 whitespace-nowrap text-tiny text-gray-500 tabular-nums">
                                         {new Date(item.date).toLocaleString('vi-VN')}
                                       </td>
-                                      <td className="px-6 py-4 font-mono font-bold text-tiny text-blue-600">
-                                        {item.code}
+                                      <td className="px-6 py-4 font-mono font-bold text-tiny">
+                                        {canOpen ? (
+                                          <button
+                                            onClick={() => navigate(`/orders/${item.refOrderId}`)}
+                                            className="text-blue-600 hover:underline"
+                                            title="Xem chi tiết chứng từ"
+                                          >
+                                            {item.code}
+                                          </button>
+                                        ) : (
+                                          <span className="text-gray-500">{item.code}</span>
+                                        )}
                                       </td>
                                       <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-bold ${
@@ -2255,7 +2291,9 @@ export default function CustomerDetailPage() {
                                           ? 'text-emerald-600'
                                           : 'text-gray-500'
                                       }`}>
-                                        {isDebtIncrease ? '+' : ''}{item.debtImpact !== 0 ? formatVND(item.debtImpact) : '0 ₫'}
+                                        {!item.affectsBalance
+                                          ? <span className="text-gray-400 italic text-tiny" title="Bút toán thông tin — không cộng vào số dư">— (thông tin)</span>
+                                          : <>{isDebtIncrease ? '+' : ''}{item.debtImpact !== 0 ? formatVND(item.debtImpact) : '0 ₫'}</>}
                                       </td>
                                       <td className="px-6 py-4 text-right font-black text-gray-800 tabular-nums">
                                         {formatVND(item.runningBalance)}

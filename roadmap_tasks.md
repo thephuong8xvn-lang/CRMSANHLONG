@@ -4,6 +4,27 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 
 ---
 
+## 🔧 2026-06-24 — Sửa công nợ KH (đếm trùng) + Sổ giao dịch + Đơn hàng
+
+- [x] **Lỗi dư nợ sai (đếm trùng):** Bảng kê tái dựng cộng cả dòng `advance_from_customer`
+  (bút toán phái sinh của khoản thu vượt — tiền đã có ở `order_payments`/`debt_payments`)
+  → trừ 2 lần. Sửa ở [customerStatement.ts](file:///e:/CRMSANHLONG/src/lib/customerStatement.ts)
+  + ledger [CustomerDetailPage.tsx](file:///e:/CRMSANHLONG/src/pages/customers/CustomerDetailPage.tsx):
+  `advance_from_customer`/`refund_due` chuyển thành **dòng thông tin** (không cộng số dư);
+  chỉ điều chỉnh thủ công (`order_debt`, order_id NULL) mới ảnh hưởng số dư. Closing nay
+  **khớp tuyệt đối** `customer_summary_view.total_debt`. Có unit test (4 ca) +
+  [customerStatement.test.ts](file:///e:/CRMSANHLONG/src/test/unit/customerStatement.test.ts).
+  **Sổ quỹ thu/chi vốn đã đúng** (chỉ ghi tiền thật) — lệch chỉ ở bảng kê.
+- [x] **Click "Mã chứng từ" → chi tiết:** hóa đơn/trả hàng/thanh-toán-theo-đơn điều hướng
+  `/orders/:id` (cả trang chi tiết KH lẫn QuickView).
+- [x] **QuickView:** tab "Lịch sử giao dịch" → **Sổ chi tiết giao dịch đầy đủ** (tái dùng
+  `fetchCustomerStatement`), thêm nút **Thu nợ / Thu trả trước** ở header (role
+  admin/ceo/accountant/branch_manager); nguồn nợ = `total_debt` (đồng bộ mọi nơi).
+- [x] **Đơn hàng:** mặc định lọc **Hôm nay**; thêm **Khoảng thời gian** (từ–đến) lọc
+  **server-side** qua `created_at` (giảm egress); hiển thị số dư âm = "Trả trước".
+
+---
+
 ## 📋 Trạng Thái Các Phân Hệ
 
 ### 1. Phân Hệ Đăng Nhập & Bảng Điều Khiển (Auth & Dashboard) - `[HOÀN THÀNH]`
