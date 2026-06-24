@@ -4,6 +4,18 @@ Tài liệu này theo dõi tiến độ và ghi nhận các đầu mục công v
 
 ---
 
+## 🔐 2026-06-24 — Phân quyền chi tiết Module × Chức năng (Phase 1: foundation + pilot)
+
+- [x] **Catalog chuẩn** `src/lib/permissionCatalog.ts` (module × {Xem/Thêm/Sửa/Xóa + đặc biệt}) — driver ma trận + kiểm tra toàn vẹn. Thêm chức năng mới = thêm 1 dòng → tự hiện trong phân quyền.
+- [x] **Migration `20260725000000_permission_catalog_matrix.sql`** (ĐÃ apply remote ✅ HTTP 201 + verify): UPSERT 73 permission codes; baseline `role_permissions` cho 7 role (idempotent, KHÔNG gỡ quyền cũ); RPC `fn_set_role_permissions(role,codes[])` admin-only nguyên tử (chặn admin/ceo).
+- [x] **Pilot enforcement permission-based**: `fn_collect_customer_debt` guard → `fn_is_admin() OR fn_has_permission('customers.collect_debt')`; seed cấp cho accountant + branch_manager ⇒ **giữ nguyên** quyền (admin/ceo/accountant/branch_manager). Verify remote: 3 user active đều `can_collect=true`.
+- [x] **UI "Vai trò & Phân quyền"** (tab mới Cấu hình) `RolePermissionMatrix.tsx` — kế thừa `DataTable`, ma trận checkbox module×action, chấm xanh = đã enforce. admin/ceo khóa (toàn quyền).
+- [x] **FE gating đa role**: `useAuth` expose `userRoles[]` + `hasAnyRole()`; nút Thu nợ (QuickView + CustomerDetailPage) gate bằng `hasPermission('customers.collect_debt')`.
+- [x] Doc `docs/13-RBAC-PERMISSIONS.md`. Build + 67 test PASS. **Cần user commit + deploy FE.**
+- ⏭ **Phase sau**: chuyển RLS các module còn lại (orders/cashbook/inventory/products/reports/system…) từ `fn_has_role` → `fn_has_permission` theo lô, mỗi lô verify JWT giả từng role.
+
+---
+
 ## 🔧 2026-06-24 — Sửa công nợ KH (đếm trùng) + Sổ giao dịch + Đơn hàng
 
 - [x] **Lỗi dư nợ sai (đếm trùng):** Bảng kê tái dựng cộng cả dòng `advance_from_customer`

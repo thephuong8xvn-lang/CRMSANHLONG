@@ -49,6 +49,7 @@ import ExportDebtStatementModal from './ExportDebtStatementModal'
 import CollectDebtModal from './CollectDebtModal'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { useDisplaySettings, primaryPhone } from '../../contexts/DisplaySettingsContext'
+import { useAuth } from '../../contexts/AuthContext'
 
 // ─────────────────────────────────────────────────────────────
 // Type Definitions
@@ -284,6 +285,7 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { formatCurrency, formatDate, formatPhone, maskData, hasFieldAccess } = useDisplaySettings()
+  const { hasPermission } = useAuth()
 
   // Current user info for permission checks
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -1068,11 +1070,9 @@ export default function CustomerDetailPage() {
     return userRoles.some(r => ['admin', 'ceo', 'accountant', 'branch_manager', 'team_lead', 'sales'].includes(r))
   }
 
-  // Thu công nợ (tiền thật vào sổ quỹ) — siết quyền hơn điều chỉnh nợ.
-  const canCollectDebt = () => {
-    if (!currentUserId) return false
-    return userRoles.some(r => ['admin', 'ceo', 'accountant', 'branch_manager'].includes(r))
-  }
+  // Thu công nợ (tiền thật vào sổ quỹ) — gate theo PERMISSION (pilot),
+  // khớp guard server fn_collect_customer_debt (customers.collect_debt).
+  const canCollectDebt = () => hasPermission('customers.collect_debt')
 
   const handleAdjustDebt = async (e: React.FormEvent) => {
     e.preventDefault()

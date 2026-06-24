@@ -21,8 +21,6 @@ import { fetchCustomerStatement, type StatementRow } from '../../lib/customerSta
 import ExportDebtStatementModal from './ExportDebtStatementModal'
 import CollectDebtModal from './CollectDebtModal'
 
-const COLLECT_ROLES = ['admin', 'ceo', 'accountant', 'branch_manager']
-
 type QuickTab = 'ledger' | 'debts'
 
 interface CustomerQuickViewProps {
@@ -55,7 +53,7 @@ function Spinner() {
 
 export default function CustomerQuickView({ customer, onClose, onOpenDetail }: CustomerQuickViewProps) {
   const { formatCurrency } = useDisplaySettings()
-  const { hasAnyRole } = useAuth()
+  const { hasPermission } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<QuickTab>('ledger')
@@ -76,8 +74,8 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
   const overdueCount = unsettled.filter(d => d.due_date && d.due_date < todayStr).length
   // Nguồn sự thật công nợ = customer_summary_view.total_debt (đồng bộ mọi nơi)
   const currentDebt = Number(customer.total_debt || 0)
-  // Xét TẤT CẢ role của user (đa role) — khớp quyền server của fn_collect_customer_debt.
-  const canCollect = hasAnyRole(COLLECT_ROLES)
+  // Gate theo PERMISSION (pilot) — khớp guard server fn_collect_customer_debt.
+  const canCollect = hasPermission('customers.collect_debt')
 
   const loadLedger = useCallback(async () => {
     setLedgerLoading(true)
