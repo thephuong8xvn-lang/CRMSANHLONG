@@ -1843,3 +1843,36 @@ Audit toàn bộ module: danh sách chính đã ổn (DataTable); phần "không
 - **KHÔNG đụng:** PipelinePage (đã có nhánh mobile), POSPage (full-screen), MobileOrderPage (đã thiết kế mobile).
 - **Ghi nhận chất lượng dữ liệu (ngoài phạm vi UI):** trường `phone` đang chứa nhiều số + CCCD ghép chuỗi → nên làm sạch DB riêng (tách phone/cccd). UI hiện đã hiển thị an toàn (chỉ lấy số đầu).
 - **Build:** `tsc -b` PASS · `npm run build` PASS (✓ 27.6s) sau Đợt 1+3+phần Đợt 2.
+
+---
+
+## 🔐 Vá bảo mật Cấu hình + lọc CN/tổng tiền Đơn hàng + Admin reset mật khẩu — 2026-06-24 `[HOÀN THÀNH]`
+
+**Bối cảnh:** (1) Trang `/orders` thiếu lọc theo chi nhánh cho admin và chưa hiển thị tổng tiền các đơn đang lọc. (2) **Lỗ hổng**: user thường vẫn vào được `/system-settings`; cần khóa chỉ admin + cho admin đặt lại mật khẩu user khác.
+
+### Nguyên nhân gốc lỗ hổng (đã vá)
+`AuthContext` mặc định **fail-open** `userRole = … ?? { code:'admin' }`; `ProtectedRoute` chỉ chờ `loading` (session), KHÔNG chờ RBAC → trong lúc tải, mọi route render bằng quyền admin giả → trang Cấu hình tự `loadData()` (RLS cho đọc) nên user thường thấy giao diện.
+
+- [x] **AuthContext** (`src/contexts/AuthContext.tsx`): đổi mặc định sang **fail-closed** `{ code:'guest' }`; thêm cờ `rbacReady = !!profile && !rolePerms.isLoading` (export trong context).
+- [x] **ProtectedRoute** (`src/App.tsx`): thêm `if (!rbacReady) return <FullPageSpinner/>` TRƯỚC khi xét `adminOnly`/`perms` → không bao giờ gating bằng role tạm thời. Route `/system-settings` đổi `perms=[…]` → **`adminOnly`** (loại cả CEO).
+- [x] **Layout** (`src/components/Layout.tsx`): mục menu "Cấu hình" → `adminOnly: true` (ẩn với non-admin).
+- [x] **Đơn hàng** (`src/pages/orders/OrderListPage.tsx`): thêm **lọc Chi nhánh** (chỉ admin/CEO, `hasAnyRole(['admin','ceo'])`) — lọc **server-side** `.eq('branch_id', …)` (giảm egress), có ở thanh lọc desktop + bottom-sheet mobile. Thêm **tổng tiền** đơn đang lọc: desktop dùng `headerSummary` của DataTable (canh cột Tổng), mobile dùng dải `md:hidden`. Tổng tính trên TẤT CẢ đơn đã lọc (không chỉ trang hiện tại).
+- [x] **Admin reset mật khẩu**:
+  - Edge Function **`supabase/functions/admin-reset-password/index.ts`** (NEW): verify JWT + `fn_is_admin()` server-side → `auth.admin.updateUserById` (service_role chỉ trong function) → ghi `audit_logs` (cột đúng: `user_id/action/table_name/record_id/new_data`, KHÔNG lưu mật khẩu). Min 6 ký tự.
+  - UI (`src/pages/system/SystemSettingsPage.tsx`): nút icon `KeyRound` mỗi dòng NV → modal nhập MK mới + xác nhận → `supabase.functions.invoke('admin-reset-password')`.
+- **⚠️ CÒN LẠI [BẠN]:** deploy Edge Function: `npx supabase functions deploy admin-reset-password --project-ref <ref>` (service_role/anon tự cấp, không cần thêm secret). Trước khi deploy, nút reset sẽ báo lỗi invoke.
+- **Ghi nhận (ngoài phạm vi):** insert `audit_logs` trong `handleConfirmReassignment` (SystemSettingsPage) đang dùng cột sai (`performed_by/target_table/notes`) so với schema thật (`user_id/table_name/new_data`) → khả năng fail âm thầm; nên sửa dịp khác.
+- **Build:** `tsc -b` PASS · `npm run build` PASS (✓ 46s).
+
+---
+
+## 🧭 Ghim module hay dùng lên thanh điều hướng — 2026-06-24 `[ĐÃ HOÀN TÁC]`
+
+**Đã thử** ghim 5 module (Khách hàng/Đơn hàng/Sản phẩm/Kho hàng/Nhập từ Drive) thành link trực tiếp đầu thanh + giữ 4 dropdown. **Kết quả VỠ layout:** 5 ghim + Bảng điều khiển + 4 dropdown = 10 mục, nav `flex-1` nuốt hết chỗ → đẩy Cấu hình/Tìm kiếm/Tạo mới ra ngoài khung (cả desktop). → **Hoàn tác về nav nhóm dropdown gốc** (`git checkout` Layout.tsx), chỉ giữ lại đổi menu "Cấu hình" → `adminOnly` (từ task bảo mật).
+**Quyết định:** giữ 4 chức năng chính NẰM TRONG các nhóm dropdown đã xây (Kinh doanh: Khách hàng/Đơn hàng; Kho & Hàng hóa: Sản phẩm/Kho hàng/Nhập từ Drive). Không ghim top-level để tránh vỡ. Build PASS.
+
+### ✅ Thanh menu PHỤ (quick-access) dưới top menu — 2026-06-24
+Theo yêu cầu user: đưa 4 chức năng hay dùng thành **1 hàng menu riêng NẰM DƯỚI top menu** (không chen vào hàng top → không vỡ). `src/components/Layout.tsx`:
+- Kiểu `MenuItem` chung + cờ **`primary: 1..4`** (Khách hàng, Đơn hàng, Sản phẩm, Kho hàng). `primaryItems` = lọc theo quyền, sort theo `primary`.
+- Render 1 thanh `sticky top-16 z-30` full-width, `hidden md:flex` (desktop/tablet), nhãn "Truy cập nhanh" + các link icon+chữ; `overflow-x-auto` an toàn. Mobile vẫn dùng bottom bar sẵn có (không đổi).
+- Mỗi link lọc `perms`; thêm module vào thanh phụ = thêm 1 cờ `primary`. Thêm 'Nhập từ Drive' chỉ cần gắn `primary: 5`. Build PASS (✓40s).
