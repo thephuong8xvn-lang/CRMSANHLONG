@@ -42,11 +42,15 @@ interface Order {
 
 export default function OrderListPage() {
   const navigate = useNavigate()
-  const { profile, userRole } = useAuth()
+  const { profile, userRole, hasAnyRole } = useAuth()
+
+  // Admin/CEO mới được lọc & xem mọi chi nhánh (non-admin bị khóa theo CN của mình).
+  const canFilterAllBranches = hasAnyRole(['admin', 'ceo'])
 
   // State
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
 
   // Filters State
   const [searchTerm, setSearchTerm] = useState('')
@@ -54,6 +58,7 @@ export default function OrderListPage() {
   const [selectedStatus, setSelectedStatus] = useState('')
   const [selectedChannel, setSelectedChannel] = useState('') // '', 'pos_quick', 'delivery'
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('')
+  const [selectedBranch, setSelectedBranch] = useState('') // '' = tất cả CN (chỉ admin/ceo)
   // Mặc định 'today' — đa số thao tác là đơn trong ngày, giảm egress vì lọc server-side.
   const [selectedDateRange, setSelectedDateRange] = useState('today') // 'all','today','7days','30days','custom'
   const [customFrom, setCustomFrom] = useState('') // yyyy-mm-dd
@@ -114,6 +119,9 @@ export default function OrderListPage() {
           `)
         if (restrictBranch) {
           query = query.eq('branch_id', profile!.branch_id)
+        } else if (canFilterAllBranches && selectedBranch) {
+          // Admin/CEO chọn 1 chi nhánh → lọc SERVER-SIDE (giảm egress).
+          query = query.eq('branch_id', selectedBranch)
         }
         if (dateStart) query = query.gte('created_at', dateStart)
         if (dateEnd) query = query.lt('created_at', dateEnd)
@@ -125,11 +133,25 @@ export default function OrderListPage() {
     } finally {
       setLoading(false)
     }
-  }, [profile?.branch_id, userRole?.code, dateStart, dateEnd])
+  }, [profile?.branch_id, userRole?.code, dateStart, dateEnd, canFilterAllBranches, selectedBranch])
 
   useEffect(() => {
     loadOrders()
   }, [loadOrders])
+
+  // Nạp danh sách chi nhánh (chỉ admin/CEO — để đổ vào bộ lọc).
+  useEffect(() => {
+    if (!canFilterAllBranches) return
+    const loadBranches = async () => {
+      const { data } = await supabase
+        .from('branches')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('name')
+      if (data) setBranches(data)
+    }
+    loadBranches()
+  }, [canFilterAllBranches])
 
   useRealtimeTable({ table: 'orders', event: 'INSERT', onData: loadOrders })
 
@@ -162,7 +184,10 @@ export default function OrderListPage() {
   const deliveryPendingCount = orders.filter(o => o.sale_channel === 'delivery' && o.status === 'draft').length
 
   // Tín hiệu reset phân trang về trang 1 khi đổi bộ lọc/tìm kiếm (DataTable lo phân trang)
-  const filterSignal = `${debouncedSearch}|${selectedStatus}|${selectedChannel}|${selectedPaymentStatus}|${selectedDateRange}|${customFrom}|${customTo}|${quickDeliveryPending}`
+  const filterSignal = `${debouncedSearch}|${selectedStatus}|${selectedChannel}|${selectedPaymentStatus}|${selectedBranch}|${selectedDateRange}|${customFrom}|${customTo}|${quickDeliveryPending}`
+
+  // Tổng tiền của TẤT CẢ đơn đang lọc (không chỉ trang hiện tại).
+  const totalAmount = filteredOrders.reduce((sum, o) => sum + (o.grand_total || 0), 0)
 
   // Helper to format currency
   const formatCurrency = (value: number) => {
@@ -387,11 +412,29 @@ export default function OrderListPage() {
             >
               <Filter size={16} className="text-gray-400" />
               <span>Lọc</span>
-              {(selectedStatus || selectedChannel || selectedPaymentStatus || selectedDateRange !== 'today') && (
+              {(selectedStatus || selectedChannel || selectedPaymentStatus || selectedBranch || selectedDateRange !== 'today') && (
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
               )}
             </button>
           </div>
+
+          {canFilterAllBranches && (
+            <div className="hidden md:block w-full sm:w-auto min-w-[160px]">
+              <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                Chi nhánh
+              </label>
+              <select
+                className="w-full h-10 border border-gray-200 rounded-lg text-body-md px-3 bg-gray-0 focus:outline-none focus:border-blue-500 focus:ring-[4px] focus:ring-blue-100 transition-all"
+                value={selectedBranch}
+                onChange={e => setSelectedBranch(e.target.value)}
+              >
+                <option value="">Tất cả chi nhánh</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="hidden md:block w-full sm:w-auto min-w-[150px]">
             <label className="block text-tiny font-bold text-gray-400 uppercase tracking-wider mb-1.5">
@@ -508,6 +551,14 @@ export default function OrderListPage() {
           </div>
         )}
 
+        {/* Dải tổng tiền cho mobile (desktop dùng headerSummary trong bảng) */}
+        {!loading && filteredOrders.length > 0 && (
+          <div className="md:hidden mb-3 flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+            <span className="text-body-md font-semibold text-gray-600">{filteredOrders.length} đơn</span>
+            <span className="text-body-md font-bold text-blue-700 tabular-nums">{formatCurrency(totalAmount)}</span>
+          </div>
+        )}
+
         {/* Data Table (layout chuẩn dùng chung) */}
         {(loading || filteredOrders.length > 0) && (
           <DataTable
@@ -519,6 +570,17 @@ export default function OrderListPage() {
             pageSize={20}
             itemLabel="đơn hàng"
             resetSignal={filterSignal}
+            headerSummary={
+              <tr className="bg-blue-50/60 border-b border-blue-100 text-gray-700">
+                <td colSpan={4} className="px-3 py-2 text-tiny font-bold uppercase tracking-wider text-gray-500">
+                  Tổng cộng ({filteredOrders.length} đơn)
+                </td>
+                <td className="px-3 py-2 text-right font-bold text-blue-700 text-[13px] tabular-nums">
+                  {formatCurrency(totalAmount)}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            }
           />
         )}
 
@@ -536,6 +598,22 @@ export default function OrderListPage() {
                 </button>
               </div>
               <div className="p-6 space-y-4 overflow-y-auto flex-1 font-sans">
+                {canFilterAllBranches && (
+                  <div>
+                    <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Chi nhánh</label>
+                    <select
+                      className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                      value={selectedBranch}
+                      onChange={e => setSelectedBranch(e.target.value)}
+                    >
+                      <option value="">Tất cả chi nhánh</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-tiny font-bold text-gray-400 mb-1.5 block">Trạng thái đơn hàng</label>
                   <select
@@ -619,6 +697,7 @@ export default function OrderListPage() {
                       setSelectedStatus('')
                       setSelectedChannel('')
                       setSelectedPaymentStatus('')
+                      setSelectedBranch('')
                       setSelectedDateRange('today')
                       setCustomFrom('')
                       setCustomTo('')
