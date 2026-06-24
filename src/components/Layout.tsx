@@ -70,8 +70,17 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
     }
   }, [])
 
-  // Navigation Items according to spec
-  const menuGroups = [
+  // Navigation Items according to spec.
+  // `primary`: số thứ tự ưu tiên → module hiển thị trên thanh menu phụ (quick-access).
+  type MenuItem = {
+    label: string
+    icon: React.ComponentType<any>
+    path: string
+    perms: string[]
+    adminOnly?: boolean
+    primary?: number
+  }
+  const menuGroups: { label: string; items: MenuItem[] }[] = [
     {
       label: 'Tổng quan',
       items: [
@@ -84,24 +93,24 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
     {
       label: 'Kinh doanh',
       items: [
-        { label: 'Khách hàng', icon: Users, path: '/customers', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
+        { label: 'Khách hàng', icon: Users, path: '/customers', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'], primary: 1 },
         { label: 'Bản đồ KH', icon: MapPin, path: '/customers/map', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
         { label: 'Chăm sóc KH', icon: HeartHandshake, path: '/customers/care', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
         { label: 'Cấu hình KH', icon: Settings, path: '/customers/settings', perms: ['users.manage'] },
         { label: 'Chăn nuôi', icon: PawPrint, path: '/herd-projects', perms: ['herd_projects.view_all', 'herd_projects.create'] },
         { label: 'Pipeline', icon: Stethoscope, path: '/pipeline', perms: ['opportunities.view_all', 'opportunities.create'] },
-        { label: 'Đơn hàng', icon: Receipt, path: '/orders', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create'] },
+        { label: 'Đơn hàng', icon: Receipt, path: '/orders', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create'], primary: 2 },
         { label: 'Trả hàng', icon: RotateCcw, path: '/returns', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all'] }
       ]
     },
     {
       label: 'Kho & Hàng hóa',
       items: [
-        { label: 'Sản phẩm', icon: Package, path: '/products', perms: ['products.view', 'products.manage', 'pricing.manage', 'promotions.manage'] },
+        { label: 'Sản phẩm', icon: Package, path: '/products', perms: ['products.view', 'products.manage', 'pricing.manage', 'promotions.manage'], primary: 3 },
         { label: 'Hoạt chất', icon: Activity, path: '/products/ingredients', perms: ['products.view', 'products.manage'] },
         { label: 'Bệnh & Phác đồ', icon: Stethoscope, path: '/diseases', perms: ['herd_projects.view_all', 'herd_projects.create'] },
         { label: 'Khuyến mãi', icon: Tag, path: '/promotions', perms: ['promotions.manage'] },
-        { label: 'Kho hàng', icon: Warehouse, path: '/inventory', perms: ['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer'] },
+        { label: 'Kho hàng', icon: Warehouse, path: '/inventory', perms: ['inventory.view', 'inventory.receive', 'inventory.adjust', 'inventory.transfer'], primary: 4 },
         { label: 'Nhập từ Drive', icon: FileSpreadsheet, path: '/inventory/gdrive-import', perms: ['inventory.receive'] },
         { label: 'Quản lý VAT', icon: ReceiptText, path: '/inventory/vat', perms: ['cashbook.view'] },
         { label: 'Hạn sử dụng', icon: CalendarClock, path: '/inventory/expiry', perms: ['inventory.view'] },
@@ -119,7 +128,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
     {
       label: 'Hệ thống',
       items: [
-        { label: 'Cấu hình', icon: Settings, path: '/system-settings', perms: ['users.manage', 'users.assign_role', 'audit.view'] }
+        { label: 'Cấu hình', icon: Settings, path: '/system-settings', perms: [], adminOnly: true }
       ]
     }
   ]
@@ -148,7 +157,13 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
   // Flattened visible items for mobile drawer/bottom bar reuse
   const visibleMenuItems = visibleMenuGroups.reduce((acc, group) => {
     return [...acc, ...group.items]
-  }, [] as { label: string; icon: React.ComponentType<any>; path: string; perms: string[] }[])
+  }, [] as MenuItem[])
+
+  // Module hay dùng (đã lọc theo quyền) → hiển thị trên THANH MENU PHỤ dưới top menu.
+  // Cờ `primary` đánh trong menuGroups; sort theo thứ tự ưu tiên.
+  const primaryItems = visibleMenuItems
+    .filter(i => i.primary != null)
+    .sort((a, b) => (a.primary ?? 99) - (b.primary ?? 99))
 
   // Check if current path or matching activeMenu is active
   const isItemActive = (item: { label: string; path: string }) => {
@@ -399,6 +414,33 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
         </header>
         )}
 
+        {/* ── Thanh menu PHỤ (quick-access) — 1 hàng riêng dưới top menu, chỉ desktop ──
+            Đặt riêng 1 hàng full-width nên KHÔNG chen/đẩy vỡ top menu. Mobile dùng bottom bar. */}
+        {!hideTopBar && primaryItems.length > 0 && (
+          <div className="hidden md:flex sticky top-16 z-30 bg-gray-0 border-b border-gray-100 px-4 md:px-6 h-12 items-center gap-1 overflow-x-auto no-scrollbar">
+            <span className="text-tiny font-bold text-gray-300 uppercase tracking-wider mr-2 shrink-0">Truy cập nhanh</span>
+            {primaryItems.map(item => {
+              const Icon = item.icon
+              const active = isItemActive(item)
+              return (
+                <a
+                  key={`qa-${item.path}`}
+                  href={item.path}
+                  onClick={(e) => { e.preventDefault(); navigate(item.path) }}
+                  className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg text-body-md transition-all font-medium ${
+                    active
+                      ? 'bg-blue-50 text-blue-700 font-semibold shadow-sm'
+                      : 'text-gray-500 hover:text-blue-500 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon size={16} strokeWidth={active ? 2 : 1.5} className="flex-shrink-0" />
+                  <span className="whitespace-nowrap">{item.label}</span>
+                </a>
+              )
+            })}
+          </div>
+        )}
+
         {/* ── Main Content Canvas ── */}
         <main className={hideTopBar ? "flex-grow overflow-hidden" : "flex-grow pb-24 md:pb-10"}>
           {children}
@@ -424,7 +466,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
               </button>
             </div>
 
-            <nav className="flex-1 space-y-1">
+            <nav className="flex-1 min-h-0 overflow-y-auto space-y-1 -mx-1 px-1">
               {visibleMenuItems.map((item, idx) => {
                 const Icon = item.icon
                 const active = isItemActive(item)
