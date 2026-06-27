@@ -1900,3 +1900,26 @@ Theo yêu cầu user: đưa 4 chức năng hay dùng thành **1 hàng menu riên
 - **Bảo mật/RLS:** `customer_contacts`/`customers` đang `select_all` (open) → tìm client-side hợp lệ, không lộ thêm dữ liệu.
 - **Build:** `npm run build` PASS (✓29s). Verify remote: search full số + 4 số cuối đều ra.
 - **⚠️ CÒN LẠI [BẠN]:** (1) deploy FE; (2) dọn 10 nhóm khách trùng SĐT (xem `select * from customer_duplicate_phones`).
+
+---
+
+## 🔀 Gộp khách hàng TRÙNG SĐT (deduplication) — 2026-06-27 `[HOÀN THÀNH]`
+
+**Bối cảnh:** sau khi bật tìm theo SĐT, lộ ra 1 khách có nhiều ID (trùng do nhập liệu, tên lệch chính tả). User: "rất khó quản lý". Quy mô: 10 nhóm / 21 khách / 12 bản thừa.
+
+### DB — migration `20260727000000_customer_merge.sql` (ĐÃ apply remote ✅ HTTP 201 + dry-run rollback verify)
+- [x] Cột `customers.merged_into_id` (truy vết bản đã gộp) + index.
+- [x] **RPC `fn_merge_customers(p_winner, p_losers[])`** — admin-only (`fn_is_admin()`), SECURITY DEFINER, nguyên tử:
+  - Trỏ lại **15 bảng FK** (orders, customer_debts, debt_payments, herd_projects, opportunities, quotes, period_statements, cashbook_transactions, activities, sales_schedule_slots, vat_pending_sales, farms).
+  - 2 bảng 1:1 (PK=customer_id) personal/business_info: giữ của winner, chuyển 1 bản nếu winner thiếu.
+  - Liên hệ: chuyển sang winner (is_primary=false) + khử trùng số + đảm bảo đúng 1 primary.
+  - Ẩn mềm loser (`is_active=false` + `merged_into_id`), đồng bộ lại `primary_phone`, ghi `audit_logs`.
+- [x] View `customer_duplicate_members` (member-level: số đơn/nợ + cờ `is_suggested_winner` = nhiều đơn nhất→cũ nhất).
+- **Test dry-run (BEGIN/ROLLBACK):** đơn trỏ về winner ✅, liên hệ trùng khử 2→1 ✅, loser ẩn + merged_into set ✅, KHÔNG commit dữ liệu thật.
+
+### Frontend
+- [x] **Trang `/customers/duplicates`** `CustomerDuplicatesPage.tsx` (adminOnly) — kế thừa `DataTable`, mỗi nhóm SĐT 1 card: radio chọn bản giữ (mặc định gợi ý), nút "Gộp N bản" → `supabase.rpc('fn_merge_customers')`. Route + menu "Khách trùng SĐT" (adminOnly).
+- [x] **Phòng ngừa:** `AddCustomerModal` cảnh báo trùng SĐT trước khi tạo; `ImportCustomersModal` banner cảnh báo "N SĐT đã có / N lặp trong file" (không chặn). POS quick-add đã có từ đợt trước.
+- **Quyết định:** winner mặc định nhiều đơn→cũ nhất (sửa tay); bản thừa ẩn mềm (không xóa cứng).
+- **Build:** `npm run build` PASS (✓26s).
+- **⚠️ CÒN LẠI [BẠN]:** deploy FE; vào `/customers/duplicates` xem lại winner từng nhóm rồi bấm Gộp (10 nhóm).

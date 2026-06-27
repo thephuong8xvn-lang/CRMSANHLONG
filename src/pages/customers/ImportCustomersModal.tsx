@@ -4,6 +4,7 @@ import Papa from 'papaparse'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../lib/logger'
+import { normalizePhone } from '../../lib/phone'
 
 interface ImportCustomersModalProps {
   isOpen: boolean
@@ -64,6 +65,8 @@ export default function ImportCustomersModal({
   const [importSummary, setImportSummary] = useState<{ success: number; failed: number } | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [columnWarning, setColumnWarning] = useState('')
+  // Cảnh báo trùng SĐT (không chặn) — phát hiện ở bước xem trước
+  const [dupWarning, setDupWarning] = useState('')
 
   // Admin / CEO / team_lead / branch_manager có thể gán owner_user_id tùy ý
   // Sales chỉ được gán chính mình → ẩn dropdown owner
@@ -100,6 +103,7 @@ export default function ImportCustomersModal({
     setImportSummary(null)
     setErrorMsg('')
     setColumnWarning('')
+    setDupWarning('')
   }, [isOpen, salesReps, user?.id])
 
   if (!isOpen) return null
@@ -239,6 +243,31 @@ export default function ImportCustomersModal({
           }
 
           setParsedRows(processed)
+
+          // ─── Cảnh báo trùng SĐT (không chặn — admin tự quyết) ───
+          ;(async () => {
+            const phones = processed.map(r => normalizePhone(r.phone)).filter(Boolean)
+            if (phones.length === 0) { setDupWarning(''); return }
+            const counts = new Map<string, number>()
+            phones.forEach(p => counts.set(p, (counts.get(p) || 0) + 1))
+            const inFileDups = Array.from(counts.values()).filter(n => n > 1).length
+            const uniquePhones = Array.from(counts.keys())
+            let existing = 0
+            try {
+              const { data } = await supabase
+                .from('customers')
+                .select('primary_phone_norm')
+                .eq('is_active', true)
+                .in('primary_phone_norm', uniquePhones)
+              existing = new Set((data ?? []).map((d: { primary_phone_norm: string | null }) => d.primary_phone_norm)).size
+            } catch { /* noop — cảnh báo là phụ trợ */ }
+            const parts: string[] = []
+            if (existing > 0) parts.push(`${existing} SĐT đã có trong hệ thống`)
+            if (inFileDups > 0) parts.push(`${inFileDups} SĐT bị lặp trong file`)
+            setDupWarning(parts.length
+              ? `Trùng số điện thoại: ${parts.join(' · ')}. Nhập tiếp có thể tạo khách trùng — có thể gộp sau ở mục "Khách trùng SĐT".`
+              : '')
+          })()
         } catch (err: unknown) {
           logger.error('[ImportCustomers] parse error:', err)
           setErrorMsg('Lỗi xử lý file CSV: ' + (err instanceof Error ? err.message : String(err)))
@@ -410,6 +439,13 @@ export default function ImportCustomersModal({
             <div className="p-4 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-body-md flex items-start gap-2.5">
               <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
               <p>{columnWarning}</p>
+            </div>
+          )}
+
+          {dupWarning && !errorMsg && (
+            <div className="p-4 bg-orange-50 border border-orange-200 text-orange-700 rounded-lg text-body-md flex items-start gap-2.5">
+              <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+              <p>{dupWarning}</p>
             </div>
           )}
 

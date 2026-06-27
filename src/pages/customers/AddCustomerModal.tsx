@@ -3,6 +3,7 @@ import { X, Phone, User, MapPin, ShieldAlert } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
+import { normalizePhone } from '../../lib/phone'
 
 interface AddCustomerModalProps {
   isOpen: boolean
@@ -163,6 +164,26 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
     if (!ownerUserId) {
       setErrorMsg('Vui lòng gán nhân viên phụ trách.')
       return
+    }
+
+    // Chống trùng: cảnh báo nếu SĐT (chuẩn hóa) đã thuộc về khách đang hoạt động.
+    const phoneNorm = normalizePhone(phone)
+    if (phoneNorm) {
+      const { data: dups } = await supabase
+        .from('customers')
+        .select('farm_name, code')
+        .eq('primary_phone_norm', phoneNorm)
+        .eq('is_active', true)
+        .limit(1)
+      if (dups && dups.length > 0) {
+        const d = dups[0] as { farm_name: string; code: string | null }
+        if (!window.confirm(
+          `SĐT ${phone} đã gắn với khách "${d.farm_name}" (mã ${d.code || 'N/A'}).\n` +
+          `Vẫn tạo khách MỚI trùng số này?`
+        )) {
+          return
+        }
+      }
     }
 
     setSubmitting(true)
