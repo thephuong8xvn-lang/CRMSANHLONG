@@ -2666,8 +2666,10 @@ ORDER BY score DESC LIMIT 20;
 
 **Keyboard nav:** ↑↓ chọn, Enter mở, Esc đóng. Mobile: full-screen overlay.
 
-#### Tìm theo SĐT
-- Search input chấp nhận format SĐT (regex `^[0-9]{9,11}$`) → ưu tiên match `customers.phone_primary` và `customer_contacts.phone`
+#### Tìm theo SĐT `[ĐÃ TRIỂN KHAI 2026-06-27]`
+- Triển khai: cột denormalize `customers.primary_phone` (+ `primary_phone_norm` chỉ chữ số) đồng bộ tự động từ `customer_contacts` (liên hệ `is_primary`) qua trigger `trg_cc_sync_primary_phone`; chuẩn hóa bằng `fn_normalize_phone()` (mirror client `src/lib/phone.ts#normalizePhone`).
+- POS (desktop + mobile) lọc client-side theo `primary_phone_norm`; Danh sách KH tìm server-side `primary_phone_norm.ilike` (index `gin_trgm`).
+- "SĐT duy nhất": KHÔNG ràng buộc UNIQUE cứng (dữ liệu còn số ghép/CCCD) → cảnh báo trùng ở app khi quick-add + view audit `customer_duplicate_phones`.
 
 #### Tìm theo barcode SP
 - Sales mobile: nút "Quét mã" → mở camera → decode → fill query với barcode → match `product_variants.barcode`

@@ -16,6 +16,8 @@ export interface CustomerSummaryRow {
   owner_user_id: string
   is_active: boolean
   created_at: string
+  /** SĐT liên hệ chính (denormalize) — phục vụ tìm kiếm & hiển thị. */
+  primary_phone: string | null
   total_debt: number
   is_overdue: boolean
   /** Tuổi nợ: số ngày từ khoản nợ chưa thanh toán cũ nhất. NULL = không có nợ. */
@@ -82,8 +84,14 @@ export function useCustomersList(params: CustomerListParams) {
       if (params.overdueOnly)   q = q.eq('is_overdue', true)
 
       if (params.search && params.search.trim()) {
-        const term = params.search.trim().replace(/[%_]/g, '\\$&')
-        q = q.or(`farm_name.ilike.%${term}%,code.ilike.%${term}%`)
+        const raw = params.search.trim()
+        const term = raw.replace(/[%_]/g, '\\$&')
+        // Tìm theo tên / mã; nếu chuỗi có chữ số → tìm thêm theo SĐT chuẩn hóa
+        // (primary_phone_norm có index gin_trgm). Chỉ số nên không cần escape.
+        const ors = [`farm_name.ilike.%${term}%`, `code.ilike.%${term}%`]
+        const digits = raw.replace(/\D/g, '')
+        if (digits) ors.push(`primary_phone_norm.ilike.%${digits}%`)
+        q = q.or(ors.join(','))
       }
 
       const { data, error, count } = await q

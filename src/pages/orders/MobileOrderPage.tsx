@@ -19,6 +19,8 @@ import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import { posMobileKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
+import { removeVietnameseTones } from '../../components/SmartSearchSelect'
+import { normalizePhone } from '../../lib/phone'
 
 interface Customer {
   id: string
@@ -27,6 +29,8 @@ interface Customer {
   credit_limit: number
   price_list_id: string | null
   value_tier: string
+  primary_phone: string | null
+  primary_phone_norm: string | null
 }
 
 interface Product {
@@ -144,7 +148,7 @@ export default function MobileOrderPage() {
         const cust = await fetchAllRows<Customer>((from, to) =>
           supabase
             .from('customers')
-            .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
+            .select('id, code, farm_name, credit_limit, price_list_id, value_tier, primary_phone, primary_phone_norm')
             .eq('is_active', true)
             .order('farm_name')
             .order('id')
@@ -258,11 +262,19 @@ export default function MobileOrderPage() {
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId)
 
-  // Filter lists
-  const filteredCustomers = customers.filter(c => 
-    c.farm_name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-    c.code.toLowerCase().includes(customerSearchQuery.toLowerCase())
-  )
+  // Filter lists — tìm theo TÊN/MÃ/ID (bỏ dấu) HOẶC SỐ ĐIỆN THOẠI (chuẩn hóa).
+  const filteredCustomers = (() => {
+    const raw = customerSearchQuery.trim()
+    if (!raw) return customers
+    const q = removeVietnameseTones(raw.toLowerCase())
+    const phoneQ = normalizePhone(raw)
+    return customers.filter(c =>
+      removeVietnameseTones(c.farm_name.toLowerCase()).includes(q) ||
+      removeVietnameseTones((c.code || '').toLowerCase()).includes(q) ||
+      c.id.toLowerCase().includes(q) ||
+      (!!phoneQ && !!c.primary_phone_norm && c.primary_phone_norm.includes(phoneQ))
+    )
+  })()
 
   const filteredProducts = products.filter(p => {
     const matchesCategory = !selectedCategoryId || p.category_id === selectedCategoryId
@@ -404,7 +416,7 @@ export default function MobileOrderPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                 <input
                   type="text"
-                  placeholder="Gõ tên trại, mã khách hàng..."
+                  placeholder="Gõ tên trại, mã, SĐT khách hàng..."
                   value={customerSearchQuery}
                   onChange={e => setCustomerSearchQuery(e.target.value)}
                   className="w-full h-11 pl-10 pr-4 bg-white border border-gray-100 rounded-lg text-body-md font-semibold focus:outline-none focus:border-blue-500"
@@ -423,9 +435,12 @@ export default function MobileOrderPage() {
                       active ? 'bg-blue-50/40 border-blue-500 shadow-sm' : 'bg-white border-gray-100 hover:border-gray-200'
                     }`}
                   >
-                    <div className="space-y-1">
-                      <h4 className="text-body-md font-bold text-gray-800">{cust.farm_name}</h4>
+                    <div className="space-y-1 min-w-0">
+                      <h4 className="text-body-md font-bold text-gray-800 truncate">{cust.farm_name}</h4>
                       <div className="text-tiny text-gray-400 font-mono">Mã: {cust.code}</div>
+                      {cust.primary_phone && (
+                        <div className="text-tiny text-gray-500 font-mono truncate">SĐT: {cust.primary_phone}</div>
+                      )}
                     </div>
                     {active && (
                       <div className="w-5 h-5 rounded-full bg-blue-500 text-gray-0 flex items-center justify-center">

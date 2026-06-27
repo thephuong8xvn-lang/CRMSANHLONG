@@ -1876,3 +1876,27 @@ Theo yêu cầu user: đưa 4 chức năng hay dùng thành **1 hàng menu riên
 - Kiểu `MenuItem` chung + cờ **`primary: 1..4`** (Khách hàng, Đơn hàng, Sản phẩm, Kho hàng). `primaryItems` = lọc theo quyền, sort theo `primary`.
 - Render 1 thanh `sticky top-16 z-30` full-width, `hidden md:flex` (desktop/tablet), nhãn "Truy cập nhanh" + các link icon+chữ; `overflow-x-auto` an toàn. Mobile vẫn dùng bottom bar sẵn có (không đổi).
 - Mỗi link lọc `perms`; thêm module vào thanh phụ = thêm 1 cờ `primary`. Thêm 'Nhập từ Drive' chỉ cần gắn `primary: 5`. Build PASS (✓40s).
+
+---
+
+## 📞 Tìm khách hàng theo SỐ ĐIỆN THOẠI ở POS + Danh sách KH — 2026-06-27 `[HOÀN THÀNH]`
+
+**Triệu chứng (user báo):** "khách có SĐT nhưng tìm không ra" ở `/pos`.
+**Nguyên nhân gốc:** POS **không nạp và không tìm theo SĐT**. SĐT nằm ở `customer_contacts.phone` (liên hệ `is_primary`), KHÔNG có cột trên `customers`; bộ lọc POS chỉ khớp `farm_name/code/id`. Mobile còn thiếu cả bỏ dấu lẫn `id`. Trang Danh sách KH cũng chỉ `ilike` tên/mã. "SĐT duy nhất" **không** được enforce ở DB (index unique chỉ là 1 primary/khách).
+
+### DB — migration `20260726000000_customer_primary_phone.sql` (ĐÃ apply remote ✅ HTTP 201 + verify)
+- [x] Cột denormalize `customers.primary_phone` + `customers.primary_phone_norm` (chỉ số, tách số đầu, `+84→0`).
+- [x] Hàm `fn_normalize_phone(text)` — khớp helper `primaryPhone()` (tách CCCD/số ghép phẩy). Test PASS các case `+84…`, `…,…`, `…cccd:…`, có khoảng trắng.
+- [x] Trigger `trg_cc_sync_primary_phone` AFTER INSERT/UPDATE(of phone,is_primary,customer_id)/DELETE trên `customer_contacts` (SECURITY DEFINER) → tự đồng bộ.
+- [x] Backfill 1690/1923 khách có số; index `gin_trgm` trên `primary_phone_norm`.
+- [x] `customer_summary_view` thêm `primary_phone(+norm)`; **view audit `customer_duplicate_phones`** (nhóm SĐT chuẩn hóa ≥2 khách). Hiện trạng: **10 nhóm / 21 khách trùng** → cần làm sạch dần (quyết định: cảnh báo app + audit, KHÔNG ràng buộc cứng vì dữ liệu còn bẩn).
+
+### Frontend
+- [x] `src/lib/phone.ts` — `normalizePhone()` dùng chung (mirror SQL).
+- [x] **POS desktop** `POSPage.tsx`: nạp `primary_phone(+norm)` (+ snapshot offline), `filteredCustomers` tìm thêm theo SĐT, dropdown hiện SĐT, placeholder "tên, mã, SĐT". Quick-add: validate định dạng + **cảnh báo trùng SĐT** (window.confirm), ghi `primary_phone` vào state ngay.
+- [x] **POS mobile** `MobileOrderPage.tsx`: bộ lọc dùng `removeVietnameseTones` + `normalizePhone`, khớp tên/mã/**id**/SĐT (trước thiếu); thẻ khách hiện SĐT.
+- [x] **Danh sách KH** `useCustomers.ts`: `.or()` thêm `primary_phone_norm.ilike` khi chuỗi có chữ số (index trgm); `CustomerListPage` placeholder + interface `primary_phone`.
+- **Hiển thị SĐT:** theo yêu cầu — hiện ĐẦY ĐỦ cho mọi thu ngân ở dropdown POS.
+- **Bảo mật/RLS:** `customer_contacts`/`customers` đang `select_all` (open) → tìm client-side hợp lệ, không lộ thêm dữ liệu.
+- **Build:** `npm run build` PASS (✓29s). Verify remote: search full số + 4 số cuối đều ra.
+- **⚠️ CÒN LẠI [BẠN]:** (1) deploy FE; (2) dọn 10 nhóm khách trùng SĐT (xem `select * from customer_duplicate_phones`).

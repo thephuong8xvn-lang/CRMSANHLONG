@@ -29,6 +29,7 @@ import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { removeVietnameseTones } from '../../components/SmartSearchSelect'
+import { normalizePhone } from '../../lib/phone'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
 import { useProductPromotions, evaluateProductPromo, promoShortLabel } from '../../hooks/useProductPromotions'
@@ -46,6 +47,8 @@ interface Customer {
   credit_limit: number
   price_list_id: string | null
   value_tier: string
+  primary_phone: string | null       // SĐT liên hệ chính (hiển thị)
+  primary_phone_norm: string | null  // SĐT chuẩn hóa (chỉ số) — để tìm kiếm
 }
 
 interface ProductActiveIngredient {
@@ -507,7 +510,7 @@ export default function POSPage() {
         const custData = await fetchAllRows<Customer>((from, to) =>
           supabase
             .from('customers')
-            .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
+            .select('id, code, farm_name, credit_limit, price_list_id, value_tier, primary_phone, primary_phone_norm')
             .eq('is_active', true)
             .order('farm_name')
             .order('id')
@@ -973,15 +976,20 @@ export default function POSPage() {
     measureElement: typeof window !== 'undefined' ? el => el.getBoundingClientRect().height : undefined,
   })
 
-  // Filter customers
+  // Filter customers — tìm theo TÊN/MÃ/ID (bỏ dấu) HOẶC SỐ ĐIỆN THOẠI.
+  // Phone: chuẩn hóa cùng quy tắc DB (normalizePhone) rồi so khớp chuỗi con
+  // trên primary_phone_norm → gõ "038…" hay "+8438…" đều ra.
   const filteredCustomers = useMemo(() => {
-    const q = removeVietnameseTones(customerSearchQuery.trim().toLowerCase())
+    const raw = customerSearchQuery.trim()
+    const q = removeVietnameseTones(raw.toLowerCase())
+    const phoneQ = normalizePhone(raw)
     const matched = !q
       ? customers
       : customers.filter(c =>
           removeVietnameseTones(c.farm_name.toLowerCase()).includes(q) ||
           removeVietnameseTones((c.code || '').toLowerCase()).includes(q) ||
-          c.id.toLowerCase().includes(q)
+          c.id.toLowerCase().includes(q) ||
+          (!!phoneQ && !!c.primary_phone_norm && c.primary_phone_norm.includes(phoneQ))
         )
     // Giới hạn 50 dòng hiển thị (tránh render hàng nghìn nút khi danh sách lớn)
     return matched.slice(0, 50)
@@ -1415,20 +1423,38 @@ export default function POSPage() {
     const name = newCustName.trim()
     if (!name) { setAlertMsg({ type: 'error', text: 'Vui lòng nhập tên khách / trại.' }); return }
     if (!profile?.id) { setAlertMsg({ type: 'error', text: 'Lỗi tài khoản. Vui lòng đăng nhập lại.' }); return }
+    const phone = newCustPhone.trim()
+    // Validate định dạng SĐT (nếu có nhập) — đồng bộ với AddCustomerModal.
+    if (phone && !/^(\+84|0)[3-9][0-9]{8}$/.test(phone.replace(/\s/g, ''))) {
+      setAlertMsg({ type: 'error', text: 'Số điện thoại không hợp lệ (VD: 0901234567).' })
+      return
+    }
+    // Chống trùng: cảnh báo nếu SĐT chuẩn hóa đã thuộc về khách khác (không chặn cứng).
+    const phoneNorm = normalizePhone(phone)
+    if (phoneNorm) {
+      const dup = customers.find(c => c.primary_phone_norm === phoneNorm)
+      if (dup && !window.confirm(
+        `SĐT ${phone} đã gắn với khách "${dup.farm_name}" (mã ${dup.code || 'N/A'}).\n` +
+        `Vẫn tạo khách MỚI trùng số này?`
+      )) {
+        return
+      }
+    }
     setAddingCustomer(true)
     try {
       const { data: cust, error } = await supabase
         .from('customers')
         .insert([{ farm_name: name, owner_user_id: profile.id }])
-        .select('id, code, farm_name, credit_limit, price_list_id, value_tier')
+        .select('id, code, farm_name, credit_limit, price_list_id, value_tier, primary_phone, primary_phone_norm')
         .single()
       if (error) throw error
-      const phone = newCustPhone.trim()
       if (phone) {
         await supabase.from('customer_contacts')
           .insert([{ customer_id: cust.id, full_name: name, phone, is_primary: true }])
       }
-      const newC = cust as Customer
+      // Trigger DB đã ghi primary_phone* vào customers — phản ánh ngay vào state cục bộ
+      // để dropdown/tìm kiếm thấy số mà không cần nạp lại toàn bộ danh sách.
+      const newC = { ...(cust as Customer), primary_phone: phone || null, primary_phone_norm: phoneNorm || null }
       setCustomers(prev => [newC, ...prev])
       setSelectedCustomerId(newC.id)
       setCustomerSearchQuery(newC.farm_name)
@@ -2309,7 +2335,7 @@ export default function POSPage() {
                   <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                   <input
                     type="text"
-                    placeholder="Tìm khách hàng..."
+                    placeholder="Tìm khách: tên, mã, SĐT..."
                     value={customerSearchQuery}
                     onChange={e => {
                       const val = e.target.value
@@ -2347,9 +2373,14 @@ export default function POSPage() {
                           setCustomerSearchQuery(cust.farm_name)
                           setShowCustomerDropdown(false)
                         }}
-                        className="w-full text-left px-2.5 py-1.5 hover:bg-gray-50 flex items-center justify-between"
+                        className="w-full text-left px-2.5 py-1.5 hover:bg-gray-50 flex items-center justify-between gap-2"
                       >
-                        <span className="font-semibold text-gray-800 truncate pr-1">{cust.farm_name}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-gray-800 truncate">{cust.farm_name}</span>
+                          {cust.primary_phone && (
+                            <span className="block text-[10px] text-gray-500 font-mono truncate">{cust.primary_phone}</span>
+                          )}
+                        </span>
                         <span className="text-[9px] bg-gray-100 text-gray-505 px-1 py-0.2 rounded font-mono uppercase font-bold shrink-0">{cust.code || 'N/A'}</span>
                       </button>
                     ))}

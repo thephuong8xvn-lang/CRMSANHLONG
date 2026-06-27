@@ -388,7 +388,7 @@ export default function CustomerListPage() {
                 <Search className="text-gray-400 ml-3 mr-2" size={16} strokeWidth={1.5} />
                 <input
                   className="bg-transparent border-none focus:ring-0 text-body-md w-full placeholder-gray-400 py-2 pl-0 pr-4 focus:outline-none"
-                  placeholder="Mã, tên khách hàng..."
+                  placeholder="Mã, tên, SĐT khách hàng..."
                   type="text"
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1) }}
