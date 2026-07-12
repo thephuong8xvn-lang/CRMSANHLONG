@@ -1923,3 +1923,35 @@ Theo yêu cầu user: đưa 4 chức năng hay dùng thành **1 hàng menu riên
 - **Quyết định:** winner mặc định nhiều đơn→cũ nhất (sửa tay); bản thừa ẩn mềm (không xóa cứng).
 - **Build:** `npm run build` PASS (✓26s).
 - **⚠️ CÒN LẠI [BẠN]:** deploy FE; vào `/customers/duplicates` xem lại winner từng nhóm rồi bấm Gộp (10 nhóm).
+
+---
+
+## 🔍 Đánh giá lại sau khi vận hành thật — 2026-07-12 `[HOÀN THÀNH]`
+
+**Bối cảnh:** app đã chạy thật ~1,5 tháng. Audit prod (Management API, chỉ đọc) để đánh giá lại.
+
+### Số liệu vận hành THẬT (khác xa giả định cũ "200 hóa đơn/ngày" — giả định đó SAI)
+- 30 ngày: **1.365 đơn / 854 triệu ₫**. Tháng 6: 859 đơn/738tr. Đỉnh ~86 đơn/ngày.
+- Hoài Ân 87% đơn, Phù Mỹ 13%. 1.936 KH, 1.058 SP, DB **93 MB**.
+- **5 người dùng chung 3 tài khoản** (theo tên chi nhánh) → RBAC/audit trail/báo cáo theo NV đều vô nghĩa.
+- **Sổ quỹ CHƯA vận hành thật** (còn dùng KiotViet song song) → tồn quỹ 600tr là ảo, KHÔNG phải bug.
+- **5 module có 0 bản ghi/30 ngày:** Khuyến mãi, Báo giá, Pipeline, Đơn đặt NCC, Chăm sóc KH.
+  → App thực tế = **POS + Kho + Sổ quỹ + Công nợ**. Định hướng: làm SÂU 4 cái này, không xây module mới.
+- Sức khỏe: `fn_integrity_check` 7/7 sạch, 0 bán âm tồn/30 ngày, 2 cron sống, Telegram đã cấu hình.
+
+### Đã sửa (3 commit, ĐÃ PUSH + DEPLOY LIVE)
+- [x] **`6301dbf` Backup tự kiểm chứng.** Giải đáp "DB 93 MB nhưng dump chỉ 6 MB": KHÔNG mất dữ liệu — 93 MB gồm 16 MB index (dump chỉ lưu `CREATE INDEX`) + dòng chết; 49 MB `audit_logs` là JSON nén ~10 lần. Thêm bước đọc mục lục dump sau upload, bắt buộc đủ 11 bảng trọng yếu **gồm `auth.users`** (thiếu bảng này thì restore xong không ai đăng nhập được) → thiếu là job đỏ.
+- [x] **`16e9b51` `audit_logs` ngốn 60% DB.** Migration `20260728000000` (apply prod + tracking). Gốc: trigger ghi `to_jsonb(OLD)+to_jsonb(NEW)` = cả dòng, 2 lần, mọi UPDATE — orders 12.062 UPDATE/22 MB trong đó **3.236 dòng không đổi cột nào**. Nay chỉ ghi **cột thực sự đổi**; no-op không ghi. Verify trên prod: **1.900 bytes → 144 bytes/dòng**. Kèm `fn_prune_audit_logs()` + cron 02:30 VN (365 ngày tài chính / 120 ngày vận hành). **Quyết định user: GIỮ NGUYÊN 44 MB nhật ký cũ**, để cron dọn tự nhiên.
+  - Kèm: bỏ lệnh ghi tay `audit_logs` ở `SystemSettingsPage` — sai tên cột VÀ bị RLS chặn → **thất bại trong im lặng** từ trước tới nay.
+- [x] **`74e9620` PWA: nút "Tải lại" chưa bao giờ thực sự cập nhật.** `registerType:'prompt'` → phải gọi `updateSW(true)` để SW mới skipWaiting; code cũ vứt hàm đó, chỉ `reload()` → SW mới nằm chờ, **SW cũ vẫn điều khiển trang** → các bản deploy KHÔNG tới được máy nhân viên. Kèm `r.update()` thiếu `.catch()` → 8 lỗi trong `app_error_logs` (4G chập chờn). Verify trên chính production.
+
+### ⚠️ CÒN LẠI [BẠN]
+- [ ] **Bảo 5 nhân viên đóng hết tab app rồi mở lại ĐÚNG 1 LẦN** — họ còn kẹt SW cũ nên bản vá chưa tới máy.
+- [ ] **Nâng Supabase Pro** — vẫn Free, không PITR, trong khi ~850tr₫/tháng chạy qua.
+- [ ] **Tạo 5 tài khoản riêng** (gửi tên + email để tôi tạo và gán quyền).
+- [ ] **Gộp 10 nhóm khách trùng SĐT** tại `/customers/duplicates`.
+
+### 🔎 Ứng viên phiên sau (phát hiện trên console production, chưa đụng — không cái nào chặn bán hàng)
+- `[Auth] getSession timed out after 3 seconds` — nghi là lý do app chậm lúc mới mở. **Ưu tiên 1.**
+- `DisplaySettings Table failed to load, falling back to defaults` + HTTP **406** — nhiều khả năng `.single()` trên kết quả rỗng.
+- 2 lỗi **404** khi tải trang.
