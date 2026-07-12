@@ -592,14 +592,11 @@ export default function SystemSettingsPage() {
 
       if (oppErr) throw oppErr
 
-      // 3. Log Audit logs
-      await supabase.from('audit_logs').insert([{
-        performed_by: profile?.id || deactivatingUser.id,
-        action: 'UPDATE',
-        target_table: 'profiles',
-        record_id: deactivatingUser.id,
-        notes: `Vô hiệu hóa tài khoản và bàn giao ${customerCount} khách hàng sang nhân viên ID: ${reassignSalesId}`
-      }])
+      // 3. Nhật ký: KHÔNG ghi tay vào audit_logs. Bảng chỉ mở SELECT cho admin
+      // (không có policy INSERT) nên client ghi vào luôn bị RLS chặn — lệnh cũ ở
+      // đây thất bại trong im lặng suốt thời gian qua. Trigger trg_audit_customers
+      // và trg_audit_profiles đã ghi đủ: từng khách đổi primary_sales_id, và
+      // profile bị khóa.
 
       // 4. Update profiles is_active = false
       const { error: profErr } = await supabase
