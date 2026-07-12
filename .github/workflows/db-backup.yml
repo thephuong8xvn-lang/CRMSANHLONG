@@ -96,6 +96,36 @@ jobs:
           rclone copy "$FILE" "gdrive:" --drive-root-folder-id "$FOLDER_ID" --no-traverse -v
           echo "Đã upload $FILE lên thư mục Drive."
 
+      - name: Kiểm chứng nội dung dump (đọc mục lục, không restore)
+        # Chạy SAU khi đã upload: dù thiếu bảng thì bản dump vẫn được giữ,
+        # nhưng job sẽ đỏ để báo backup không dùng để khôi phục đầy đủ được.
+        run: |
+          set -euo pipefail
+          # Dump nhỏ hơn DB rất nhiều là BÌNH THƯỜNG: đã nén và không chứa index.
+          # Điều PHẢI kiểm là nó có đủ bảng trọng yếu — nhất là auth.users (tài khoản
+          # đăng nhập); thiếu bảng này thì restore xong sẽ không ai vào được app.
+          pg_restore -l "$FILE" > toc.txt
+          echo "Dump chứa $(grep -c 'TABLE DATA' toc.txt || echo 0) bảng có dữ liệu."
+
+          MISSING=""
+          for t in \
+            public.orders public.order_lines public.customers public.products \
+            public.stock_lots public.stock_movements public.customer_debts \
+            public.cashbook_transactions public.goods_receipts public.profiles \
+            auth.users
+          do
+            schema="${t%%.*}"; table="${t#*.}"
+            # TOC có dạng: "216; 0 16404 TABLE DATA public orders postgres"
+            # Khoảng trắng cuối để "orders" không khớp nhầm "order_lines".
+            grep -q "TABLE DATA $schema $table " toc.txt || MISSING="$MISSING $t"
+          done
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::Dump THIẾU bảng trọng yếu:$MISSING — KHÔNG khôi phục đầy đủ được."
+            exit 1
+          fi
+          echo "✅ Đủ toàn bộ bảng trọng yếu (gồm auth.users)."
+
       - name: Dọn bản backup cũ hơn 30 ngày
         env:
           FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
