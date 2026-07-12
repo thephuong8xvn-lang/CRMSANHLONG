@@ -4,19 +4,35 @@ import { RefreshCw, X } from 'lucide-react'
 export function PwaUpdateBanner() {
   const [needRefresh, setNeedRefresh] = useState(false)
   const [offlineReady, setOfflineReady] = useState(false)
+  // Hàm do registerSW trả về. PHẢI gọi nó (updateSW(true)) để service worker mới
+  // skipWaiting rồi nạp lại trang. window.location.reload() suông KHÔNG đủ: SW mới
+  // vẫn nằm chờ, SW cũ tiếp tục điều khiển trang → nhân viên bấm "Tải lại" nhưng
+  // vẫn chạy bản cũ cho tới khi đóng hết tab.
+  const [updateSW, setUpdateSW] = useState<((reload?: boolean) => Promise<void>) | null>(null)
 
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined
+
     import('virtual:pwa-register').then(({ registerSW }) => {
-      registerSW({
+      const update = registerSW({
         onNeedRefresh() { setNeedRefresh(true) },
         onOfflineReady() { setOfflineReady(true) },
         onRegistered(r) {
-          if (r) {
-            setInterval(() => r.update(), 60 * 60 * 1000)
-          }
+          if (!r) return
+          timer = setInterval(() => {
+            // Bỏ qua khi đang offline: r.update() sẽ reject và (trước đây, không có
+            // .catch) nổi lên thành unhandledrejection → ghi vào app_error_logs.
+            // Nhân viên bán hàng dùng 4G chập chờn nên chuyện này xảy ra thường xuyên.
+            if (!navigator.onLine) return
+            r.update().catch(() => { /* mạng chập chờn — lần kiểm tra sau lo tiếp */ })
+          }, 60 * 60 * 1000)
         },
       })
+      // useState nhận hàm sẽ hiểu nhầm là lazy initializer → phải bọc thêm 1 lớp.
+      setUpdateSW(() => update)
     }).catch(() => {})
+
+    return () => { if (timer) clearInterval(timer) }
   }, [])
 
   if (!needRefresh && !offlineReady) return null
@@ -28,7 +44,12 @@ export function PwaUpdateBanner() {
           <RefreshCw size={16} className="shrink-0" />
           <span>Có phiên bản mới, tải lại để cập nhật.</span>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              // updateSW(true): kích hoạt SW mới rồi tự nạp lại trang.
+              // Nếu vì lý do nào đó chưa có hàm, quay về reload thường.
+              if (updateSW) updateSW(true).catch(() => window.location.reload())
+              else window.location.reload()
+            }}
             className="rounded bg-blue-500 px-3 py-1 text-xs font-medium hover:bg-blue-400 transition-colors"
           >
             Tải lại
