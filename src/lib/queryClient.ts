@@ -46,7 +46,10 @@ export const qk = {
     detail: (id: string) => ['products', 'detail', id] as const,
     categories: ['products', 'categories'] as const,
     brands: ['products', 'brands'] as const,
-    lots: (id: string, branchId?: string | null) => ['products', 'lots', id, branchId ?? 'all'] as const,
+    lots: (id: string, branchId?: string | null, scope: 'in_stock' | 'depleted' = 'in_stock', page = 1) =>
+      ['products', 'lots', id, branchId ?? 'all', scope, page] as const,
+    lotsDepletedCount: (id: string, branchId?: string | null) =>
+      ['products', 'lots', id, branchId ?? 'all', 'depleted_count'] as const,
     movements: (id: string, branchId?: string | null) => ['products', 'movements', id, branchId ?? 'all'] as const,
     promotions: (id: string) => ['products', 'promotions', id] as const,
   },

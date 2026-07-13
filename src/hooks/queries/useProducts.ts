@@ -142,27 +142,91 @@ export interface ProductMovementRow {
   price_list_name: string | null
 }
 
-/** Lô hàng của 1 sản phẩm, lọc theo chi nhánh khi có branchId. */
-export function useProductLots(productId: string, branchId?: string | null, enabled = true) {
+const LOT_COLUMNS = `
+  id, lot_number, manufacture_date, expiry_date,
+  quantity_on_hand, quantity_reserved, cost_price, status, received_at,
+  warehouses:warehouses!inner(id, code, name, branch_id)
+`
+
+/** Số lô/trang cho danh sách lô ĐÃ HẾT (tồn 0) — phân trang ở server, không tải hết. */
+export const DEPLETED_LOTS_PAGE_SIZE = 12
+/** Trần an toàn cho lô CÒN TỒN — thực tế 1 SP hiếm khi vượt (max hiện tại: 16 lô). */
+const IN_STOCK_LOTS_CAP = 100
+
+export interface ProductLotsPage {
+  rows: ProductLotRow[]
+  total: number
+}
+
+/**
+ * Lô hàng của 1 sản phẩm, lọc theo chi nhánh khi có branchId.
+ *
+ * Lô tồn 0 chỉ tích tụ theo thời gian (mỗi lần nhập sinh lô mới) nên KHÔNG tải kèm:
+ *  - scope 'in_stock' (mặc định): chỉ lô còn tồn, xếp FEFO (hạn gần bán trước).
+ *  - scope 'depleted': lô đã hết — chỉ tải khi user bấm mở, phân trang ở server
+ *    (giữ lại để còn tra cứu khi khách trả hàng cũ / NSX thu hồi lô).
+ */
+export function useProductLots(
+  productId: string,
+  branchId?: string | null,
+  enabled = true,
+  scope: 'in_stock' | 'depleted' = 'in_stock',
+  page = 1
+) {
   return useQuery({
-    queryKey: qk.products.lots(productId, branchId),
+    queryKey: qk.products.lots(productId, branchId, scope, page),
     enabled: enabled && !!productId,
-    queryFn: async (): Promise<ProductLotRow[]> => {
+    queryFn: async (): Promise<ProductLotsPage> => {
       let q = supabase
         .from('stock_lots')
-        .select(`
-          id, lot_number, manufacture_date, expiry_date,
-          quantity_on_hand, quantity_reserved, cost_price, status, received_at,
-          warehouses:warehouses!inner(id, code, name, branch_id)
-        `)
+        .select(LOT_COLUMNS, { count: 'exact' })
         .eq('product_id', productId)
       if (branchId) q = q.eq('warehouses.branch_id', branchId)
-      const { data, error } = await q.order('expiry_date', { ascending: true })
+
+      if (scope === 'in_stock') {
+        // FEFO: hạn gần nhất lên trước (lô không hạn xuống cuối).
+        q = q.gt('quantity_on_hand', 0)
+             .order('expiry_date', { ascending: true, nullsFirst: false })
+             .range(0, IN_STOCK_LOTS_CAP - 1)
+      } else {
+        // Lô đã hết: mới nhập gần đây lên trước (dễ tra lô vừa bán xong).
+        q = q.lte('quantity_on_hand', 0)
+             .order('received_at', { ascending: false })
+             .range((page - 1) * DEPLETED_LOTS_PAGE_SIZE, page * DEPLETED_LOTS_PAGE_SIZE - 1)
+      }
+
+      const { data, error, count } = await q
       if (error) {
         logger.error('[useProductLots] error:', error.message)
         throw error
       }
-      return (data ?? []) as unknown as ProductLotRow[]
+      return { rows: (data ?? []) as unknown as ProductLotRow[], total: count ?? 0 }
+    },
+    placeholderData: keepPreviousData,   // đổi trang không nháy trắng
+  })
+}
+
+/**
+ * Đếm lô ĐÃ HẾT (tồn 0) — dùng head:true nên server không trả về dòng nào,
+ * chỉ trả về con số → hiện nhãn "Đã hết (N)" mà không tốn egress.
+ */
+export function useProductDepletedLotCount(productId: string, branchId?: string | null, enabled = true) {
+  return useQuery({
+    queryKey: qk.products.lotsDepletedCount(productId, branchId),
+    enabled: enabled && !!productId,
+    queryFn: async (): Promise<number> => {
+      let q = supabase
+        .from('stock_lots')
+        .select('id, warehouses:warehouses!inner(branch_id)', { count: 'exact', head: true })
+        .eq('product_id', productId)
+        .lte('quantity_on_hand', 0)
+      if (branchId) q = q.eq('warehouses.branch_id', branchId)
+      const { error, count } = await q
+      if (error) {
+        logger.error('[useProductDepletedLotCount] error:', error.message)
+        throw error
+      }
+      return count ?? 0
     },
   })
 }

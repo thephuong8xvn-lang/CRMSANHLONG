@@ -8,13 +8,17 @@ import {
   ExternalLink,
   Package,
   Pencil,
+  ChevronDown,
 } from 'lucide-react'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import {
   useProductLots,
+  useProductDepletedLotCount,
   useProductMovements,
   useProductPromotionsList,
+  DEPLETED_LOTS_PAGE_SIZE,
   type ProductStockRow,
+  type ProductLotRow,
 } from '../../hooks/queries/useProducts'
 import { promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
 
@@ -50,13 +54,69 @@ function Spinner() {
   )
 }
 
+/** Thẻ 1 lô. Nhãn trạng thái phản ánh ĐÚNG thực tế: lô tồn 0 không còn "Đang bán". */
+function LotCard({ lot, formatCurrency }: { lot: ProductLotRow; formatCurrency: (v: number) => string }) {
+  const isExpired = !!lot.expiry_date && new Date(lot.expiry_date) < new Date()
+  const isDepleted = lot.quantity_on_hand <= 0
+  const available = lot.quantity_on_hand - lot.quantity_reserved
+
+  const statusLabel = isDepleted ? 'Đã hết' : lot.status === 'active' ? 'Đang bán' : 'Khóa'
+  const statusClass = isDepleted
+    ? 'bg-gray-100 text-gray-500 border border-gray-200'
+    : lot.status === 'active'
+    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+    : 'bg-gray-100 text-gray-600 border border-gray-200'
+
+  return (
+    <div className={`bg-white border rounded-lg p-3 ${isExpired && !isDepleted ? 'border-red-100' : 'border-gray-100'}`}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="font-bold text-gray-700 text-tiny">{lot.lot_number}</span>
+        <div className="flex items-center gap-1">
+          {isExpired && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] font-bold">Hết hạn</span>}
+          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${statusClass}`}>{statusLabel}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+        <div>
+          <span className="text-gray-400 block">Kho</span>
+          <span className="font-semibold text-gray-600 truncate block">{lot.warehouses?.name || '—'}</span>
+        </div>
+        <div>
+          <span className="text-gray-400 block">Hạn dùng</span>
+          <span className={`font-semibold ${isExpired ? 'text-red-500' : 'text-gray-600'}`}>
+            {lot.expiry_date ? new Date(lot.expiry_date).toLocaleDateString('vi-VN') : 'Không hạn'}
+          </span>
+        </div>
+        <div>
+          <span className="text-gray-400 block">Giá vốn</span>
+          <span className="font-semibold text-gray-600 tabular-nums">{formatCurrency(lot.cost_price)}</span>
+        </div>
+        <div className="text-right">
+          <span className="text-gray-400 block">Khả dụng / Tồn</span>
+          <span className="font-bold text-gray-700 tabular-nums">{available} / {lot.quantity_on_hand}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProductQuickView({ row, branchId, onClose, onOpenDetail, onEdit }: ProductQuickViewProps) {
   const { formatCurrency } = useDisplaySettings()
   const [tab, setTab] = useState<QuickTab>('info')
 
+  const [showDepleted, setShowDepleted] = useState(false)
+  const [depletedPage, setDepletedPage] = useState(1)
+
   const lotsQuery = useProductLots(row.id, branchId, tab === 'lots')
+  const depletedCountQuery = useProductDepletedLotCount(row.id, branchId, tab === 'lots')
+  // Chỉ tải danh sách lô đã hết khi user thực sự bấm mở → không tốn egress mặc định.
+  const depletedQuery = useProductLots(row.id, branchId, tab === 'lots' && showDepleted, 'depleted', depletedPage)
   const movementsQuery = useProductMovements(row.id, branchId, tab === 'ledger')
   const promosQuery = useProductPromotionsList(row.id, tab === 'promotions')
+
+  const inStockLots = lotsQuery.data?.rows ?? []
+  const depletedCount = depletedCountQuery.data ?? 0
+  const depletedPages = Math.max(1, Math.ceil(depletedCount / DEPLETED_LOTS_PAGE_SIZE))
 
   const promos = (promosQuery.data ?? []) as ProductPromotion[]
   const activePromoCount = promos.filter(p => p.is_active).length
@@ -156,57 +216,70 @@ export default function ProductQuickView({ row, branchId, onClose, onOpenDetail,
           </div>
         )}
 
-        {/* ── Phiên bản & Lô hàng ── */}
+        {/* ── Phiên bản & Lô hàng ──
+            Mặc định CHỈ lô còn tồn (FEFO). Lô đã hết chỉ tích tụ theo thời gian nên
+            nằm trong mục thu gọn, bấm mới tải, phân trang ở server. */}
         {tab === 'lots' && (
           lotsQuery.isLoading ? <Spinner /> : (
-            (lotsQuery.data ?? []).length === 0 ? (
-              <div className="py-8 text-center text-gray-400 text-tiny flex flex-col items-center gap-2">
-                <Warehouse size={28} className="text-gray-300" />
-                Chưa có lô hàng nào lưu kho cho sản phẩm này.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                {(lotsQuery.data ?? []).map(lot => {
-                  const isExpired = lot.expiry_date && new Date(lot.expiry_date) < new Date()
-                  const available = lot.quantity_on_hand - lot.quantity_reserved
-                  return (
-                    <div key={lot.id} className={`bg-white border rounded-lg p-3 ${isExpired ? 'border-red-100' : 'border-gray-100'}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-bold text-gray-700 text-tiny">{lot.lot_number}</span>
-                        <div className="flex items-center gap-1">
-                          {isExpired && <span className="bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[9px] font-bold">Hết hạn</span>}
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                            lot.status === 'active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-100 text-gray-600 border border-gray-200'
-                          }`}>
-                            {lot.status === 'active' ? 'Đang bán' : 'Khóa'}
-                          </span>
+            <div className="space-y-3">
+              {inStockLots.length === 0 ? (
+                <div className="py-8 text-center text-gray-400 text-tiny flex flex-col items-center gap-2">
+                  <Warehouse size={28} className="text-gray-300" />
+                  {depletedCount > 0
+                    ? 'Không còn lô nào có tồn kho — mở "Lô đã hết" bên dưới để tra cứu.'
+                    : 'Chưa có lô hàng nào lưu kho cho sản phẩm này.'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {inStockLots.map(lot => <LotCard key={lot.id} lot={lot} formatCurrency={formatCurrency} />)}
+                </div>
+              )}
+
+              {/* Lô đã hết — giữ để tra cứu (khách trả hàng cũ, NSX thu hồi lô) */}
+              {depletedCount > 0 && (
+                <div className="border-t border-gray-100 pt-3">
+                  <button
+                    onClick={() => setShowDepleted(v => !v)}
+                    className="flex items-center gap-1.5 text-tiny font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    <ChevronDown size={14} className={`transition-transform ${showDepleted ? 'rotate-180' : ''}`} />
+                    Lô đã hết ({depletedCount})
+                    <span className="font-normal text-gray-400">— tồn 0, chỉ để tra cứu</span>
+                  </button>
+
+                  {showDepleted && (
+                    depletedQuery.isLoading ? <Spinner /> : (
+                      <div className="mt-2.5 space-y-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 opacity-75">
+                          {(depletedQuery.data?.rows ?? []).map(lot => (
+                            <LotCard key={lot.id} lot={lot} formatCurrency={formatCurrency} />
+                          ))}
                         </div>
+                        {depletedPages > 1 && (
+                          <div className="flex items-center justify-center gap-3 text-tiny">
+                            <button
+                              onClick={() => setDepletedPage(p => Math.max(1, p - 1))}
+                              disabled={depletedPage === 1}
+                              className="px-2 py-1 rounded border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+                            >
+                              Trước
+                            </button>
+                            <span className="text-gray-500 font-semibold">Trang {depletedPage} / {depletedPages}</span>
+                            <button
+                              onClick={() => setDepletedPage(p => Math.min(depletedPages, p + 1))}
+                              disabled={depletedPage >= depletedPages}
+                              className="px-2 py-1 rounded border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+                            >
+                              Sau
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                        <div>
-                          <span className="text-gray-400 block">Kho</span>
-                          <span className="font-semibold text-gray-600 truncate block">{lot.warehouses?.name || '—'}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block">Hạn dùng</span>
-                          <span className={`font-semibold ${isExpired ? 'text-red-500' : 'text-gray-600'}`}>
-                            {lot.expiry_date ? new Date(lot.expiry_date).toLocaleDateString('vi-VN') : 'Không hạn'}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block">Giá vốn</span>
-                          <span className="font-semibold text-gray-600 tabular-nums">{formatCurrency(lot.cost_price)}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-gray-400 block">Khả dụng / Tồn</span>
-                          <span className="font-bold text-gray-700 tabular-nums">{available} / {lot.quantity_on_hand}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
+                    )
+                  )}
+                </div>
+              )}
+            </div>
           )
         )}
 

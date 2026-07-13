@@ -19,7 +19,8 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
-  ExternalLink
+  ExternalLink,
+  ChevronDown
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { ProductImage } from '../../components/ProductImage'
@@ -28,7 +29,12 @@ import { logger } from '../../lib/logger'
 import EditProductModal from './EditProductModal'
 import ProductPromotionModal from './ProductPromotionModal'
 import { promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
-import { type ProductMovementRow } from '../../hooks/queries/useProducts'
+import {
+  useProductLots,
+  useProductDepletedLotCount,
+  DEPLETED_LOTS_PAGE_SIZE,
+  type ProductMovementRow,
+} from '../../hooks/queries/useProducts'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -113,6 +119,15 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'instructions' | 'inventory' | 'ledger' | 'promotions'>('instructions')
   const [movements, setMovements] = useState<StockMovement[]>([])
+
+  // Lô đã hết (tồn 0) — tra cứu riêng, tải khi bấm mở
+  const [showDepleted, setShowDepleted] = useState(false)
+  const [depletedPage, setDepletedPage] = useState(1)
+  const lotBranchId = (userRole?.code !== 'admin' && userRole?.code !== 'ceo') ? profile?.branch_id ?? null : null
+  const depletedCountQuery = useProductDepletedLotCount(id ?? '', lotBranchId, activeTab === 'inventory')
+  const depletedQuery = useProductLots(id ?? '', lotBranchId, activeTab === 'inventory' && showDepleted, 'depleted', depletedPage)
+  const depletedCount = depletedCountQuery.data ?? 0
+  const depletedPages = Math.max(1, Math.ceil(depletedCount / DEPLETED_LOTS_PAGE_SIZE))
 
   // Khuyến mãi theo sản phẩm
   const [productPromos, setProductPromos] = useState<ProductPromotion[]>([])
@@ -238,7 +253,9 @@ export default function ProductDetailPage() {
 
       if (varData) setVariants(varData)
 
-      // 3. Fetch stock lots
+      // 3. Fetch stock lots — CHỈ lô còn tồn (FEFO).
+      // Lô tồn 0 chỉ tích tụ theo thời gian, không dùng để bán/mô phỏng FEFO → tra cứu
+      // riêng ở mục "Lô đã hết" (tải khi bấm, phân trang ở server).
       let lotQuery = supabase
         .from('stock_lots')
         .select(`
@@ -246,12 +263,13 @@ export default function ProductDetailPage() {
           warehouses:warehouses!inner(id, code, name, branch_id)
         `)
         .eq('product_id', id)
+        .gt('quantity_on_hand', 0)
 
       if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
         lotQuery = lotQuery.eq('warehouses.branch_id', profile.branch_id)
       }
 
-      const { data: lotData } = await lotQuery.order('expiry_date', { ascending: true })
+      const { data: lotData } = await lotQuery.order('expiry_date', { ascending: true, nullsFirst: false })
 
       if (lotData) {
         setLots(lotData as unknown as StockLot[])
@@ -759,6 +777,72 @@ export default function ProductDetailPage() {
                               </div>
                             )
                           })}
+                        </div>
+                      )}
+
+                      {/* Lô đã hết (tồn 0) — giữ để tra cứu khi khách trả hàng cũ / NSX thu hồi lô.
+                          Chỉ tải khi bấm mở, phân trang ở server. */}
+                      {depletedCount > 0 && (
+                        <div className="mt-4 border-t border-gray-100 pt-4">
+                          <button
+                            onClick={() => setShowDepleted(v => !v)}
+                            className="flex items-center gap-1.5 text-tiny font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                          >
+                            <ChevronDown size={14} className={`transition-transform ${showDepleted ? 'rotate-180' : ''}`} />
+                            Lô đã hết ({depletedCount})
+                            <span className="font-normal text-gray-400">— tồn 0, chỉ để tra cứu</span>
+                          </button>
+
+                          {showDepleted && (
+                            <div className="mt-3 space-y-3">
+                              <div className="overflow-x-auto tbl-x border border-gray-100 rounded-lg bg-white">
+                                <table className="w-full text-left text-tiny border-collapse">
+                                  <thead>
+                                    <tr className="bg-gray-50 border-b border-gray-100 text-gray-500 font-semibold text-[10px] uppercase tracking-wider">
+                                      <th className="p-2.5">Số lô</th>
+                                      <th className="p-2.5">Kho</th>
+                                      <th className="p-2.5">Hạn dùng</th>
+                                      <th className="p-2.5 text-right">Giá vốn</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(depletedQuery.data?.rows ?? []).map(lot => (
+                                      <tr key={lot.id} className="border-b border-gray-50 last:border-0 text-gray-600">
+                                        <td className="p-2.5 font-bold text-gray-700">{lot.lot_number}</td>
+                                        <td className="p-2.5">{lot.warehouses?.name || '—'}</td>
+                                        <td className="p-2.5">
+                                          {lot.expiry_date ? new Date(lot.expiry_date).toLocaleDateString('vi-VN') : 'Không hạn'}
+                                        </td>
+                                        <td className="p-2.5 text-right tabular-nums">{formatCurrency(lot.cost_price)}</td>
+                                      </tr>
+                                    ))}
+                                    {depletedQuery.isLoading && (
+                                      <tr><td colSpan={4} className="p-3 text-center text-gray-400">Đang tải…</td></tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                              {depletedPages > 1 && (
+                                <div className="flex items-center justify-center gap-3 text-tiny">
+                                  <button
+                                    onClick={() => setDepletedPage(p => Math.max(1, p - 1))}
+                                    disabled={depletedPage === 1}
+                                    className="px-2.5 py-1 rounded border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+                                  >
+                                    Trước
+                                  </button>
+                                  <span className="text-gray-500 font-semibold">Trang {depletedPage} / {depletedPages}</span>
+                                  <button
+                                    onClick={() => setDepletedPage(p => Math.min(depletedPages, p + 1))}
+                                    disabled={depletedPage >= depletedPages}
+                                    className="px-2.5 py-1 rounded border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+                                  >
+                                    Sau
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
