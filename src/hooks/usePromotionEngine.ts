@@ -17,6 +17,8 @@ export interface Promotion {
   }
   buy_x_qty?: number
   get_y_qty?: number
+  /** Giá cố định cho trọn bộ combo (combo_price). Cần applies_to.product_ids. */
+  combo_price?: number | null
   tiers?: { min_qty: number; discount_percent: number }[]
   customer_tiers?: string[]
   branch_ids?: string[]
@@ -48,7 +50,7 @@ export interface AppliedDiscount {
   label: string
 }
 
-function calcPromoDiscount(promo: Promotion, cart: CartRow[], subtotal: number, customerTier?: string): number {
+export function calcPromoDiscount(promo: Promotion, cart: CartRow[], subtotal: number, customerTier?: string): number {
   if (subtotal < promo.min_order_amount) return 0
 
   const now = new Date()
@@ -73,6 +75,12 @@ function calcPromoDiscount(promo: Promotion, cart: CartRow[], subtotal: number, 
     case 'fixed_amount':
       return Math.min(promo.discount_value, applicableSubtotal)
 
+    // ⚠️ Ngữ nghĩa KM cấp đơn KHÁC với KM theo sản phẩm (product_promotions):
+    //   • Ở đây: khách lấy (X+Y) món nhưng chỉ TÍNH TIỀN X món — hàng tặng đã nằm
+    //     sẵn trong giỏ, chỉ quy ra tiền giảm. Không sinh dòng quà.
+    //   • KM sản phẩm: mua X thì THÊM Y món quà mới vào giỏ.
+    // Không được đổi sang floor(qty/X) ở đây: sẽ giảm tiền mà không xuất thêm hàng.
+    // Loại này đã gỡ khỏi form tạo mới — chỉ còn tính cho dữ liệu KM cũ.
     case 'buy_x_get_y': {
       const x = promo.buy_x_qty ?? 1
       const y = promo.get_y_qty ?? 1
@@ -82,6 +90,27 @@ function calcPromoDiscount(promo: Promotion, cart: CartRow[], subtotal: number, 
         ? Math.min(...applicableRows.map(r => r.unitPrice))
         : 0
       return sets * y * cheapestPrice
+    }
+
+    // Combo: giỏ phải có ĐỦ mọi SP trong applies_to.product_ids. Mỗi "bộ" gồm 1 đơn vị
+    // mỗi SP; số bộ = SL nhỏ nhất trong các SP đó. Giảm = (giá gốc bộ − giá combo) × số bộ.
+    case 'combo_price': {
+      const ids = promo.applies_to?.product_ids ?? []
+      const comboPrice = promo.combo_price
+      if (ids.length === 0 || comboPrice == null || comboPrice < 0) return 0
+
+      let sets = Infinity
+      let originalPerSet = 0
+      for (const id of ids) {
+        const rows = cart.filter(r => r.product.id === id)
+        const qty = rows.reduce((s, r) => s + r.quantity, 0)
+        if (qty <= 0) return 0                       // thiếu 1 SP → không thành combo
+        sets = Math.min(sets, qty)
+        originalPerSet += Math.min(...rows.map(r => r.unitPrice))
+      }
+      if (!Number.isFinite(sets) || sets < 1) return 0
+
+      return Math.max(0, Math.round((originalPerSet - comboPrice) * sets))
     }
 
     case 'tiered_quantity': {
@@ -103,14 +132,27 @@ function calcPromoDiscount(promo: Promotion, cart: CartRow[], subtotal: number, 
 export function usePromotionEngine(branchId?: string | null) {
   const [allPromotions, setAllPromotions] = useState<Promotion[]>([])
 
-  useEffect(() => {
-    supabase
+  const load = useCallback(async () => {
+    const { data } = await supabase
       .from('promotions')
       .select('*')
       .eq('is_active', true)
       .order('priority', { ascending: false })
-      .then(({ data }: { data: Promotion[] | null }) => { if (data) setAllPromotions(data as Promotion[]) })
+    setAllPromotions((data as Promotion[] | null) ?? [])
   }, [])
+
+  useEffect(() => { load() }, [load])
+
+  // Nạp lại khi quay lại tab: KM vừa sửa/tắt/hết lượt phải có hiệu lực ngay tại quầy.
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden) load() }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load])
 
   // Lọc KM theo chi nhánh hiện tại: branch_ids rỗng = toàn hệ thống
   const promotions = useMemo(

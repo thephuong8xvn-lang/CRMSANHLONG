@@ -104,6 +104,11 @@ interface CartItem {
   discountPercent: number // manual discount in percent
   isPriceOverridden?: boolean
   isGift?: boolean // dòng quà tặng từ KM (mua X tặng Y) — không phải SP giá-0 thật
+  // ── Tự động áp KM theo sản phẩm ──
+  autoPromoId?: string      // CK% trên dòng này do KM tự đặt (không phải NV nhập tay)
+  promoDismissed?: boolean  // NV đã bấm "Bỏ KM" cho dòng này → không tự áp lại
+  giftFromRowId?: string    // dòng quà: sinh ra từ dòng mua nào (rỗng = quà thêm tay bằng nút +KM)
+  giftFromPromoId?: string  // dòng quà: thuộc KM nào
 }
 
 interface PriceList {
@@ -293,7 +298,7 @@ export default function POSPage() {
   // Promotion / voucher (lọc theo chi nhánh của nhân viên đăng nhập)
   const branchId = profile?.branch_id ?? null
   const { applyBestPromotion, applyVoucher } = usePromotionEngine(branchId)
-  const { getTopPromo } = useProductPromotions(branchId)
+  const { getTopPromo, loading: promosLoading } = useProductPromotions(branchId)
   const [voucherCode, setVoucherCode] = useState('')
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null)
   const [voucherError, setVoucherError] = useState('')
@@ -1082,33 +1087,111 @@ export default function POSPage() {
     ])
   }, [])
 
-  // Áp dụng quà tặng theo gợi ý KM sản phẩm (mua X tặng Y) — thêm/cập nhật dòng quà đúng SL & giá quà
-  const applyProductGift = useCallback((giftProduct: Product, giftQty: number, giftPrice = 0) => {
-    if (giftQty <= 0) return
-    const price = Math.max(0, giftPrice)
-    setCart(prev => {
-      // Khớp dòng quà cũ của cùng SP (theo cờ isGift) để cập nhật thay vì thêm trùng
-      const existing = prev.find(c => c.product.id === giftProduct.id && c.isGift)
-      if (existing) {
-        return prev.map(c => c.id === existing.id ? { ...c, quantity: giftQty, unitPrice: price } : c)
-      }
-      return [
-        ...prev,
-        { id: genId(), product: giftProduct, quantity: giftQty, unitPrice: price, discountPercent: 0, isPriceOverridden: true, isGift: true }
-      ]
-    })
+  // Bỏ / áp lại KM sản phẩm cho một dòng giỏ. Dọn luôn CK do KM đặt; dòng quà sẽ
+  // được effect tự-áp bên dưới gỡ ra ở lượt render kế tiếp.
+  const setPromoDismissed = useCallback((rowId: string, dismissed: boolean) => {
+    setCart(prev => prev.map(c => c.id === rowId ? { ...c, promoDismissed: dismissed } : c))
   }, [])
 
-  // Set manual discount for row
+  // Set manual discount for row. NV nhập tay → dòng thoát khỏi quyền kiểm soát của KM
+  // (xóa autoPromoId) để effect tự-áp không ghi đè con số NV vừa gõ.
   const setRowDiscount = useCallback((rowId: string, discount: number) => {
     setCart(prev => {
       const index = prev.findIndex(item => item.id === rowId)
       if (index === -1) return prev
       const updated = [...prev]
-      updated[index] = { ...updated[index], discountPercent: Math.max(0, Math.min(100, discount)) }
+      updated[index] = {
+        ...updated[index],
+        discountPercent: Math.max(0, Math.min(100, discount)),
+        autoPromoId: undefined,
+      }
       return updated
     })
   }, [])
+
+  // ── Tự động áp KM theo sản phẩm ────────────────────────────────────────────
+  // Trước đây POS chỉ *gợi ý*: nhân viên quên bấm là khách mất quà. Nay đủ điều kiện
+  // là áp ngay (sinh dòng quà / đặt CK%), nhân viên bấm "Bỏ KM" nếu khách không lấy.
+  // Effect chỉ ghi lại giỏ khi thực sự có thay đổi (changed) — nếu không sẽ lặp vô hạn.
+  useEffect(() => {
+    if (promosLoading) return
+    setCart(prev => {
+      let changed = false
+      const nextBuyers: CartItem[] = []
+      // dòng mua (id) → quà mà KM của nó đang đòi hỏi
+      const wantGifts = new Map<string, { productId: string; qty: number; price: number; promoId: string }>()
+
+      for (const item of prev) {
+        if (item.isGift) continue   // dòng quà xử lý ở vòng dưới
+
+        const promo = item.promoDismissed ? null : getTopPromo(item.product.id)
+        const ev = promo ? evaluateProductPromo(promo, item.quantity, item.unitPrice) : null
+        const active = ev?.eligible ? ev : null
+
+        if (active && active.promo.promo_type === 'buy_x_get_y') {
+          wantGifts.set(item.id, {
+            productId: active.giftProductId,
+            qty: active.giftQty,
+            price: active.giftPrice,
+            promoId: active.promo.id,
+          })
+        }
+
+        const isDiscountPromo = active != null && active.promo.promo_type !== 'buy_x_get_y'
+        const wantPct = isDiscountPromo ? active!.discountPercent : 0
+        const wantPromoId = isDiscountPromo ? active!.promo.id : undefined
+
+        // Chỉ đụng vào CK khi nó đang do KM đặt, hoặc dòng chưa có CK nào (NV chưa gõ tay).
+        const mayTouch = item.autoPromoId != null || item.discountPercent === 0
+        if (mayTouch && (item.discountPercent !== wantPct || item.autoPromoId !== wantPromoId)) {
+          nextBuyers.push({ ...item, discountPercent: wantPct, autoPromoId: wantPromoId })
+          changed = true
+        } else {
+          nextBuyers.push(item)
+        }
+      }
+
+      const nextGifts: CartItem[] = []
+      for (const g of prev) {
+        if (!g.isGift) continue
+        // Quà nhân viên tự thêm bằng nút "+KM" → không có giftFromRowId, KM không đụng tới.
+        if (!g.giftFromRowId) { nextGifts.push(g); continue }
+
+        const want = wantGifts.get(g.giftFromRowId)
+        // Dòng mua đã xóa / giảm SL dưới ngưỡng / NV bỏ KM / KM đổi sang SP quà khác → gỡ quà.
+        if (!want || want.productId !== g.product.id) { changed = true; continue }
+
+        wantGifts.delete(g.giftFromRowId)   // đã có dòng quà cho KM này
+        if (g.quantity !== want.qty || g.unitPrice !== want.price) {
+          nextGifts.push({ ...g, quantity: want.qty, unitPrice: want.price })
+          changed = true
+        } else {
+          nextGifts.push(g)
+        }
+      }
+
+      // Quà còn thiếu → thêm mới
+      for (const [rowId, want] of wantGifts) {
+        const giftProduct = products.find(p => p.id === want.productId)
+        if (!giftProduct) continue   // SP quà không có trong danh mục đang tải → bỏ qua, không lặp
+        nextGifts.push({
+          id: genId(),
+          product: giftProduct,
+          quantity: want.qty,
+          unitPrice: want.price,
+          discountPercent: 0,
+          isPriceOverridden: true,
+          isGift: true,
+          giftFromRowId: rowId,
+          giftFromPromoId: want.promoId,
+        })
+        changed = true
+      }
+
+      if (!changed) return prev
+      return [...nextBuyers, ...nextGifts]   // quà luôn dồn xuống cuối giỏ
+    })
+  }, [cart, getTopPromo, products, promosLoading])
 
   // Calculate totals
   const subtotal = useMemo(() => cart.reduce((sum, item) => {
@@ -1626,16 +1709,35 @@ export default function POSPage() {
       if (error) throw error
       const res = data as { order_id: string; order_code: string }
 
+      // Ghi nhận lượt dùng KM/voucher cấp đơn (trước đây KHÔNG đếm → voucher "1 lần"
+      // dùng được vô hạn). Chạy SAU khi đơn đã chốt: nếu bước này lỗi, đơn vẫn hợp lệ
+      // nên chỉ cảnh báo để admin đối soát, không rollback đơn của khách.
+      let usageWarning = ''
+      if (appliedDiscount) {
+        const { error: usageErr } = await supabase.rpc('fn_consume_promo_usage', {
+          p_promotion_id: appliedDiscount.type === 'promotion' ? appliedDiscount.id : null,
+          p_voucher_id: appliedDiscount.type === 'voucher' ? appliedDiscount.id : null,
+        })
+        if (usageErr) {
+          console.error('Ghi nhận lượt dùng KM thất bại:', usageErr)
+          usageWarning = ` ⚠️ Chưa ghi nhận được lượt dùng "${appliedDiscount.name}" — báo admin kiểm tra lại số lượt.`
+        }
+      }
+
       setCreatedOrderCode(res.order_code)
       setCreatedOrderId(res.order_id)
       resetActiveTab()
       fetchStockData()
 
-      if (autoPrint) {
+      // Có cảnh báo lượt dùng → KHÔNG nhảy thẳng sang in, để nhân viên đọc được cảnh báo.
+      if (autoPrint && !usageWarning) {
         navigate(`/print-preview?type=invoice&id=${res.order_id}`)
       } else {
         setShowReceiptModal(true)
-        setAlertMsg({ type: 'success', text: `Hóa đơn ${res.order_code} đã thanh toán thành công.` })
+        setAlertMsg({
+          type: usageWarning ? 'error' : 'success',
+          text: `Hóa đơn ${res.order_code} đã thanh toán thành công.${usageWarning}`,
+        })
       }
     } catch (err: any) {
       console.error('POS billing error:', err)
@@ -2164,43 +2266,52 @@ export default function POSPage() {
                         {((item.unitPrice * (1 - item.discountPercent / 100)) * item.quantity).toLocaleString('vi-VN')} ₫
                       </td>
                     </tr>
-                    {promoEval && (
-                      <tr className="border-b border-amber-100 bg-amber-50/50">
-                        <td colSpan={10} className="px-3 py-1.5">
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <span className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
-                              🎁 {rowPromo?.name}
-                              {promoEval.promo.promo_type === 'buy_x_get_y'
-                                ? (promoEval.eligible
-                                    ? ` — đủ điều kiện tặng ${promoEval.giftQty} ${giftProduct?.name ?? ''}`
-                                      + (promoEval.giftPrice > 0
-                                          ? ` (giá ưu đãi ${promoEval.giftPrice.toLocaleString('vi-VN')}₫)`
-                                          : ' (miễn phí)')
-                                    : ` — mua thêm ${promoEval.remaining} để nhận quà`)
-                                : (promoEval.eligible
-                                    ? ` — giảm ${promoEval.discountPercent}% cho dòng này`
-                                    : ` — mua thêm ${promoEval.remaining} để được giảm`)}
-                            </span>
-                            {promoEval.eligible && promoEval.promo.promo_type === 'buy_x_get_y' && giftProduct && (
-                              <button
-                                onClick={() => applyProductGift(giftProduct, promoEval.giftQty, promoEval.giftPrice)}
-                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded shadow-sm active:scale-95 transition-all"
-                              >
-                                🎁 Tặng {promoEval.giftQty}
-                              </button>
-                            )}
-                            {promoEval.eligible && promoEval.promo.promo_type !== 'buy_x_get_y' && (
-                              <button
-                                onClick={() => setRowDiscount(item.id, promoEval.discountPercent)}
-                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 rounded shadow-sm active:scale-95 transition-all"
-                              >
-                                Áp giảm {promoEval.discountPercent}%
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                    {promoEval && (() => {
+                      const dismissed = Boolean(item.promoDismissed)
+                      const applied = promoEval.eligible && !dismissed
+                      const isBxgy = promoEval.promo.promo_type === 'buy_x_get_y'
+                      return (
+                        <tr className={`border-b ${applied ? 'border-emerald-100 bg-emerald-50/60' : 'border-amber-100 bg-amber-50/50'}`}>
+                          <td colSpan={10} className="px-3 py-1.5">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <span className={`text-[11px] font-semibold flex items-center gap-1 ${applied ? 'text-emerald-800' : 'text-amber-800'}`}>
+                                {applied ? '✅' : '🎁'} {rowPromo?.name}
+                                {applied
+                                  ? (isBxgy
+                                      ? ` — đã tặng ${promoEval.giftQty} ${giftProduct?.name ?? ''}`
+                                        + (promoEval.giftPrice > 0
+                                            ? ` (giá ưu đãi ${promoEval.giftPrice.toLocaleString('vi-VN')}₫)`
+                                            : ' (miễn phí)')
+                                      : ` — đã giảm ${promoEval.discountPercent}% cho dòng này`)
+                                  : dismissed
+                                    ? ' — đã bỏ KM cho dòng này'
+                                    : (isBxgy
+                                        ? ` — mua thêm ${promoEval.remaining} để nhận quà`
+                                        : ` — mua thêm ${promoEval.remaining} để được giảm`)}
+                              </span>
+
+                              {applied && (
+                                <button
+                                  onClick={() => setPromoDismissed(item.id, true)}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 hover:text-red-600 hover:border-red-200 rounded shadow-sm active:scale-95 transition-all"
+                                  title="Khách không lấy khuyến mãi này"
+                                >
+                                  Bỏ KM
+                                </button>
+                              )}
+                              {dismissed && (
+                                <button
+                                  onClick={() => setPromoDismissed(item.id, false)}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded shadow-sm active:scale-95 transition-all"
+                                >
+                                  Áp lại KM
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })()}
                     </Fragment>
                     )
                   })}

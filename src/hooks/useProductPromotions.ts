@@ -128,22 +128,30 @@ export function useProductPromotions(branchId?: string | null) {
   const [promotions, setPromotions] = useState<ProductPromotion[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    supabase
+  const load = useCallback(async () => {
+    const { data } = await supabase
       .from('product_promotions')
       .select('*')
       .eq('is_active', true)
       .order('priority', { ascending: false })
       .order('id')
-      .then(({ data }: { data: ProductPromotion[] | null }) => {
-        if (cancelled) return
-        setPromotions(data ?? [])
-        setLoading(false)
-      })
-    return () => { cancelled = true }
+    setPromotions((data as ProductPromotion[] | null) ?? [])
+    setLoading(false)
   }, [])
+
+  useEffect(() => { load() }, [load])
+
+  // POS thường mở suốt ngày trên máy quầy. Trước đây KM chỉ nạp 1 lần lúc mount →
+  // admin sửa/tắt KM xong, quầy vẫn chạy KM cũ tới khi F5. Nạp lại khi quay lại tab.
+  useEffect(() => {
+    const refresh = () => { if (!document.hidden) load() }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [load])
 
   // Lọc theo chi nhánh + hiệu lực; gom theo product_id
   const byProduct = useMemo(() => {

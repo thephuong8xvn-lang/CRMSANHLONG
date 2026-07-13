@@ -16,8 +16,11 @@ export interface ProductPromoDefaults {
 }
 
 interface Props {
-  productId: string
-  productName: string
+  /** SP gắn KM. Bỏ trống khi mở từ module KM → người dùng tự chọn (cần pickProduct). */
+  productId?: string
+  productName?: string
+  /** true = hiện ô chọn sản phẩm (A) ngay trong modal (dùng ở trang /promotions). */
+  pickProduct?: boolean
   promo?: ProductPromotion        // có = chế độ sửa
   defaults?: ProductPromoDefaults // có = prefill khi tạo mới (bỏ qua nếu đang sửa)
   onClose: () => void
@@ -30,7 +33,7 @@ const PROMO_TYPE_LABELS: Record<ProductPromotion['promo_type'], string> = {
   fixed_amount: 'Giảm tiền theo số lượng',
 }
 
-export default function ProductPromotionModal({ productId, productName, promo, defaults, onClose, onSaved }: Props) {
+export default function ProductPromotionModal({ productId, productName, pickProduct, promo, defaults, onClose, onSaved }: Props) {
   const { profile, userRole } = useAuth()
   const isAdmin = userRole.code === 'admin' || userRole.code === 'ceo'
   const myBranchId = profile?.branch_id ?? null
@@ -43,12 +46,18 @@ export default function ProductPromotionModal({ productId, productName, promo, d
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // SP gắn KM. Mở từ chi tiết SP → cố định; mở từ module KM → người dùng chọn.
+  const [pickedProductId, setPickedProductId] = useState<string>(promo?.product_id ?? productId ?? '')
+  const pickedProductName =
+    productName
+    ?? (productOptions.find(o => o.value === pickedProductId)?.label ?? '')
+
   const [form, setForm] = useState({
     name: promo?.name ?? d?.name ?? '',
     promo_type: promo?.promo_type ?? d?.promo_type ?? ('buy_x_get_y' as ProductPromotion['promo_type']),
     buy_qty: String(promo?.buy_qty ?? 10),
     get_qty: String(promo?.get_qty ?? 2),
-    giftOther: Boolean(promo?.get_product_id && promo.get_product_id !== productId),
+    giftOther: Boolean(promo?.get_product_id && promo.get_product_id !== promo.product_id),
     get_product_id: promo?.get_product_id ?? '',
     giftPaid: Boolean(promo?.get_price && promo.get_price > 0), // true = quà có giá ưu đãi, false = miễn phí
     get_price: String(promo?.get_price ?? ''),
@@ -84,6 +93,7 @@ export default function ProductPromotionModal({ productId, productName, promo, d
 
   const handleSave = async () => {
     setError('')
+    if (!pickedProductId) { setError('Hãy chọn sản phẩm áp dụng KM'); return }
     if (!form.name.trim()) { setError('Nhập tên chương trình KM'); return }
 
     if (form.promo_type === 'buy_x_get_y') {
@@ -101,7 +111,7 @@ export default function ProductPromotionModal({ productId, productName, promo, d
 
     setSaving(true)
     const payload: Record<string, unknown> = {
-      product_id: productId,
+      product_id: pickedProductId,
       name: form.name.trim(),
       promo_type: form.promo_type,
       buy_qty: form.promo_type === 'buy_x_get_y' ? Number(form.buy_qty) : null,
@@ -140,10 +150,22 @@ export default function ProductPromotionModal({ productId, productName, promo, d
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
         <h2 className="text-lg font-semibold mb-1">{isEdit ? 'Sửa khuyến mãi sản phẩm' : 'Thêm khuyến mãi sản phẩm'}</h2>
-        <p className="text-sm text-gray-500 mb-4">{productName}</p>
+        <p className="text-sm text-gray-500 mb-4">{pickedProductName || 'Chưa chọn sản phẩm'}</p>
         {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
 
         <div className="space-y-3">
+          {pickProduct && (
+            <div className="text-sm font-medium text-gray-700">
+              Sản phẩm áp dụng (A) *
+              <SmartSearchSelect
+                options={productOptions}
+                value={pickedProductId}
+                onChange={setPickedProductId}
+                placeholder="-- Chọn sản phẩm gắn KM --"
+              />
+            </div>
+          )}
+
           <label className="block text-sm font-medium text-gray-700">
             Tên chương trình *
             <input className={inputCls} placeholder="VD: Mua 10 tặng 2"
@@ -163,7 +185,7 @@ export default function ProductPromotionModal({ productId, productName, promo, d
               {/* Sản phẩm A — sản phẩm đang gán KM (điều kiện mua) */}
               <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-sm">
                 <span className="text-gray-600">Mua sản phẩm </span>
-                <span className="font-semibold text-blue-800">(A) {productName}</span>
+                <span className="font-semibold text-blue-800">(A) {pickedProductName || '(chưa chọn)'}</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -220,10 +242,10 @@ export default function ProductPromotionModal({ productId, productName, promo, d
 
               {/* Tóm tắt sống — đọc trực tiếp từ cấu hình để phát hiện tên KM lệch */}
               <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[13px] text-amber-900">
-                🎁 Mua <b>{form.buy_qty || '?'}</b> {productName} → tặng <b>{form.get_qty || '?'}</b>{' '}
+                🎁 Mua <b>{form.buy_qty || '?'}</b> {pickedProductName || '(chưa chọn SP)'} → tặng <b>{form.get_qty || '?'}</b>{' '}
                 {form.giftOther
                   ? (productOptions.find(o => o.value === form.get_product_id)?.label ?? '(chọn SP tặng B)')
-                  : productName}
+                  : (pickedProductName || '(chưa chọn SP)')}
                 {' · '}
                 {form.giftPaid && Number(form.get_price) > 0
                   ? `giá ưu đãi ${Number(form.get_price).toLocaleString('vi-VN')}₫`

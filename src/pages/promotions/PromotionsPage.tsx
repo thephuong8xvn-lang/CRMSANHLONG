@@ -1,19 +1,111 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
-import { Plus, Tag, Pencil, Trash2, ToggleLeft, ToggleRight, Ticket, Building2 } from 'lucide-react'
+import { fetchAllRows } from '../../lib/fetchAllRows'
+import { Plus, Tag, Pencil, Trash2, ToggleLeft, ToggleRight, Ticket, Building2, Search, X } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import type { Promotion, Voucher } from '../../hooks/usePromotionEngine'
+import { promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
+import ProductPromotionModal from '../products/ProductPromotionModal'
 
 interface BranchLite { id: string; name: string }
+interface ProductLite { id: string; name: string; sku: string }
+
+/** KM sản phẩm kèm tên SP (join) để liệt kê tập trung tại module KM. */
+type ProductPromoRow = ProductPromotion & {
+  product?: { name: string; sku: string } | null
+  gift_product?: { name: string } | null
+}
 
 const DISCOUNT_TYPE_LABELS: Record<string, string> = {
   percent: 'Giảm % đơn hàng',
   fixed_amount: 'Giảm tiền cố định',
-  buy_x_get_y: 'Mua X tặng Y',
+  buy_x_get_y: 'Mua X+Y tính tiền X',
   combo_price: 'Combo giá',
   tiered_quantity: 'Bậc thang SL',
   customer_tier_discount: 'Theo hạng KH',
+}
+
+/**
+ * Loại được phép TẠO MỚI. `buy_x_get_y` cấp đơn đã gỡ: nó có nghĩa "lấy X+Y món,
+ * tính tiền X món" — khác hẳn "Mua X tặng Y" của KM theo sản phẩm (sinh dòng quà).
+ * Hai nhãn giống nhau gây hiểu nhầm → dồn về KM theo sản phẩm. KM cũ vẫn sửa được.
+ */
+const CREATABLE_TYPES = ['percent', 'fixed_amount', 'combo_price', 'tiered_quantity', 'customer_tier_discount'] as const
+
+/** Khớp enum customer_value_tier trong DB — KHÔNG phải regular/silver/gold/platinum. */
+const CUSTOMER_TIERS: { value: string; label: string }[] = [
+  { value: 'normal', label: 'Khách thường' },
+  { value: 'vip', label: 'VIP' },
+  { value: 'high_potential', label: 'Tiềm năng cao' },
+]
+
+/** Các loại KM cần biết áp lên sản phẩm nào (rỗng = toàn bộ giỏ, riêng combo bắt buộc chọn). */
+const TYPES_NEEDING_PRODUCTS = ['percent', 'fixed_amount', 'combo_price', 'tiered_quantity']
+
+/** Chọn nhiều sản phẩm cho applies_to.product_ids — tìm theo tên/SKU. */
+function ProductPicker({ products, selected, onChange }: {
+  products: ProductLite[]
+  selected: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const [q, setQ] = useState('')
+  const matches = useMemo(() => {
+    const kw = q.trim().toLowerCase()
+    if (!kw) return []
+    return products
+      .filter(p => !selected.includes(p.id))
+      .filter(p => p.name.toLowerCase().includes(kw) || (p.sku ?? '').toLowerCase().includes(kw))
+      .slice(0, 8)
+  }, [q, products, selected])
+
+  const chosen = useMemo(
+    () => selected.map(id => products.find(p => p.id === id)).filter(Boolean) as ProductLite[],
+    [selected, products],
+  )
+
+  return (
+    <div className="mt-1 border border-gray-300 rounded-lg p-2">
+      <div className="flex items-center gap-1.5 border-b border-gray-100 pb-1.5">
+        <Search size={14} className="text-gray-400 shrink-0" />
+        <input
+          className="w-full text-sm outline-none font-normal"
+          placeholder="Gõ tên hoặc SKU để thêm sản phẩm..."
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
+      </div>
+
+      {matches.length > 0 && (
+        <div className="mt-1 max-h-36 overflow-y-auto">
+          {matches.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => { onChange([...selected, p.id]); setQ('') }}
+              className="w-full text-left px-2 py-1.5 text-sm hover:bg-blue-50 rounded font-normal"
+            >
+              {p.name} <span className="text-xs text-gray-400 font-mono">{p.sku}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {chosen.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {chosen.map(p => (
+            <span key={p.id} className="inline-flex items-center gap-1 bg-blue-50 text-blue-800 text-xs px-2 py-1 rounded-lg font-normal">
+              {p.name}
+              <button type="button" onClick={() => onChange(selected.filter(id => id !== p.id))}
+                className="text-blue-400 hover:text-red-600">
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const DISCOUNT_TYPE_COLORS: Record<string, string> = {
@@ -29,7 +121,10 @@ function formatDiscount(p: Promotion) {
   switch (p.discount_type) {
     case 'percent': return `${p.discount_value}%`
     case 'fixed_amount': return `${p.discount_value.toLocaleString('vi-VN')}₫`
-    case 'buy_x_get_y': return `Mua ${p.buy_x_qty ?? 'X'} tặng ${p.get_y_qty ?? 'Y'}`
+    case 'buy_x_get_y': return `Lấy ${(p.buy_x_qty ?? 0) + (p.get_y_qty ?? 0)} tính tiền ${p.buy_x_qty ?? 'X'}`
+    case 'combo_price': return p.combo_price != null
+      ? `Combo ${p.combo_price.toLocaleString('vi-VN')}₫ · ${(p.applies_to?.product_ids ?? []).length} SP`
+      : 'Combo (chưa đặt giá)'
     case 'tiered_quantity': return `${(p.tiers ?? []).length} bậc`
     case 'customer_tier_discount': return `${p.discount_value}% cho ${(p.customer_tiers ?? []).join(', ')}`
     default: return `${p.discount_value}`
@@ -128,6 +223,7 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
   const myBranchId = profile?.branch_id ?? null
   const isEdit = Boolean(promo?.id)
   const [branches, setBranches] = useState<BranchLite[]>([])
+  const [products, setProducts] = useState<ProductLite[]>([])
   const [form, setForm] = useState({
     code: promo?.code ?? '',
     name: promo?.name ?? '',
@@ -137,8 +233,10 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
     min_order_amount: String(promo?.min_order_amount ?? 0),
     buy_x_qty: String(promo?.buy_x_qty ?? 1),
     get_y_qty: String(promo?.get_y_qty ?? 1),
+    combo_price: promo?.combo_price != null ? String(promo.combo_price) : '',
+    product_ids: promo?.applies_to?.product_ids ?? [],
     tiers_json: promo?.tiers ? JSON.stringify(promo.tiers, null, 2) : '[{"min_qty":5,"discount_percent":5},{"min_qty":10,"discount_percent":10}]',
-    customer_tiers: (promo?.customer_tiers ?? []).join(', '),
+    customer_tiers: promo?.customer_tiers ?? [],
     valid_from: promo?.valid_from?.slice(0, 10) ?? '',
     valid_to: promo?.valid_to?.slice(0, 10) ?? '',
     max_uses: String(promo?.max_uses ?? ''),
@@ -148,10 +246,24 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Loại đang sửa có thể là loại cũ đã gỡ khỏi danh sách tạo mới → vẫn phải hiện trong dropdown.
+  const typeOptions = useMemo(() => {
+    const list: string[] = [...CREATABLE_TYPES]
+    if (form.discount_type && !list.includes(form.discount_type)) list.unshift(form.discount_type)
+    return list
+  }, [form.discount_type])
+
   useEffect(() => {
-    if (!isAdmin) return
-    supabase.from('branches').select('id, name').eq('is_active', true).order('name')
-      .then(({ data }: { data: BranchLite[] | null }) => { if (data) setBranches(data) })
+    if (isAdmin) {
+      supabase.from('branches').select('id, name').eq('is_active', true).order('name')
+        .then(({ data }: { data: BranchLite[] | null }) => { if (data) setBranches(data) })
+    }
+    fetchAllRows<ProductLite>((from, to) =>
+      supabase.from('products').select('id, name, sku').eq('is_active', true)
+        .order('name', { ascending: true }).order('id').range(from, to)
+    )
+      .then(setProducts)
+      .catch(err => console.error('Load products for promotion failed:', err))
   }, [isAdmin])
 
   const toggleBranch = (id: string) => {
@@ -165,13 +277,24 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
     if (!form.code.trim()) { setError('Nhập mã KM'); return }
     if (!form.name.trim()) { setError('Nhập tên KM'); return }
     if (!isAdmin && !myBranchId) { setError('Tài khoản chưa gán chi nhánh, không thể tạo KM'); return }
-    setSaving(true)
+
+    if (form.discount_type === 'combo_price') {
+      if (form.product_ids.length < 2) { setError('Combo cần ít nhất 2 sản phẩm'); return }
+      if (!form.combo_price || Number(form.combo_price) <= 0) { setError('Nhập giá combo > 0'); return }
+    }
+    if (['percent', 'customer_tier_discount'].includes(form.discount_type) && Number(form.discount_value) > 100) {
+      setError('Giảm % không thể vượt quá 100'); return
+    }
+    if (form.discount_type === 'customer_tier_discount' && form.customer_tiers.length === 0) {
+      setError('Chọn ít nhất một hạng khách hàng'); return
+    }
 
     let tiers = undefined
     if (form.discount_type === 'tiered_quantity') {
-      try { tiers = JSON.parse(form.tiers_json) } catch { setError('Tiers JSON không hợp lệ'); setSaving(false); return }
+      try { tiers = JSON.parse(form.tiers_json) } catch { setError('Tiers JSON không hợp lệ'); return }
     }
 
+    setSaving(true)
     const payload: Record<string, unknown> = {
       code: form.code.trim().toUpperCase(),
       name: form.name.trim(),
@@ -185,8 +308,11 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
       priority: Number(form.priority) || 0,
       buy_x_qty: form.discount_type === 'buy_x_get_y' ? Number(form.buy_x_qty) : null,
       get_y_qty: form.discount_type === 'buy_x_get_y' ? Number(form.get_y_qty) : null,
+      combo_price: form.discount_type === 'combo_price' ? Number(form.combo_price) : null,
+      // Rỗng = áp lên toàn bộ giỏ hàng. Combo bắt buộc có (đã chặn ở trên).
+      applies_to: { product_ids: form.product_ids },
       tiers: tiers ?? null,
-      customer_tiers: form.customer_tiers ? form.customer_tiers.split(',').map(s => s.trim()).filter(Boolean) : [],
+      customer_tiers: form.discount_type === 'customer_tier_discount' ? form.customer_tiers : [],
       branch_ids: isAdmin ? form.branch_ids : (myBranchId ? [myBranchId] : []),
       updated_at: new Date().toISOString(),
     }
@@ -218,8 +344,8 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
               <select className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 value={form.discount_type}
                 onChange={e => setForm(f => ({ ...f, discount_type: e.target.value as Promotion['discount_type'] }))}>
-                {Object.entries(DISCOUNT_TYPE_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+                {typeOptions.map(v => (
+                  <option key={v} value={v}>{DISCOUNT_TYPE_LABELS[v] ?? v}</option>
                 ))}
               </select>
             </label>
@@ -253,6 +379,34 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
             </div>
           )}
 
+          {form.discount_type === 'combo_price' && (
+            <label className="block text-sm font-medium text-gray-700">
+              Giá trọn bộ combo (₫) *
+              <input type="number" min="0" className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                placeholder="VD: 450000"
+                value={form.combo_price} onChange={e => setForm(f => ({ ...f, combo_price: e.target.value }))} />
+              <span className="text-xs text-gray-400 font-normal">
+                Giá cho 1 bộ gồm 1 đơn vị mỗi sản phẩm bên dưới. Giỏ có đủ bộ nào thì giảm bộ đó.
+              </span>
+            </label>
+          )}
+
+          {TYPES_NEEDING_PRODUCTS.includes(form.discount_type) && (
+            <div className="text-sm font-medium text-gray-700">
+              {form.discount_type === 'combo_price' ? 'Sản phẩm trong combo *' : 'Sản phẩm áp dụng'}
+              <ProductPicker
+                products={products}
+                selected={form.product_ids}
+                onChange={ids => setForm(f => ({ ...f, product_ids: ids }))}
+              />
+              {form.discount_type !== 'combo_price' && (
+                <span className="text-xs text-gray-400 font-normal">
+                  Để trống = áp lên toàn bộ giỏ hàng.
+                </span>
+              )}
+            </div>
+          )}
+
           {form.discount_type === 'tiered_quantity' && (
             <label className="block text-sm font-medium text-gray-700">
               Bậc thang (JSON)
@@ -262,11 +416,26 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
           )}
 
           {form.discount_type === 'customer_tier_discount' && (
-            <label className="block text-sm font-medium text-gray-700">
-              Hạng KH (phân cách dấu phẩy: regular, silver, gold, vip, platinum)
-              <input className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                value={form.customer_tiers} onChange={e => setForm(f => ({ ...f, customer_tiers: e.target.value }))} />
-            </label>
+            <div className="text-sm font-medium text-gray-700">
+              Hạng khách hàng được hưởng *
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 border border-gray-200 rounded-lg p-2">
+                {CUSTOMER_TIERS.map(t => (
+                  <label key={t.value} className="flex items-center gap-1.5 text-sm font-normal text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={form.customer_tiers.includes(t.value)}
+                      onChange={() => setForm(f => ({
+                        ...f,
+                        customer_tiers: f.customer_tiers.includes(t.value)
+                          ? f.customer_tiers.filter(x => x !== t.value)
+                          : [...f.customer_tiers, t.value],
+                      }))}
+                    />
+                    {t.label}
+                  </label>
+                ))}
+              </div>
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
@@ -336,20 +505,32 @@ function PromotionModal({ promo, onClose, onSaved }: { promo?: Partial<Promotion
 export default function PromotionsPage() {
   const [promotions, setPromotions] = useState<Promotion[]>([])
   const [vouchers, setVouchers] = useState<Voucher[]>([])
+  const [productPromos, setProductPromos] = useState<ProductPromoRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'promotions' | 'vouchers'>('promotions')
+  const [tab, setTab] = useState<'promotions' | 'product_promos' | 'vouchers'>('promotions')
   const [showPromoModal, setShowPromoModal] = useState(false)
   const [editingPromo, setEditingPromo] = useState<Partial<Promotion> | undefined>()
   const [showVoucherModal, setShowVoucherModal] = useState(false)
+  const [showProductPromoModal, setShowProductPromoModal] = useState(false)
+  const [editingProductPromo, setEditingProductPromo] = useState<ProductPromotion | undefined>()
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [promosRes, vouchersRes] = await Promise.all([
+    const [promosRes, vouchersRes, prodPromosRes] = await Promise.all([
       supabase.from('promotions').select('*').order('priority', { ascending: false }),
       supabase.from('vouchers').select('*').order('created_at', { ascending: false }),
+      // KM theo sản phẩm — trước đây chỉ xem được khi mở từng SP một.
+      supabase
+        .from('product_promotions')
+        // Gợi ý join theo TÊN CỘT (product_id / get_product_id) — products bị tham chiếu
+        // 2 lần nên PostgREST cần phân biệt; dùng tên cột bền hơn tên ràng buộc FK.
+        .select('*, product:products!product_id(name, sku), gift_product:products!get_product_id(name)')
+        .order('is_active', { ascending: false })
+        .order('priority', { ascending: false }),
     ])
     if (promosRes.data) setPromotions(promosRes.data as Promotion[])
     if (vouchersRes.data) setVouchers(vouchersRes.data as Voucher[])
+    if (prodPromosRes.data) setProductPromos(prodPromosRes.data as ProductPromoRow[])
     setLoading(false)
   }, [])
 
@@ -365,6 +546,27 @@ export default function PromotionsPage() {
     await supabase.from('promotions').delete().eq('id', id)
     setPromotions(ps => ps.filter(p => p.id !== id))
   }
+
+  const toggleProductPromo = async (id: string, current: boolean) => {
+    await supabase.from('product_promotions').update({ is_active: !current }).eq('id', id)
+    setProductPromos(ps => ps.map(p => p.id === id ? { ...p, is_active: !current } : p))
+  }
+
+  const deleteProductPromo = async (id: string) => {
+    if (!confirm('Xóa khuyến mãi sản phẩm này?')) return
+    await supabase.from('product_promotions').delete().eq('id', id)
+    setProductPromos(ps => ps.filter(p => p.id !== id))
+  }
+
+  const openNewForTab = () => {
+    if (tab === 'promotions') { setEditingPromo(undefined); setShowPromoModal(true) }
+    else if (tab === 'product_promos') { setEditingProductPromo(undefined); setShowProductPromoModal(true) }
+    else setShowVoucherModal(true)
+  }
+
+  const newButtonLabel = tab === 'promotions' ? 'Thêm KM đơn hàng'
+    : tab === 'product_promos' ? 'Thêm KM sản phẩm'
+    : 'Tạo voucher'
 
   const deactivateVoucher = async (id: string) => {
     await supabase.from('vouchers').update({ is_active: false }).eq('id', id)
@@ -385,17 +587,21 @@ export default function PromotionsPage() {
             </div>
           </div>
           <button
-            onClick={() => tab === 'promotions' ? (setEditingPromo(undefined), setShowPromoModal(true)) : setShowVoucherModal(true)}
+            onClick={openNewForTab}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
           >
             <Plus size={16} />
-            {tab === 'promotions' ? 'Thêm KM' : 'Tạo voucher'}
+            {newButtonLabel}
           </button>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-200 mb-5">
-          {([['promotions', 'Chương trình KM'], ['vouchers', 'Voucher']] as const).map(([key, label]) => (
+          {([
+            ['promotions', 'KM đơn hàng'],
+            ['product_promos', 'KM theo sản phẩm'],
+            ['vouchers', 'Voucher'],
+          ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               {label}
@@ -453,6 +659,66 @@ export default function PromotionsPage() {
               </div>
             ))}
           </div>
+        ) : tab === 'product_promos' ? (
+          <div className="space-y-3">
+            {productPromos.length === 0 && (
+              <div className="text-center py-16 text-gray-400">
+                <Tag size={40} className="mx-auto mb-3 opacity-30" />
+                <p>Chưa có khuyến mãi theo sản phẩm nào</p>
+                <p className="text-xs mt-1">KM theo sản phẩm sẽ tự áp ngoài màn hình bán hàng POS</p>
+              </div>
+            )}
+            {productPromos.map(p => (
+              <div key={p.id} className={`bg-white border rounded-xl p-4 flex items-center gap-4 ${!p.is_active ? 'opacity-60' : ''}`}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 text-rose-600">
+                      {promoShortLabel(p)}
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600 flex items-center gap-1">
+                      <Building2 size={11} />
+                      {p.branch_ids.length === 0 ? 'Toàn hệ thống' : `${p.branch_ids.length} chi nhánh`}
+                    </span>
+                    {!p.is_active && <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Tắt</span>}
+                  </div>
+                  <p className="font-medium text-gray-900 truncate">{p.name}</p>
+                  <p className="text-sm text-gray-500 truncate">
+                    <span className="text-gray-700">{p.product?.name ?? 'SP đã xóa'}</span>
+                    {p.product?.sku && <span className="font-mono text-xs text-gray-400"> · {p.product.sku}</span>}
+                  </p>
+                  {p.promo_type === 'buy_x_get_y' && (
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      🎁 Tặng {p.get_qty} {p.get_product_id && p.get_product_id !== p.product_id
+                        ? (p.gift_product?.name ?? 'SP khác')
+                        : 'chính sản phẩm này'}
+                      {' · '}
+                      {p.get_price > 0
+                        ? `giá ưu đãi ${p.get_price.toLocaleString('vi-VN')}₫`
+                        : 'miễn phí'}
+                    </p>
+                  )}
+                  {p.valid_to && (
+                    <p className="text-xs text-gray-400 mt-0.5">Đến {new Date(p.valid_to).toLocaleDateString('vi-VN')}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => toggleProductPromo(p.id, p.is_active)}
+                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                    title={p.is_active ? 'Tắt KM' : 'Bật KM'}>
+                    {p.is_active ? <ToggleRight size={20} className="text-blue-600" /> : <ToggleLeft size={20} />}
+                  </button>
+                  <button onClick={() => { setEditingProductPromo(p); setShowProductPromoModal(true) }}
+                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                    <Pencil size={16} />
+                  </button>
+                  <button onClick={() => deleteProductPromo(p.id)}
+                    className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="space-y-3">
             {vouchers.length === 0 && (
@@ -503,6 +769,14 @@ export default function PromotionsPage() {
       {showVoucherModal && (
         <VoucherGenerateModal
           onClose={() => setShowVoucherModal(false)}
+          onSaved={loadData}
+        />
+      )}
+      {showProductPromoModal && (
+        <ProductPromotionModal
+          pickProduct                       // mở từ module → tự chọn SP trong modal
+          promo={editingProductPromo}
+          onClose={() => setShowProductPromoModal(false)}
           onSaved={loadData}
         />
       )}
