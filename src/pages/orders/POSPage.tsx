@@ -29,6 +29,7 @@ import { ProductImage } from '../../components/ProductImage'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { removeVietnameseTones } from '../../components/SmartSearchSelect'
+import { smartFilter, smartIncludes } from '../../lib/smartSearch'
 import { normalizePhone } from '../../lib/phone'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
@@ -949,14 +950,11 @@ export default function POSPage() {
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId)
 
-  // Filter products
-  const filteredProducts = useMemo(() => products.filter(p => {
-    const matchesCategory = !selectedCategoryId || p.category_id === selectedCategoryId
-    const matchesSearch = !debouncedSearch.trim() ||
-      p.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      p.sku.toLowerCase().includes(debouncedSearch.toLowerCase())
-    return matchesCategory && matchesSearch
-  }), [products, selectedCategoryId, debouncedSearch])
+  // Filter products (lưới "Xem danh mục") — dùng chung bộ khớp thông minh với ô tìm kiếm.
+  const filteredProducts = useMemo(() => {
+    const inCategory = products.filter(p => !selectedCategoryId || p.category_id === selectedCategoryId)
+    return smartFilter(inCategory, debouncedSearch, p => [p.sku, p.name, p.brands?.name])
+  }, [products, selectedCategoryId, debouncedSearch])
 
   const PRODUCT_COLS = 3
   const productRows = useMemo(() => {
@@ -1195,30 +1193,33 @@ export default function POSPage() {
     return out
   }, [cart, productStock, productLots])
 
-  // Autocomplete products — khớp tên/SKU HOẶC số lô (tìm SP bằng số lô).
+  // Autocomplete products — khớp tên/SKU/thương hiệu HOẶC số lô (tìm SP bằng số lô).
+  // Khớp theo TOKEN, bỏ dấu & bỏ ký tự ngăn cách: "mkv doxy" ra "MKV-Doxy 50% kg", "doxy mkv" cũng ra.
+  // Kết quả xếp theo độ liên quan (SKU/tên khớp sát nhất lên đầu).
   const searchResults = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase()
+    const q = debouncedSearch.trim()
     if (!q) return []
-    return products.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      (productLots[p.id] || []).some(l => (l.lotNumber || '').toLowerCase().includes(q))
-    )
+    return smartFilter(products, q, p => [
+      p.sku,
+      p.name,
+      p.brands?.name,
+      (productLots[p.id] || []).map(l => l.lotNumber).join(' ')
+    ])
   }, [products, debouncedSearch, productLots])
 
   // Phẳng hóa theo LÔ — NV chọn ĐÚNG lô (mỗi lô 1 mục; SP không lô → 1 mục lot=null).
   // ↑↓ duyệt theo mục này, Enter chọn mục → nhập số lượng.
   // Nếu SP chỉ khớp do SỐ LÔ (không khớp tên/SKU) → chỉ hiện đúng lô khớp.
   const searchLotEntries = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase()
+    const q = debouncedSearch.trim()
     const entries: { product: Product; lot: ProductLot | null }[] = []
     for (const p of searchResults) {
       const lots = productLots[p.id] || []
       if (lots.length === 0) { entries.push({ product: p, lot: null }); continue }
-      const matchesNameSku = p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+      const matchesNameSku = smartIncludes(q, p.sku, p.name, p.brands?.name)
       const lotsToShow = matchesNameSku
         ? lots
-        : lots.filter(l => (l.lotNumber || '').toLowerCase().includes(q))
+        : lots.filter(l => smartIncludes(q, l.lotNumber))
       const finalLots = lotsToShow.length > 0 ? lotsToShow : lots
       for (const lot of finalLots) entries.push({ product: p, lot })
     }
@@ -1649,6 +1650,34 @@ export default function POSPage() {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val)
   }
 
+  // ── Giá vốn & cảnh báo bán lỗ ──
+  // Giá vốn lấy theo bảng giá đang chọn; không có thì lấy bảng Giá lẻ (GIA-LE); cuối cùng lấy mục đầu có giá vốn.
+  const getProductCost = useCallback((product: Product): number => {
+    const items = product.price_list_items || []
+    if (items.length === 0) return 0
+    const current = items.find(i => i.price_list_id === selectedPriceListId || i.price_list?.id === selectedPriceListId)
+    if (current?.cost_price) return current.cost_price
+    const retail = items.find(i => i.price_list?.code === 'GIA-LE')
+    if (retail?.cost_price) return retail.cost_price
+    return items.find(i => i.cost_price > 0)?.cost_price ?? 0
+  }, [selectedPriceListId])
+
+  /** Đơn giá sau CK dòng < giá vốn → dòng bán lỗ (bỏ qua dòng quà tặng/KM 0đ). */
+  const getBelowCost = useCallback((item: CartItem) => {
+    const cost = getProductCost(item.product)
+    if (item.isGift || cost <= 0) return null
+    const effective = item.unitPrice * (1 - (item.discountPercent || 0) / 100)
+    if (effective >= cost) return null
+    const lossPerUnit = cost - effective
+    return { cost, effective, lossPerUnit, lossTotal: lossPerUnit * item.quantity }
+  }, [getProductCost])
+
+  const belowCostLines = useMemo(
+    () => cart.map(item => ({ item, below: getBelowCost(item) })).filter(r => r.below !== null),
+    [cart, getBelowCost]
+  )
+  const belowCostTotalLoss = belowCostLines.reduce((s, r) => s + (r.below?.lossTotal || 0), 0)
+
   // ── Lô & HSD (FEFO) ──
   const NEAR_EXPIRY_DAYS = 30  // ngưỡng cảnh báo cận hạn
   const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('vi-VN') : 'Không hạn'
@@ -1750,7 +1779,18 @@ export default function POSPage() {
                       <span className="font-semibold text-[13px] leading-snug break-words">{prod.name}</span>
                       <span className="text-[10px] text-gray-400 font-mono">SKU {prod.sku || '-'} · ĐVT {prod.unit || '-'} · Tồn <span className={(productStock[prod.id] || 0) > 0 ? 'text-emerald-600 font-bold' : 'text-red-500 font-bold'}>{(productStock[prod.id] || 0).toLocaleString('vi-VN')}</span></span>
                     </div>
-                    <span className="font-bold text-blue-600 shrink-0 text-[13px]">{formatCurrency(price)}</span>
+                    {(() => {
+                      const cost = getProductCost(prod)
+                      const under = cost > 0 && price < cost
+                      return (
+                        <div className="shrink-0 text-right">
+                          <span className={`font-bold text-[13px] ${under ? 'text-red-600' : 'text-blue-600'}`}>{formatCurrency(price)}</span>
+                          {under && (
+                            <span className="block text-[9px] font-bold text-red-600 uppercase">Dưới vốn {cost.toLocaleString('vi-VN')} ₫</span>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
                 <div
@@ -1975,9 +2015,15 @@ export default function POSPage() {
                     const giftProduct = promoEval
                       ? (products.find(p => p.id === promoEval.giftProductId) ?? item.product)
                       : null
+                    // Bán DƯỚI GIÁ VỐN → tô đỏ cả dòng để NV thấy ngay trước khi thanh toán.
+                    const below = getBelowCost(item)
                     return (
                     <Fragment key={item.id}>
-                    <tr className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                    <tr className={`border-b transition-colors ${
+                      below
+                        ? 'border-red-200 bg-red-50/70 hover:bg-red-50'
+                        : 'border-gray-100 hover:bg-gray-50/50'
+                    }`}>
                       <td className="py-3 px-2 text-center text-gray-400 font-mono text-[11px]">{idx + 1}</td>
                       <td className="py-3 px-1 text-center">
                         <button
@@ -1997,7 +2043,17 @@ export default function POSPage() {
                           {(item.isGift || item.unitPrice === 0) && (
                             <span className="px-1.5 py-0.2 bg-emerald-50 text-emerald-600 text-[9px] font-bold rounded border border-emerald-100 uppercase scale-90">KM</span>
                           )}
+                          {below && (
+                            <span className="px-1.5 py-0.5 bg-red-600 text-white text-[9px] font-bold rounded uppercase shrink-0 flex items-center gap-0.5">
+                              <AlertTriangle size={9} /> Dưới giá vốn
+                            </span>
+                          )}
                         </div>
+                        {below && (
+                          <span className="text-[10px] font-bold text-red-600 block mt-0.5">
+                            Giá vốn {below.cost.toLocaleString('vi-VN')} ₫ · lỗ {Math.round(below.lossPerUnit).toLocaleString('vi-VN')} ₫/{item.product.unit || 'đv'} — cả dòng lỗ {Math.round(below.lossTotal).toLocaleString('vi-VN')} ₫
+                          </span>
+                        )}
                         {/* Mỗi dòng = 1 LÔ cụ thể NV đã chọn. Hiện lô + HSD + cảnh báo cận/quá hạn
                             + chặn vượt tồn của ĐÚNG lô đó (so tồn tươi). KM/quà (không lô) bỏ qua. */}
                         {!item.isGift && (() => {
@@ -2063,7 +2119,12 @@ export default function POSPage() {
                             value={formatNumberString(item.unitPrice || '')}
                             placeholder="0"
                             onChange={e => updateUnitPrice(item.id, parseNumberString(e.target.value))}
-                            className="w-20 text-right bg-transparent border-b border-gray-200 focus:border-[#007edb] focus:outline-none font-semibold text-[13px] py-0.5"
+                            title={below ? `Đơn giá sau CK ${Math.round(below.effective).toLocaleString('vi-VN')} ₫ thấp hơn giá vốn ${below.cost.toLocaleString('vi-VN')} ₫` : undefined}
+                            className={`w-20 text-right bg-transparent border-b focus:outline-none font-semibold text-[13px] py-0.5 ${
+                              below
+                                ? 'border-red-400 text-red-600 focus:border-red-600'
+                                : 'border-gray-200 focus:border-[#007edb]'
+                            }`}
                           />
                           {/* Giá bán gần nhất cho KH này (chỉ hiện sau khi chọn KH & khác giá hiện tại) */}
                           {!item.isGift && selectedCustomerId && lastPrices[item.product.id] != null && lastPrices[item.product.id] !== item.unitPrice && (
@@ -2099,7 +2160,7 @@ export default function POSPage() {
                           <span>+KM</span>
                         </button>
                       </td>
-                      <td className="py-3 px-3 text-right font-bold text-gray-750 text-[13px]">
+                      <td className={`py-3 px-3 text-right font-bold text-[13px] ${below ? 'text-red-600' : 'text-gray-750'}`}>
                         {((item.unitPrice * (1 - item.discountPercent / 100)) * item.quantity).toLocaleString('vi-VN')} ₫
                       </td>
                     </tr>
@@ -2654,6 +2715,20 @@ export default function POSPage() {
                     <div className="text-[10px] leading-tight">
                       <span className="font-bold">Không đủ tồn kho!</span>{' '}
                       {oversellLines.map(l => `${l.label} (cần ${l.req.toLocaleString('vi-VN')}, còn ${l.avail.toLocaleString('vi-VN')})`).join('; ')}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Cảnh báo bán dưới giá vốn — CHỈ cảnh báo, không chặn bán (có ca bán lỗ có chủ đích) */}
+              {belowCostLines.length > 0 && (
+                <div className="pt-1">
+                  <div className="flex items-start gap-1.5 p-2 bg-red-50 text-red-800 rounded border border-red-200">
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <div className="text-[10px] leading-tight">
+                      <span className="font-bold">Bán dưới giá vốn!</span>{' '}
+                      {belowCostLines.length} mặt hàng ({belowCostLines.map(r => r.item.product.name).join('; ')}) — tổng lỗ{' '}
+                      <b>{Math.round(belowCostTotalLoss).toLocaleString('vi-VN')} ₫</b>.
                     </div>
                   </div>
                 </div>

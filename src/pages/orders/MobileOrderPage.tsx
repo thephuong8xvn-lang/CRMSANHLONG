@@ -21,6 +21,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { posMobileKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
 import { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import { normalizePhone } from '../../lib/phone'
+import { smartFilter } from '../../lib/smartSearch'
 
 interface Customer {
   id: string
@@ -276,13 +277,12 @@ export default function MobileOrderPage() {
     )
   })()
 
-  const filteredProducts = products.filter(p => {
-    const matchesCategory = !selectedCategoryId || p.category_id === selectedCategoryId
-    const matchesSearch = !productSearchQuery.trim() ||
-      p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
-      p.sku.toLowerCase().includes(productSearchQuery.toLowerCase())
-    return matchesCategory && matchesSearch
-  })
+  // Khớp theo token, bỏ dấu & bỏ ký tự ngăn cách (giống POS): "mkv doxy" ra "MKV-Doxy 50% kg".
+  const filteredProducts = smartFilter(
+    products.filter(p => !selectedCategoryId || p.category_id === selectedCategoryId),
+    productSearchQuery,
+    p => [p.sku, p.name]
+  )
 
   // Cart operations
   const addToCart = (product: Product) => {
