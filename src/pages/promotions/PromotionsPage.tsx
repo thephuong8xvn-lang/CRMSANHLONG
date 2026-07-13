@@ -17,6 +17,17 @@ type ProductPromoRow = ProductPromotion & {
   gift_product?: { name: string } | null
 }
 
+/** Một dòng báo cáo hiệu quả KM (RPC fn_promo_performance). */
+interface PromoPerfRow {
+  scope: 'order' | 'product'
+  promo_id: string
+  promo_name: string
+  promo_type: string
+  order_count: number
+  revenue: number
+  discount_given: number
+}
+
 const DISCOUNT_TYPE_LABELS: Record<string, string> = {
   percent: 'Giảm % đơn hàng',
   fixed_amount: 'Giảm tiền cố định',
@@ -506,8 +517,11 @@ export default function PromotionsPage() {
   const [promotions, setPromotions] = useState<Promotion[]>([])
   const [vouchers, setVouchers] = useState<Voucher[]>([])
   const [productPromos, setProductPromos] = useState<ProductPromoRow[]>([])
+  const [perf, setPerf] = useState<PromoPerfRow[]>([])
+  const [perfDays, setPerfDays] = useState(30)
+  const [perfError, setPerfError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'promotions' | 'product_promos' | 'vouchers'>('promotions')
+  const [tab, setTab] = useState<'promotions' | 'product_promos' | 'vouchers' | 'perf'>('promotions')
   const [showPromoModal, setShowPromoModal] = useState(false)
   const [editingPromo, setEditingPromo] = useState<Partial<Promotion> | undefined>()
   const [showVoucherModal, setShowVoucherModal] = useState(false)
@@ -535,6 +549,20 @@ export default function PromotionsPage() {
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // Báo cáo hiệu quả — chỉ gọi khi mở tab (RPC quét orders, không nạp sẵn).
+  useEffect(() => {
+    if (tab !== 'perf') return
+    const from = new Date(Date.now() - perfDays * 86400_000).toISOString().slice(0, 10)
+    setPerfError('')
+    supabase
+      .rpc('fn_promo_performance', { p_from: from, p_to: new Date().toISOString().slice(0, 10) })
+      .then(({ data, error }: { data: PromoPerfRow[] | null; error: { message: string } | null }) => {
+        // Không nuốt lỗi thành "bảng rỗng" — phân biệt rõ chưa có dữ liệu vs lỗi.
+        if (error) { setPerfError(error.message); setPerf([]); return }
+        setPerf(data ?? [])
+      })
+  }, [tab, perfDays])
 
   const togglePromo = async (id: string, current: boolean) => {
     await supabase.from('promotions').update({ is_active: !current }).eq('id', id)
@@ -586,13 +614,26 @@ export default function PromotionsPage() {
               <p className="text-sm text-gray-500">Quản lý chương trình KM và voucher</p>
             </div>
           </div>
-          <button
-            onClick={openNewForTab}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={16} />
-            {newButtonLabel}
-          </button>
+          {tab !== 'perf' && (
+            <button
+              onClick={openNewForTab}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={16} />
+              {newButtonLabel}
+            </button>
+          )}
+          {tab === 'perf' && (
+            <select
+              value={perfDays}
+              onChange={e => setPerfDays(Number(e.target.value))}
+              className="border border-gray-300 rounded-xl px-3 py-2 text-sm"
+            >
+              <option value={7}>7 ngày qua</option>
+              <option value={30}>30 ngày qua</option>
+              <option value={90}>90 ngày qua</option>
+            </select>
+          )}
         </div>
 
         {/* Tabs */}
@@ -601,6 +642,7 @@ export default function PromotionsPage() {
             ['promotions', 'KM đơn hàng'],
             ['product_promos', 'KM theo sản phẩm'],
             ['vouchers', 'Voucher'],
+            ['perf', 'Hiệu quả'],
           ] as const).map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
@@ -658,6 +700,65 @@ export default function PromotionsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : tab === 'perf' ? (
+          <div>
+            {perfError && (
+              <p className="mb-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                Không tải được báo cáo: {perfError}
+              </p>
+            )}
+            {!perfError && perf.length === 0 && (
+              <div className="text-center py-16 text-gray-400">
+                <Tag size={40} className="mx-auto mb-3 opacity-30" />
+                <p>Chưa có đơn nào dùng khuyến mãi trong {perfDays} ngày qua</p>
+              </div>
+            )}
+            {perf.length > 0 && (
+              <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-semibold">Chương trình</th>
+                      <th className="text-right px-4 py-3 font-semibold">Số đơn</th>
+                      <th className="text-right px-4 py-3 font-semibold">Doanh thu</th>
+                      <th className="text-right px-4 py-3 font-semibold">Chi phí KM</th>
+                      <th className="text-right px-4 py-3 font-semibold">% trên doanh thu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {perf.map(r => {
+                      const ratio = r.revenue > 0 ? (r.discount_given / r.revenue) * 100 : 0
+                      return (
+                        <tr key={`${r.scope}-${r.promo_id}`} className="border-t border-gray-100">
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-gray-900">{r.promo_name}</span>
+                            <span className={`ml-2 text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                              r.scope === 'order' ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-600'
+                            }`}>
+                              {r.scope === 'order' ? 'KM đơn hàng' : 'KM sản phẩm'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums">{r.order_count.toLocaleString('vi-VN')}</td>
+                          <td className="px-4 py-3 text-right tabular-nums">{Math.round(r.revenue).toLocaleString('vi-VN')} ₫</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-rose-600">
+                            {Math.round(r.discount_given).toLocaleString('vi-VN')} ₫
+                          </td>
+                          <td className={`px-4 py-3 text-right tabular-nums font-semibold ${
+                            ratio > 20 ? 'text-red-600' : 'text-gray-600'
+                          }`}>
+                            {ratio.toFixed(1)}%
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="mt-3 text-xs text-gray-400">
+              Chi phí KM của "KM sản phẩm" gồm chiết khấu dòng cộng <b>giá vốn</b> hàng tặng — quà 0₫ vẫn tốn kho.
+            </p>
           </div>
         ) : tab === 'product_promos' ? (
           <div className="space-y-3">

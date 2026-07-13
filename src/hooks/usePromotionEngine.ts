@@ -45,7 +45,10 @@ export interface Voucher {
 export interface AppliedDiscount {
   type: 'promotion' | 'voucher'
   id: string
+  /** Mã voucher — gửi lên server để server tự tra & tự tính lại tiền giảm. */
+  code?: string
   name: string
+  /** Chỉ để HIỂN THỊ. Server tự tính lại số thật khi chốt đơn, không nhận số này. */
   discountAmount: number
   label: string
 }
@@ -211,6 +214,7 @@ export function usePromotionEngine(branchId?: string | null) {
       return {
         type: 'voucher',
         id: v.id,
+        code: v.code,
         name: `Voucher ${code}`,
         discountAmount,
         label: `Voucher ${code} (-${v.discount_value}${v.discount_type === 'percent' ? '%' : '₫'})`,

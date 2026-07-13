@@ -1612,19 +1612,25 @@ export default function POSPage() {
     submittingRef.current = true
     setSubmitting(true)
     try {
-      // discount per-unit (khớp order_lines.discount); invoice_discount giữ voucher/KM cấp HĐ
+      // discount per-unit (khớp order_lines.discount). promotion_id = KM sản phẩm đã áp
+      // lên dòng (chiết khấu hoặc quà) → phục vụ báo cáo hiệu quả KM.
       const lines = cart.map(item => ({
         product_id: item.product.id,
         lot_id: item.lotId || null,   // lô NV chọn (null = FEFO)
         quantity: item.quantity,
         unit_price: item.unitPrice,
-        discount: Math.round(item.unitPrice * (item.discountPercent / 100))
+        discount: Math.round(item.unitPrice * (item.discountPercent / 100)),
+        promotion_id: item.autoPromoId ?? item.giftFromPromoId ?? null,
       }))
+      // ⚠️ KHÔNG gửi invoice_discount nữa: server tự tính lại tiền giảm từ định nghĩa
+      // KM/voucher + các dòng đơn thật (fn_pos_build_draft). Client chỉ khai BÁO ÁP CÁI GÌ,
+      // không được quyết ÁP BAO NHIÊU — trước đây sửa payload là giảm giá tuỳ ý.
       const basePayload = {
         customer_id: selectedCustomerId,
         warehouse_id: selectedWarehouseId || null,
         price_list_id: selectedPriceListId || null,
-        invoice_discount: invoiceDiscount || 0,
+        promotion_id: appliedDiscount?.type === 'promotion' ? appliedDiscount.id : null,
+        voucher_code: appliedDiscount?.type === 'voucher' ? (appliedDiscount.code ?? null) : null,
         notes: notes || null,
         disease_id: selectedDiseaseId || null,
         treatment_purpose: treatmentPurpose || null,
@@ -1647,6 +1653,7 @@ export default function POSPage() {
         const payload = {
           ...basePayload,
           paid_amount: paymentMethod === 'credit' ? 0 : effectivePaid,
+          pay_full: paymentMethod !== 'credit' && !paymentAmount,
           overpay_credit: paymentMethod !== 'credit' && changeDue > 0 && overpayToCredit,
           delivery_address: 'Giao trực tiếp tại quầy POS',
         }
@@ -1701,43 +1708,42 @@ export default function POSPage() {
         p_payload: {
           ...basePayload,
           paid_amount: paymentMethod === 'credit' ? 0 : effectivePaid,
+          // NV không gõ số cụ thể = khách trả đủ → server thu theo TỔNG NÓ TỰ TÍNH,
+          // tránh phần chênh do KM hết hạn giữa chừng âm thầm thành công nợ.
+          pay_full: paymentMethod !== 'credit' && !paymentAmount,
           // Khách trả dư + chọn "tính vào công nợ" → server KHÔNG kẹp trần, ghi số dư có.
           overpay_credit: paymentMethod !== 'credit' && changeDue > 0 && overpayToCredit,
           delivery_address: 'Giao trực tiếp tại quầy POS'
         }
       })
       if (error) throw error
-      const res = data as { order_id: string; order_code: string }
+      const res = data as { order_id: string; order_code: string; grand_total?: number }
 
-      // Ghi nhận lượt dùng KM/voucher cấp đơn (trước đây KHÔNG đếm → voucher "1 lần"
-      // dùng được vô hạn). Chạy SAU khi đơn đã chốt: nếu bước này lỗi, đơn vẫn hợp lệ
-      // nên chỉ cảnh báo để admin đối soát, không rollback đơn của khách.
-      let usageWarning = ''
-      if (appliedDiscount) {
-        const { error: usageErr } = await supabase.rpc('fn_consume_promo_usage', {
-          p_promotion_id: appliedDiscount.type === 'promotion' ? appliedDiscount.id : null,
-          p_voucher_id: appliedDiscount.type === 'voucher' ? appliedDiscount.id : null,
-        })
-        if (usageErr) {
-          console.error('Ghi nhận lượt dùng KM thất bại:', usageErr)
-          usageWarning = ` ⚠️ Chưa ghi nhận được lượt dùng "${appliedDiscount.name}" — báo admin kiểm tra lại số lượt.`
-        }
-      }
+      // Lượt dùng KM/voucher do TRIGGER trên orders đếm, trong cùng giao dịch với đơn
+      // → không còn cảnh "đơn đã tạo mà lượt không được ghi".
+
+      // Server là nguồn chân lý về chiết khấu. Lệch = KM đã hết hạn/hết lượt giữa lúc
+      // NV đang bấm → phải nói rõ, không im lặng.
+      const serverTotal = res.grand_total != null ? Number(res.grand_total) : null
+      const totalMismatch = serverTotal != null && Math.abs(serverTotal - grandTotal) >= 1
 
       setCreatedOrderCode(res.order_code)
       setCreatedOrderId(res.order_id)
       resetActiveTab()
       fetchStockData()
 
-      // Có cảnh báo lượt dùng → KHÔNG nhảy thẳng sang in, để nhân viên đọc được cảnh báo.
-      if (autoPrint && !usageWarning) {
+      if (autoPrint && !totalMismatch) {
         navigate(`/print-preview?type=invoice&id=${res.order_id}`)
       } else {
         setShowReceiptModal(true)
-        setAlertMsg({
-          type: usageWarning ? 'error' : 'success',
-          text: `Hóa đơn ${res.order_code} đã thanh toán thành công.${usageWarning}`,
-        })
+        setAlertMsg(totalMismatch
+          ? {
+              type: 'error',
+              text: `Hóa đơn ${res.order_code} đã lưu, nhưng TỔNG THẬT là ${serverTotal!.toLocaleString('vi-VN')} ₫ `
+                + `(màn hình hiện ${grandTotal.toLocaleString('vi-VN')} ₫). Khuyến mãi có thể vừa hết hạn/hết lượt. `
+                + `Kiểm tra lại số tiền đã thu.`,
+            }
+          : { type: 'success', text: `Hóa đơn ${res.order_code} đã thanh toán thành công.` })
       }
     } catch (err: any) {
       console.error('POS billing error:', err)
