@@ -29,6 +29,7 @@ interface Props {
 
 const PROMO_TYPE_LABELS: Record<ProductPromotion['promo_type'], string> = {
   buy_x_get_y: 'Mua X tặng Y',
+  unit_price: 'Giá ưu đãi khi mua đủ số lượng',
   percent: 'Giảm % theo số lượng',
   fixed_amount: 'Giảm tiền theo số lượng',
 }
@@ -253,18 +254,34 @@ export default function ProductPromotionModal({ productId, productName, pickProd
               </div>
             </>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Giá trị giảm ({form.promo_type === 'percent' ? '%' : '₫/đơn vị'})
-                <input type="number" min="0" className={inputCls}
-                  value={form.discount_value} onChange={e => setForm(f => ({ ...f, discount_value: e.target.value }))} />
-              </label>
-              <label className="block text-sm font-medium text-gray-700">
-                Số lượng tối thiểu
-                <input type="number" min="1" className={inputCls}
-                  value={form.min_qty} onChange={e => setForm(f => ({ ...f, min_qty: e.target.value }))} />
-              </label>
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  {form.promo_type === 'unit_price'
+                    ? 'Giá ưu đãi (₫/đơn vị)'
+                    : `Giá trị giảm (${form.promo_type === 'percent' ? '%' : '₫/đơn vị'})`}
+                  <input type="number" min="0" className={inputCls}
+                    placeholder={form.promo_type === 'unit_price' ? 'VD: 90000' : ''}
+                    value={form.discount_value} onChange={e => setForm(f => ({ ...f, discount_value: e.target.value }))} />
+                </label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Số lượng tối thiểu
+                  <input type="number" min="1" className={inputCls}
+                    placeholder={form.promo_type === 'unit_price' ? 'VD: 25' : ''}
+                    value={form.min_qty} onChange={e => setForm(f => ({ ...f, min_qty: e.target.value }))} />
+                </label>
+              </div>
+
+              {form.promo_type === 'unit_price' && (
+                <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[13px] text-amber-900">
+                  🏷️ Mua từ <b>{form.min_qty || '?'}</b> {pickedProductName || '(chưa chọn SP)'} → giá{' '}
+                  <b>{form.discount_value ? Number(form.discount_value).toLocaleString('vi-VN') : '?'}₫</b>/đơn vị.
+                  <span className="block text-amber-700/80 mt-0.5">
+                    Mua ít hơn vẫn tính giá niêm yết. Nếu giá ưu đãi không rẻ hơn giá đang bán, KM tự bỏ qua.
+                  </span>
+                </div>
+              )}
+            </>
           )}
 
           {/* Chi nhánh áp dụng */}

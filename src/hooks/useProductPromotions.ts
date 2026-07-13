@@ -5,12 +5,18 @@ export interface ProductPromotion {
   id: string
   product_id: string
   name: string
-  promo_type: 'buy_x_get_y' | 'percent' | 'fixed_amount'
+  promo_type: 'buy_x_get_y' | 'percent' | 'fixed_amount' | 'unit_price'
   buy_qty: number | null
   get_qty: number | null
   get_product_id: string | null
   /** Giá mỗi đơn vị quà tặng (buy_x_get_y). 0 = tặng miễn phí; >0 = giá ưu đãi. */
   get_price: number
+  /**
+   * Đa nghĩa theo promo_type:
+   *   percent      → % giảm
+   *   fixed_amount → ₫ giảm mỗi đơn vị
+   *   unit_price   → ĐƠN GIÁ bán ưu đãi mỗi đơn vị (vd 90.000 khi mua từ 25)
+   */
   discount_value: number
   min_qty: number
   branch_ids: string[]
@@ -56,6 +62,8 @@ export function promoShortLabel(p: ProductPromotion): string {
       return `Giảm ${p.discount_value}%${p.min_qty > 1 ? ` từ ${p.min_qty}` : ''}`
     case 'fixed_amount':
       return `Giảm ${p.discount_value.toLocaleString('vi-VN')}₫${p.min_qty > 1 ? ` từ ${p.min_qty}` : ''}`
+    case 'unit_price':
+      return `Mua từ ${p.min_qty} · giá ${p.discount_value.toLocaleString('vi-VN')}₫`
     default:
       return p.name
   }
@@ -93,19 +101,28 @@ export function evaluateProductPromo(
     }
   }
 
-  // percent / fixed_amount theo ngưỡng min_qty
+  // percent / fixed_amount / unit_price — đều theo ngưỡng min_qty
   const eligible = qtyInCart >= promo.min_qty
   const lineTotal = unitPrice * qtyInCart
   let discountAmount = 0
   let discountPercent = 0
+
   if (promo.promo_type === 'percent') {
     discountPercent = promo.discount_value
     discountAmount = Math.round(lineTotal * promo.discount_value / 100)
+  } else if (promo.promo_type === 'unit_price') {
+    // Giá ưu đãi cố định → quy về CK dòng để order_lines vẫn giữ GIÁ GỐC + phần giảm.
+    // Giá ưu đãi ≥ giá đang bán → KM vô nghĩa, tự tắt (không bao giờ làm khách trả đắt hơn).
+    if (unitPrice <= 0 || promo.discount_value >= unitPrice) return null
+    // KHÔNG làm tròn % — giá lẻ (vd 95.500đ) sẽ sai giá nếu ép về số nguyên.
+    discountPercent = ((unitPrice - promo.discount_value) / unitPrice) * 100
+    discountAmount = Math.round((unitPrice - promo.discount_value) * qtyInCart)
   } else {
     // fixed_amount: giảm discount_value ₫ trên mỗi đơn vị
     discountAmount = Math.min(promo.discount_value * qtyInCart, lineTotal)
     discountPercent = lineTotal > 0 ? Math.round((discountAmount / lineTotal) * 100) : 0
   }
+
   if (discountAmount <= 0 && discountPercent <= 0) return null
   return {
     promo,

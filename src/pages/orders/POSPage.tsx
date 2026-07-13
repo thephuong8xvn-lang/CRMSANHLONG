@@ -2282,18 +2282,25 @@ export default function POSPage() {
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className={`text-[11px] font-semibold flex items-center gap-1 ${applied ? 'text-emerald-800' : 'text-amber-800'}`}>
                                 {applied ? '✅' : '🎁'} {rowPromo?.name}
-                                {applied
-                                  ? (isBxgy
-                                      ? ` — đã tặng ${promoEval.giftQty} ${giftProduct?.name ?? ''}`
+                                {(() => {
+                                  const isUnitPrice = promoEval.promo.promo_type === 'unit_price'
+                                  // Giá ưu đãi: nói bằng GIÁ, không bằng % (% có thể lẻ, vd 4.5%).
+                                  const dealPrice = promoEval.promo.discount_value.toLocaleString('vi-VN')
+                                  if (dismissed) return ' — đã bỏ KM cho dòng này'
+                                  if (applied) {
+                                    if (isBxgy) {
+                                      return ` — đã tặng ${promoEval.giftQty} ${giftProduct?.name ?? ''}`
                                         + (promoEval.giftPrice > 0
                                             ? ` (giá ưu đãi ${promoEval.giftPrice.toLocaleString('vi-VN')}₫)`
                                             : ' (miễn phí)')
-                                      : ` — đã giảm ${promoEval.discountPercent}% cho dòng này`)
-                                  : dismissed
-                                    ? ' — đã bỏ KM cho dòng này'
-                                    : (isBxgy
-                                        ? ` — mua thêm ${promoEval.remaining} để nhận quà`
-                                        : ` — mua thêm ${promoEval.remaining} để được giảm`)}
+                                    }
+                                    if (isUnitPrice) return ` — đang bán giá ưu đãi ${dealPrice}₫/${item.product.unit || 'đv'}`
+                                    return ` — đã giảm ${Math.round(promoEval.discountPercent)}% cho dòng này`
+                                  }
+                                  if (isBxgy) return ` — mua thêm ${promoEval.remaining} để nhận quà`
+                                  if (isUnitPrice) return ` — mua thêm ${promoEval.remaining} để được giá ${dealPrice}₫`
+                                  return ` — mua thêm ${promoEval.remaining} để được giảm`
+                                })()}
                               </span>
 
                               {applied && (
