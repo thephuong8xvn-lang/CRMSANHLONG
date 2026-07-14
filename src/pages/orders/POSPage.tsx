@@ -2255,15 +2255,26 @@ export default function POSPage() {
                         </div>
                       </td>
                       <td className="py-3 px-2 text-center">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.discountPercent || ''}
-                          placeholder="0"
-                          onChange={e => setRowDiscount(item.id, parseFloat(e.target.value) || 0)}
-                          className="w-8 text-center bg-transparent border-b border-gray-200 focus:border-[#007edb] focus:outline-none font-semibold text-[13px] py-0.5"
-                        />
+                        {item.autoPromoId ? (
+                          // CK do KM đặt: % quy từ giá ưu đãi thường lẻ dài (vd 5,5368…) → ô nhập
+                          // cắt mất chữ số. Hiện gọn 2 số lẻ, KHÔNG làm tròn giá trị thật (sẽ sai giá).
+                          <span
+                            className="inline-block w-14 font-semibold text-[13px] text-emerald-700"
+                            title={`Khuyến mãi đang giảm ${item.discountPercent}% — bấm "Bỏ KM" nếu muốn nhập tay`}
+                          >
+                            {Number(item.discountPercent.toFixed(2)).toLocaleString('vi-VN')}%
+                          </span>
+                        ) : (
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={item.discountPercent || ''}
+                            placeholder="0"
+                            onChange={e => setRowDiscount(item.id, parseFloat(e.target.value) || 0)}
+                            className="w-14 text-center bg-transparent border-b border-gray-200 focus:border-[#007edb] focus:outline-none font-semibold text-[13px] py-0.5"
+                          />
+                        )}
                       </td>
                       <td className="py-3 px-2 text-center">
                         <button
