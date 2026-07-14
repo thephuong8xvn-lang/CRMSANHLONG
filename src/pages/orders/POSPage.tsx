@@ -33,7 +33,7 @@ import { smartFilter, smartIncludes } from '../../lib/smartSearch'
 import { normalizePhone } from '../../lib/phone'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePromotionEngine, type AppliedDiscount } from '../../hooks/usePromotionEngine'
-import { useProductPromotions, evaluateProductPromo, promoShortLabel } from '../../hooks/useProductPromotions'
+import { useProductPromotions, promoShortLabel } from '../../hooks/useProductPromotions'
 import { posTabsKey, loadDraft, saveDraft, clearDraft } from '../../lib/posDraftStorage'
 import { genId } from '../../lib/cartUtils'
 import { useOnlineStatus } from '../../hooks/useOnlineStatus'
@@ -298,7 +298,7 @@ export default function POSPage() {
   // Promotion / voucher (lọc theo chi nhánh của nhân viên đăng nhập)
   const branchId = profile?.branch_id ?? null
   const { applyBestPromotion, applyVoucher } = usePromotionEngine(branchId)
-  const { getTopPromo, loading: promosLoading } = useProductPromotions(branchId)
+  const { getTopPromo, getBestPromo, getPromosForProduct, loading: promosLoading } = useProductPromotions(branchId)
   const [voucherCode, setVoucherCode] = useState('')
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null)
   const [voucherError, setVoucherError] = useState('')
@@ -1124,8 +1124,9 @@ export default function POSPage() {
       for (const item of prev) {
         if (item.isGift) continue   // dòng quà xử lý ở vòng dưới
 
-        const promo = item.promoDismissed ? null : getTopPromo(item.product.id)
-        const ev = promo ? evaluateProductPromo(promo, item.quantity, item.unitPrice) : null
+        const ev = item.promoDismissed
+          ? null
+          : getBestPromo(item.product.id, item.quantity, item.unitPrice)
         const active = ev?.eligible ? ev : null
 
         if (active && active.promo.promo_type === 'buy_x_get_y') {
@@ -1191,7 +1192,7 @@ export default function POSPage() {
       if (!changed) return prev
       return [...nextBuyers, ...nextGifts]   // quà luôn dồn xuống cuối giỏ
     })
-  }, [cart, getTopPromo, products, promosLoading])
+  }, [cart, getBestPromo, products, promosLoading])
 
   // Calculate totals
   const subtotal = useMemo(() => cart.reduce((sum, item) => {
@@ -2118,8 +2119,14 @@ export default function POSPage() {
                   {cart.map((item, idx) => {
                     // Gợi ý KM cho dòng SP thường (không gợi ý trên chính dòng quà tặng).
                     // KM mua-X-tặng-Y không phụ thuộc đơn giá nên hiện cả khi đơn giá = 0.
-                    const rowPromo = !item.isGift ? getTopPromo(item.product.id) : null
-                    const promoEval = rowPromo ? evaluateProductPromo(rowPromo, item.quantity, item.unitPrice) : null
+                    // SP có nhiều bậc KM → lấy bậc lợi nhất đang đủ điều kiện (xem getBestPromo).
+                    const promoEval = !item.isGift
+                      ? getBestPromo(item.product.id, item.quantity, item.unitPrice)
+                      : null
+                    const rowPromo = promoEval?.promo ?? null
+                    const otherPromoCount = item.isGift
+                      ? 0
+                      : Math.max(0, getPromosForProduct(item.product.id).length - 1)
                     const giftProduct = promoEval
                       ? (products.find(p => p.id === promoEval.giftProductId) ?? item.product)
                       : null
@@ -2301,6 +2308,11 @@ export default function POSPage() {
                                   if (isUnitPrice) return ` — mua thêm ${promoEval.remaining} để được giá ${dealPrice}₫`
                                   return ` — mua thêm ${promoEval.remaining} để được giảm`
                                 })()}
+                                {otherPromoCount > 0 && (
+                                  <span className="font-normal text-gray-500">
+                                    {` (+${otherPromoCount} KM khác của SP này)`}
+                                  </span>
+                                )}
                               </span>
 
                               {applied && (

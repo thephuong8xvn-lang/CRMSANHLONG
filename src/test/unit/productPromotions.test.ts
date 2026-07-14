@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evaluateProductPromo, promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
+import { evaluateBestPromo, evaluateProductPromo, promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
 
 const promo = (o: Partial<ProductPromotion>): ProductPromotion => ({
   id: 'pp1',
@@ -58,5 +58,36 @@ describe('KM sản phẩm — giá ưu đãi theo số lượng (unit_price)', (
 
   it('nhãn ngắn nói bằng giá, không nói bằng %', () => {
     expect(promoShortLabel(p)).toBe('Mua từ 25 · giá 90.000₫')
+  })
+})
+
+describe('Một SP gắn NHIỀU bậc KM — chọn bậc lợi nhất', () => {
+  // Cùng 1 SP giá 95.000: mua từ 10 → 91.000; mua nguyên thùng 25 → 89.740
+  const tier10 = promo({ id: 'a', name: 'Mua 10 gói', discount_value: 91_000, min_qty: 10 })
+  const tier25 = promo({ id: 'b', name: 'Nguyên thùng', discount_value: 89_740, min_qty: 25 })
+  const all = [tier10, tier25]
+
+  it('mua 12 → chỉ bậc 10 đủ điều kiện (trước đây POS bỏ sót nếu bậc kia xếp trên)', () => {
+    const ev = evaluateBestPromo(all, 12, 95_000)!
+    expect(ev.promo.id).toBe('a')
+    expect(ev.eligible).toBe(true)
+  })
+
+  it('mua 25 → cả hai đủ điều kiện, lấy bậc rẻ hơn cho khách', () => {
+    const ev = evaluateBestPromo(all, 25, 95_000)!
+    expect(ev.promo.id).toBe('b')
+    expect(ev.discountAmount).toBe((95_000 - 89_740) * 25)
+  })
+
+  it('priority admin đặt được ưu tiên trước mức lợi', () => {
+    const forced = [tier10, { ...tier25, priority: 0 }, { ...tier10, id: 'c', priority: 5 }]
+    expect(evaluateBestPromo(forced, 25, 95_000)!.promo.id).toBe('c')
+  })
+
+  it('chưa bậc nào đủ điều kiện → gợi ý bậc gần đạt nhất', () => {
+    const ev = evaluateBestPromo(all, 3, 95_000)!
+    expect(ev.eligible).toBe(false)
+    expect(ev.promo.id).toBe('a')
+    expect(ev.remaining).toBe(7)
   })
 })

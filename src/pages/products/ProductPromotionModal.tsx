@@ -272,14 +272,40 @@ export default function ProductPromotionModal({ productId, productName, pickProd
                 </label>
               </div>
 
-              {form.promo_type === 'unit_price' && (
-                <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[13px] text-amber-900">
-                  🏷️ Mua từ <b>{form.min_qty || '?'}</b> {pickedProductName || '(chưa chọn SP)'} → giá{' '}
-                  <b>{form.discount_value ? Number(form.discount_value).toLocaleString('vi-VN') : '?'}₫</b>/đơn vị.
-                  <span className="block text-amber-700/80 mt-0.5">
-                    Mua ít hơn vẫn tính giá niêm yết. Nếu giá ưu đãi không rẻ hơn giá đang bán, KM tự bỏ qua.
-                  </span>
-                </div>
+              {/* Tóm tắt sống cho CẢ 3 loại — đọc thành câu để phát hiện ngay việc
+                  gõ nhầm ô (vd "giảm 25₫ từ 89.740" thay vì "mua từ 25, giá 89.740₫"). */}
+              <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[13px] text-amber-900">
+                {form.promo_type === 'unit_price' ? (
+                  <>
+                    🏷️ Mua từ <b>{form.min_qty || '?'}</b> {pickedProductName || '(chưa chọn SP)'} → giá{' '}
+                    <b>{form.discount_value ? Number(form.discount_value).toLocaleString('vi-VN') : '?'}₫</b>/đơn vị.
+                    <span className="block text-amber-700/80 mt-0.5">
+                      Mua ít hơn vẫn tính giá niêm yết. Nếu giá ưu đãi không rẻ hơn giá đang bán, KM tự bỏ qua.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    🏷️ Mua từ <b>{form.min_qty || '?'}</b> {pickedProductName || '(chưa chọn SP)'} → giảm{' '}
+                    <b>
+                      {form.discount_value
+                        ? (form.promo_type === 'percent'
+                            ? `${form.discount_value}%`
+                            : `${Number(form.discount_value).toLocaleString('vi-VN')}₫/đơn vị`)
+                        : '?'}
+                    </b>.
+                    <span className="block text-amber-700/80 mt-0.5">
+                      Đây là <b>số tiền/phần trăm GIẢM</b>, không phải giá bán. Muốn đặt thẳng giá bán ưu đãi
+                      (vd mua từ 25 gói = 89.740₫/gói) → chọn loại “Giá ưu đãi khi mua đủ số lượng”.
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {Number(form.min_qty) >= 1000 && (
+                <p className="text-[13px] text-red-600">
+                  ⚠️ Số lượng tối thiểu <b>{Number(form.min_qty).toLocaleString('vi-VN')}</b> — có phải bạn định
+                  nhập con số này vào ô giá/giảm không?
+                </p>
               )}
             </>
           )}

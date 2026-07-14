@@ -137,6 +137,46 @@ export function evaluateProductPromo(
   }
 }
 
+/** Giá trị ưu đãi quy ra tiền — để so bậc KM nào lợi nhất cho khách. */
+function benefitOf(ev: ProductPromoEvaluation, unitPrice: number): number {
+  if (ev.promo.promo_type === 'buy_x_get_y') {
+    // Quà có thể là SP khác (không biết giá ở đây) → lấy đơn giá dòng mua làm ước lượng.
+    return ev.giftQty * Math.max(0, unitPrice - ev.giftPrice)
+  }
+  return ev.discountAmount
+}
+
+/**
+ * Một SP có thể gắn NHIỀU bậc KM (vd: mua 10 giá rẻ, mua nguyên thùng rẻ hơn).
+ * Chọn bậc ĐỦ ĐIỀU KIỆN có lợi nhất cho khách (ưu tiên priority admin đặt trước,
+ * rồi tới số tiền ưu đãi). Chưa bậc nào đủ điều kiện → trả bậc gần đạt nhất để
+ * POS gợi ý "mua thêm N…". Không có KM nào → null.
+ */
+export function evaluateBestPromo(
+  promos: ProductPromotion[],
+  qtyInCart: number,
+  unitPrice: number,
+): ProductPromoEvaluation | null {
+  const evals = promos
+    .map(p => evaluateProductPromo(p, qtyInCart, unitPrice))
+    .filter((e): e is ProductPromoEvaluation => e != null)
+  if (evals.length === 0) return null
+
+  const eligible = evals.filter(e => e.eligible)
+  if (eligible.length > 0) {
+    return eligible.sort((a, b) =>
+      (b.promo.priority - a.promo.priority)
+      || (benefitOf(b, unitPrice) - benefitOf(a, unitPrice))
+      || a.promo.id.localeCompare(b.promo.id),
+    )[0]
+  }
+  return evals.sort((a, b) =>
+    (a.remaining - b.remaining)
+    || (b.promo.priority - a.promo.priority)
+    || a.promo.id.localeCompare(b.promo.id),
+  )[0]
+}
+
 /**
  * Load các KM theo hàng hóa đang hoạt động, lọc theo chi nhánh hiện tại
  * (branch_ids rỗng = mọi chi nhánh) và hiệu lực ngày.
@@ -196,5 +236,15 @@ export function useProductPromotions(branchId?: string | null) {
     [byProduct],
   )
 
-  return { loading, byProduct, getPromosForProduct, getTopPromo }
+  /**
+   * KM tốt nhất cho SP theo SL đang có trong giỏ — xét MỌI bậc KM của SP đó,
+   * không chỉ bậc priority cao nhất.
+   */
+  const getBestPromo = useCallback(
+    (productId: string, qtyInCart: number, unitPrice: number): ProductPromoEvaluation | null =>
+      evaluateBestPromo(byProduct.get(productId) ?? [], qtyInCart, unitPrice),
+    [byProduct],
+  )
+
+  return { loading, byProduct, getPromosForProduct, getTopPromo, getBestPromo }
 }
