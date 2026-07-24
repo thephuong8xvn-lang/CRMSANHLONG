@@ -23,6 +23,7 @@ const CustomerDetailPage         = lazy(() => import('./pages/customers/Customer
 const CustomerSettingsPage       = lazy(() => import('./pages/customers/CustomerSettingsPage'))
 const CustomerDuplicatesPage     = lazy(() => import('./pages/customers/CustomerDuplicatesPage'))
 const CustomerCarePage           = lazy(() => import('./pages/customers/CustomerCarePage'))
+const CreditLimitsPage           = lazy(() => import('./pages/customers/CreditLimitsPage'))
 const CustomerMapPage            = lazy(() => import('./pages/customers/CustomerMapPage'))
 const ProductListPage            = lazy(() => import('./pages/products/ProductListPage'))
 const ProductDetailPage          = lazy(() => import('./pages/products/ProductDetailPage'))
@@ -175,6 +176,7 @@ function AppRoutes() {
       <Route path="/customers" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerListPage /></ProtectedRoute>} />
       <Route path="/customers/settings" element={<ProtectedRoute perms={['users.manage']}><CustomerSettingsPage /></ProtectedRoute>} />
       <Route path="/customers/duplicates" element={<ProtectedRoute adminOnly><CustomerDuplicatesPage /></ProtectedRoute>} />
+      <Route path="/customers/credit-limits" element={<ProtectedRoute adminOnly><CreditLimitsPage /></ProtectedRoute>} />
       <Route path="/customers/map" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerMapPage /></ProtectedRoute>} />
       <Route path="/customers/care" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerCarePage /></ProtectedRoute>} />
       <Route path="/customers/:id" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerDetailPage /></ProtectedRoute>} />

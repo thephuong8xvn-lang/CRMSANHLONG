@@ -30,6 +30,9 @@ export const qk = {
     orders: (id: string) => ['customers', 'orders', id] as const,
     debts: (id: string) => ['customers', 'debts', id] as const,
     churnWorklist: (ownerId: string | null) => ['customers', 'churn-worklist', ownerId] as const,
+    reorderReminders: (ownerId: string | null) => ['customers', 'reorder-reminders', ownerId] as const,
+    creditLimits: ['customers', 'credit-limits'] as const,
+    creditConfig: ['customers', 'credit-config'] as const,
   },
   bi: {
     pivot: (params: object) => ['bi', 'pivot', params] as const,

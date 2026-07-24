@@ -49,6 +49,58 @@ export function useChurnWorklist(ownerId: string | null = null, enabled: boolean
   })
 }
 
+// ── Danh sách "Nhắc mua lại" theo (Khách × Sản phẩm) ──
+export interface ReorderReminderRow {
+  customer_id: string
+  code: string | null
+  farm_name: string
+  owner_user_id: string | null
+  owner_name: string | null
+  branch_id: string | null
+  phone: string | null
+  product_id: string
+  product_name: string
+  unit: string | null
+  n_buys: number
+  avg_interval_days: number | null
+  last_bought_at: string | null
+  last_qty: number | null
+  days_since: number | null
+  predicted_next: string | null
+  overdue_ratio: number | null
+}
+
+export function useReorderReminders(ownerId: string | null = null, enabled: boolean = true) {
+  return useQuery<ReorderReminderRow[]>({
+    queryKey: qk.customers.reorderReminders(ownerId),
+    enabled,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_reorder_reminders', { p_owner_id: ownerId })
+      if (error) { logger.error('[useReorderReminders]', error.message); throw error }
+      return (data ?? []).map((r: any) => ({
+        customer_id: r.customer_id,
+        code: r.code,
+        farm_name: r.farm_name || '—',
+        owner_user_id: r.owner_user_id,
+        owner_name: r.owner_name,
+        branch_id: r.branch_id,
+        phone: r.phone,
+        product_id: r.product_id,
+        product_name: r.product_name || '—',
+        unit: r.unit,
+        n_buys: Number(r.n_buys) || 0,
+        avg_interval_days: r.avg_interval_days != null ? Number(r.avg_interval_days) : null,
+        last_bought_at: r.last_bought_at,
+        last_qty: r.last_qty != null ? Number(r.last_qty) : null,
+        days_since: r.days_since != null ? Number(r.days_since) : null,
+        predicted_next: r.predicted_next,
+        overdue_ratio: r.overdue_ratio != null ? Number(r.overdue_ratio) : null,
+      }))
+    },
+    staleTime: 2 * 60_000,
+  })
+}
+
 // ── Tính lại phân loại vòng đời (admin) ──
 export interface RecomputeResult {
   computed_at: string

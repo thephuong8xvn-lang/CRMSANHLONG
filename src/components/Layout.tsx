@@ -31,7 +31,8 @@ import {
   FileSpreadsheet,
   ReceiptText,
   HeartHandshake,
-  GitMerge
+  GitMerge,
+  ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -99,6 +100,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
         { label: 'Chăm sóc KH', icon: HeartHandshake, path: '/customers/care', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
         { label: 'Cấu hình KH', icon: Settings, path: '/customers/settings', perms: ['users.manage'] },
         { label: 'Khách trùng SĐT', icon: GitMerge, path: '/customers/duplicates', perms: [], adminOnly: true },
+        { label: 'Hạn mức tín dụng', icon: ShieldCheck, path: '/customers/credit-limits', perms: [], adminOnly: true },
         { label: 'Chăn nuôi', icon: PawPrint, path: '/herd-projects', perms: ['herd_projects.view_all', 'herd_projects.create'], primary: 5 },
         { label: 'Pipeline', icon: Stethoscope, path: '/pipeline', perms: ['opportunities.view_all', 'opportunities.create'] },
         { label: 'Đơn hàng', icon: Receipt, path: '/orders', perms: ['orders.view_own', 'orders.view_team', 'orders.view_all', 'orders.create'], primary: 2 },

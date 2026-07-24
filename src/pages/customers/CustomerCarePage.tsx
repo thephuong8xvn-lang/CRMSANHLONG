@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { HeartHandshake, PhoneCall, RefreshCw, AlertCircle, X, ExternalLink, Check } from 'lucide-react'
+import { HeartHandshake, PhoneCall, RefreshCw, AlertCircle, X, ExternalLink, Check, Repeat } from 'lucide-react'
 import Layout from '../../components/Layout'
 import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
@@ -9,11 +9,13 @@ import { useDisplaySettings, primaryPhone } from '../../contexts/DisplaySettings
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { removeVietnameseTones } from '../../components/SmartSearchSelect'
 import {
-  useChurnWorklist, useRecomputeLifecycle, useLogCareCall,
-  type ChurnWorklistRow,
+  useChurnWorklist, useRecomputeLifecycle, useLogCareCall, useReorderReminders,
+  type ChurnWorklistRow, type ReorderReminderRow,
 } from '../../hooks/queries/useCustomerCare'
 
 interface ProfileLite { id: string; full_name: string }
+interface CallTarget { customer_id: string; farm_name: string; phone: string | null; note?: string }
+type CareTab = 'care' | 'reorder'
 
 const LIFECYCLE_BADGE: Record<string, { label: string; cls: string }> = {
   at_risk: { label: 'Có nguy cơ', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -44,12 +46,14 @@ export default function CustomerCarePage() {
   const isManager = isAdmin || userRole.code === 'branch_manager' || userRole.code === 'team_lead'
   const canManageUsers = hasPermission('users.manage') || isAdmin
 
+  const [tab, setTab] = useState<CareTab>('care')
   const [ownerId, setOwnerId] = useState<string | null>(null)
   const [lifecycleFilter, setLifecycleFilter] = useState<'all' | 'at_risk' | 'churned'>('all')
   const [search, setSearch] = useState('')
   const debounced = useDebouncedValue(search, 300)
 
-  const query = useChurnWorklist(ownerId, !!profile?.id)
+  const query = useChurnWorklist(ownerId, !!profile?.id && tab === 'care')
+  const reorderQuery = useReorderReminders(ownerId, !!profile?.id && tab === 'reorder')
   const recompute = useRecomputeLifecycle()
   const logCall = useLogCareCall()
 
@@ -71,10 +75,10 @@ export default function CustomerCarePage() {
   }
 
   // Modal ghi nhận gọi
-  const [callRow, setCallRow] = useState<ChurnWorklistRow | null>(null)
+  const [callRow, setCallRow] = useState<CallTarget | null>(null)
   const [callContent, setCallContent] = useState('')
   const [callErr, setCallErr] = useState('')
-  const openCall = (r: ChurnWorklistRow) => { setCallRow(r); setCallContent(''); setCallErr('') }
+  const openCall = (t: CallTarget) => { setCallRow(t); setCallContent(t.note ?? ''); setCallErr('') }
   const submitCall = async () => {
     if (!callRow || !profile?.id) return
     setCallErr('')
@@ -144,7 +148,74 @@ export default function CustomerCarePage() {
       key: 'action', header: 'Hành động', width: 150, align: 'center', noTruncate: true,
       render: (r) => (
         <div className="flex items-center justify-center gap-1.5">
-          <button onClick={(e) => { e.stopPropagation(); openCall(r) }}
+          <button onClick={(e) => { e.stopPropagation(); openCall({ customer_id: r.customer_id, farm_name: r.farm_name, phone: r.phone }) }}
+            className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 whitespace-nowrap">
+            <PhoneCall size={11} /> Ghi nhận gọi
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); navigate(`/customers/${r.customer_id}`) }}
+            className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50" title="Xem khách hàng">
+            <ExternalLink size={14} />
+          </button>
+        </div>
+      ),
+    },
+  ]
+
+  // ── Tab Nhắc mua lại ──
+  const allReorder = reorderQuery.data ?? []
+  const reorderRows = useMemo(() => {
+    const q = removeVietnameseTones(debounced.trim().toLowerCase())
+    return allReorder.filter(r => {
+      if (q && !removeVietnameseTones(`${r.farm_name} ${r.code ?? ''} ${r.product_name}`.toLowerCase()).includes(q)) return false
+      return true
+    })
+  }, [allReorder, debounced])
+
+  const reorderColumns: DataTableColumn<ReorderReminderRow>[] = [
+    {
+      key: 'customer', header: 'Khách hàng', flex: true, minWidth: 180,
+      render: (r) => (
+        <div className="min-w-0">
+          <div className="font-bold text-gray-700 truncate">{r.farm_name}</div>
+          <div className="flex items-center gap-2 text-[11px] text-gray-400">
+            {r.code && <span className="uppercase tracking-wider">{r.code}</span>}
+            {renderPhone(r.phone, 'text-blue-500 hover:underline')}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'product', header: 'Sản phẩm', flex: true, minWidth: 170,
+      render: (r) => (
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-600 truncate">{r.product_name}</div>
+          <div className="text-[11px] text-gray-400">
+            {r.n_buys} lần · lần cuối {r.last_qty != null ? `${r.last_qty}${r.unit ? ' ' + r.unit : ''}` : '—'}
+          </div>
+        </div>
+      ),
+    },
+    { key: 'last', header: 'Mua cuối', width: 96, render: (r) => <span className="tabular-nums text-gray-600">{fmtDate(r.last_bought_at)}</span> },
+    { key: 'interval', header: 'Nhịp mua', width: 90, align: 'right', render: (r) => <span className="tabular-nums text-gray-500">{r.avg_interval_days != null ? `~${r.avg_interval_days}n` : '—'}</span> },
+    {
+      key: 'due', header: 'Trễ', width: 96, align: 'right', noTruncate: true,
+      render: (r) => {
+        const ratio = r.overdue_ratio ?? 0
+        const c = ratio >= 2 ? 'text-rose-600' : ratio >= 1.3 ? 'text-amber-600' : 'text-gray-500'
+        return (
+          <span className={`tabular-nums font-bold ${c}`}>
+            {r.days_since != null ? `${Math.round(r.days_since)}n` : '—'}
+            {ratio ? <span className="text-[10px] font-normal"> ({ratio}×)</span> : null}
+          </span>
+        )
+      },
+    },
+    { key: 'next', header: 'Dự kiến kỳ tới', width: 110, align: 'right', render: (r) => <span className="tabular-nums text-gray-500">{fmtDate(r.predicted_next)}</span> },
+    {
+      key: 'action', header: 'Hành động', width: 150, align: 'center', noTruncate: true,
+      render: (r) => (
+        <div className="flex items-center justify-center gap-1.5">
+          <button onClick={(e) => { e.stopPropagation(); openCall({ customer_id: r.customer_id, farm_name: r.farm_name, phone: r.phone, note: `Nhắc mua lại: ${r.product_name}. ` }) }}
             className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 whitespace-nowrap">
             <PhoneCall size={11} /> Ghi nhận gọi
           </button>
@@ -166,17 +237,32 @@ export default function CustomerCarePage() {
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
             <h1 className="text-h1 font-bold text-gray-700 flex items-center gap-2">
-              <HeartHandshake size={22} className="text-blue-500" /> Khách cần chăm sóc
+              <HeartHandshake size={22} className="text-blue-500" /> Chăm sóc khách hàng
             </h1>
-            <p className="text-body-md text-gray-400 mt-1">Khách có dấu hiệu rời bỏ theo nhịp mua riêng — gọi lại kịp thời để giữ chân.</p>
+            <p className="text-body-md text-gray-400 mt-1">
+              {tab === 'care'
+                ? 'Khách có dấu hiệu rời bỏ theo nhịp mua riêng — gọi lại kịp thời để giữ chân.'
+                : 'Khách tới kỳ mua lại sản phẩm quen — chào đơn đúng lúc.'}
+            </p>
           </div>
-          {canManageUsers && (
+          {tab === 'care' && canManageUsers && (
             <button onClick={handleRecompute} disabled={recompute.isPending}
               className="bg-white border border-gray-200 text-gray-600 px-3.5 h-10 rounded-lg font-semibold text-tiny hover:bg-gray-50 flex items-center gap-1.5 self-start disabled:opacity-50">
               <RefreshCw size={16} className={`text-blue-500 ${recompute.isPending ? 'animate-spin' : ''}`} />
               {recompute.isPending ? 'Đang tính...' : 'Tính lại phân loại'}
             </button>
           )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-gray-150">
+          {([['care', 'Khách cần chăm sóc', HeartHandshake], ['reorder', 'Nhắc mua lại', Repeat]] as const).map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-tiny font-bold border-b-2 -mb-px transition-colors ${
+                tab === k ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
+              <Icon size={15} /> {label}
+            </button>
+          ))}
         </div>
 
         {notice && (
@@ -186,10 +272,10 @@ export default function CustomerCarePage() {
           </div>
         )}
 
-        {query.isError && (
+        {(tab === 'care' ? query.isError : reorderQuery.isError) && (
           <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-tiny text-rose-700 flex items-start gap-2">
             <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <span>{(query.error as Error)?.message || 'Không tải được danh sách.'} — thử tải lại trang.</span>
+            <span>{((tab === 'care' ? query.error : reorderQuery.error) as Error)?.message || 'Không tải được danh sách.'} — thử tải lại trang.</span>
           </div>
         )}
 
@@ -197,16 +283,19 @@ export default function CustomerCarePage() {
         <div className="bg-gray-0 border border-gray-100 rounded-xl p-4 shadow-sm flex flex-col lg:flex-row lg:items-end gap-3">
           <div className="relative flex-1 min-w-[160px]">
             <label className="text-[11px] font-bold text-gray-400 uppercase block mb-1">Tìm kiếm</label>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tên / mã khách hàng..." className={`${inputCls} w-full`} />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={tab === 'care' ? 'Tên / mã khách hàng...' : 'Tên khách / sản phẩm...'} className={`${inputCls} w-full`} />
           </div>
-          <div className="space-y-1">
-            <label className="text-[11px] font-bold text-gray-400 uppercase block">Mức độ</label>
-            <select value={lifecycleFilter} onChange={e => setLifecycleFilter(e.target.value as any)} className={`${inputCls} w-32`}>
-              <option value="all">Tất cả</option>
-              <option value="at_risk">Có nguy cơ</option>
-              <option value="churned">Đã rời bỏ</option>
-            </select>
-          </div>
+          {tab === 'care' && (
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-400 uppercase block">Mức độ</label>
+              <select value={lifecycleFilter} onChange={e => setLifecycleFilter(e.target.value as any)} className={`${inputCls} w-32`}>
+                <option value="all">Tất cả</option>
+                <option value="at_risk">Có nguy cơ</option>
+                <option value="churned">Đã rời bỏ</option>
+              </select>
+            </div>
+          )}
           {isManager && (
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-gray-400 uppercase block">Nhân viên</label>
@@ -216,23 +305,40 @@ export default function CustomerCarePage() {
               </select>
             </div>
           )}
-          <span className="text-tiny text-gray-400 lg:ml-auto self-center">{rows.length} khách</span>
+          <span className="text-tiny text-gray-400 lg:ml-auto self-center">
+            {tab === 'care' ? `${rows.length} khách` : `${reorderRows.length} lượt`}
+          </span>
         </div>
 
         {/* Bảng */}
-        <DataTable
-          columns={columns}
-          rows={rows}
-          getRowKey={(r) => r.customer_id}
-          loading={query.isLoading}
-          resetSignal={`${debounced}|${lifecycleFilter}|${ownerId}`}
-          itemLabel="khách"
-          emptyIcon={<HeartHandshake className="mx-auto text-gray-300 mb-2" size={44} />}
-          emptyText="Không có khách nào cần chăm sóc trong phạm vi này"
-        />
+        {tab === 'care' ? (
+          <DataTable
+            columns={columns}
+            rows={rows}
+            getRowKey={(r) => r.customer_id}
+            loading={query.isLoading}
+            resetSignal={`${debounced}|${lifecycleFilter}|${ownerId}`}
+            itemLabel="khách"
+            emptyIcon={<HeartHandshake className="mx-auto text-gray-300 mb-2" size={44} />}
+            emptyText="Không có khách nào cần chăm sóc trong phạm vi này"
+          />
+        ) : (
+          <DataTable
+            columns={reorderColumns}
+            rows={reorderRows}
+            getRowKey={(r) => `${r.customer_id}|${r.product_id}`}
+            loading={reorderQuery.isLoading}
+            resetSignal={`${debounced}|${ownerId}`}
+            itemLabel="lượt"
+            emptyIcon={<Repeat className="mx-auto text-gray-300 mb-2" size={44} />}
+            emptyText="Chưa có khách nào tới kỳ mua lại trong phạm vi này"
+          />
+        )}
 
         <p className="text-[11px] text-gray-400 px-1">
-          Phân loại theo nhịp mua riêng mỗi khách (trễ &gt; nhịp = nguy cơ, &gt; 2× nhịp = rời bỏ). Tự cập nhật hằng đêm; quản trị có thể bấm "Tính lại".
+          {tab === 'care'
+            ? 'Phân loại theo nhịp mua riêng mỗi khách (trễ > nhịp = nguy cơ, > 2× nhịp = rời bỏ). Tự cập nhật hằng đêm; quản trị có thể bấm "Tính lại".'
+            : 'Gợi ý theo nhịp mua từng sản phẩm của mỗi khách (mua ≥3 lần, chu kỳ 7–120 ngày). "Trễ" = số ngày kể từ lần mua cuối, kèm bội số so với nhịp mua.'}
         </p>
       </div>
 
