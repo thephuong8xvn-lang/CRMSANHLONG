@@ -18,9 +18,9 @@ const REPORT_CARDS = [
     iconBg: 'bg-blue-50 text-blue-600',
     route: '/reports/profit',
     features: [
-      'Lợi nhuận theo khách hàng / sản phẩm / thương hiệu',
-      'Top 100 tỉ lệ LN · doanh số · nhiều khách mua',
-      'Lọc theo hôm nay / tháng / năm / tùy chọn',
+      'Lợi nhuận theo chi nhánh: xu hướng, top SP/KH/NV, so kỳ trước',
+      'Lợi nhuận theo khách hàng / sản phẩm / thương hiệu (lọc chi nhánh)',
+      'Doanh thu thuần: trừ chiết khấu hóa đơn & hàng trả lại',
     ],
   },
   {
@@ -119,15 +119,18 @@ export default function ReportsHubPage() {
       else if (period === 'month') from = ymd(new Date(now.getFullYear(), now.getMonth(), 1))
       else from = ymd(new Date(now.getFullYear(), 0, 1))
 
+      // Offset +07:00 để ranh giới ngày theo giờ VN (chuỗi trần bị hiểu là UTC
+      // → "Hôm nay" rụng hết đơn bán trước 07:00 sáng).
       const { data } = await supabase.rpc('fn_profit_summary', {
-        p_from: from + 'T00:00:00',
-        p_to: ymd(now) + 'T23:59:59',
+        p_from: from + 'T00:00:00+07:00',
+        p_to: ymd(now) + 'T23:59:59+07:00',
       })
       const row = data?.[0]
+      // Dùng số THUẦN (đã trừ CK cấp hóa đơn + hàng trả) để khớp trang /reports/profit.
       setKpi(row ? {
-        revenue: Number(row.total_revenue),
-        profit: Number(row.total_profit),
-        margin: Number(row.profit_margin),
+        revenue: Number(row.total_revenue_net),
+        profit: Number(row.total_profit_net),
+        margin: Number(row.profit_margin_net),
       } : { revenue: 0, profit: 0, margin: 0 })
       setLastUpdated(new Date())
     } catch {

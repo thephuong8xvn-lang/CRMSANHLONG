@@ -1955,3 +1955,82 @@ Theo yêu cầu user: đưa 4 chức năng hay dùng thành **1 hàng menu riên
 - `[Auth] getSession timed out after 3 seconds` — nghi là lý do app chậm lúc mới mở. **Ưu tiên 1.**
 - `DisplaySettings Table failed to load, falling back to defaults` + HTTP **406** — nhiều khả năng `.single()` trên kết quả rỗng.
 - 2 lỗi **404** khi tải trang.
+
+---
+
+## 🏢 Báo cáo lợi nhuận THEO CHI NHÁNH (chi tiết) — 2026-07-27 `[DB LIVE — CHỜ DEPLOY FE]`
+
+**Bối cảnh:** `/reports/profit` gộp toàn công ty. View `v_order_line_profit` đã có sẵn cột
+`branch_id` nhưng **không RPC nào dùng** → không lọc được, không có tab chi nhánh; chỗ duy nhất
+chẻ được theo CN là `fn_bi_pivot` (1 chiều, không drill-down). Trong khi thực tế Hoài Ân ~87%
+đơn / Phù Mỹ ~13% — lát cắt chi nhánh là số liệu có ý nghĩa ngay.
+
+Đồng thời phát hiện doanh thu cũ (`order_lines.line_total`) **bỏ sót 2 khoản** làm lợi nhuận bị
+thổi lên: (a) chiết khấu **cấp hóa đơn** — sau đại tu Khuyến mãi (`20260732`) khoản này đã phát
+sinh thật; (b) **hàng trả lại** (`sales_returns` completed).
+
+**3 quyết định của user (2026-07-27):** làm ĐẦY ĐỦ (tab CN + lọc CN toàn trang + drill-down);
+**thêm cột** DT gộp → CK hóa đơn → Trả hàng → DT thuần chứ KHÔNG đổi công thức
+`v_order_line_profit` (BI / SP chiến lược / định giá tồn kho đều ăn view này); **chưa** ghép chi
+phí Sổ quỹ (Sổ quỹ chưa vận hành thật) → báo cáo dừng ở lợi nhuận gộp.
+
+### DB — migration `20260737000000_profit_by_branch.sql` (✅ ĐÃ apply remote + verify)
+- [x] **`fn_profit_lines(from,to,branch)`** — fact cấp dòng đơn, helper nội bộ (REVOKE cả
+  `authenticated`; chỉ RPC admin gọi). Là FUNCTION chứ không phải VIEW **có chủ ý**: phân bổ CK
+  hóa đơn cần window `PARTITION BY order_id`, nếu để trong view thì filter thời gian ở ngoài
+  không đẩy xuống dưới window → quét toàn bộ `order_lines` mỗi lần gọi. Lọc theo `created_at`
+  của ĐƠN nên mọi dòng cùng đơn vào/ra cùng nhau → tỉ trọng phân bổ vẫn chính xác tuyệt đối.
+  - CK hóa đơn = `orders.discount_total − Σ(ol.discount×qty)`, `GREATEST(...,0)`. Đã đối chiếu
+    MỌI đường ghi đơn (`fn_recalculate_order_total` trigger + 5 bản POS RPC): tất cả đều ghi
+    `discount_total = v_line_disc + v_inv_disc` ⇒ phép trừ này khớp tuyệt đối.
+  - Hàng trả quy về **ngày ĐƠN GỐC** (không phải ngày lập phiếu trả) để "lợi nhuận của đơn" là
+    con số khép kín. Hệ quả có chủ ý: phiếu trả hoàn tất hôm nay làm giảm doanh thu kỳ đã bán.
+  - Giá vốn hàng trả = giá vốn bình quân của chính dòng đó × SL trả.
+- [x] **Nâng cấp 4 RPC cũ** (`fn_profit_summary/by_customer/by_product/by_brand`): thêm
+  `p_branch_id` + các cột `invoice_discount / return_amount / revenue_net / cogs_net /
+  profit_net / margin_net`. Cột `revenue`/`profit`/`margin` cũ **giữ nguyên nghĩa** để đối
+  chiếu được với báo cáo đang chạy. `qty_sold` đổi `BIGINT → NUMERIC` (SL bán có thể lẻ —
+  trước đây bị cắt phần thập phân).
+- [x] **3 RPC mới**: `fn_profit_branch_summary` (bảng so sánh CN + AOV + LN/đơn + %đóng góp +
+  so kỳ trước `prev`/`yoy`), `fn_profit_branch_trend` (day/week/month, **lấp khoảng trống** để
+  vẽ chart mượt), `fn_profit_branch_breakdown` (top N trong 1 CN theo SP/KH/thương hiệu/nhóm
+  hàng/nhân viên). Đều admin-only + REVOKE PUBLIC/anon + GRANT authenticated.
+- [x] Ranh giới ngày/tuần/tháng của chart tính theo **giờ VN** (`AT TIME ZONE
+  'Asia/Ho_Chi_Minh'`, khớp quy ước `20260628`) — để mặc định UTC thì đơn bán buổi sáng rơi
+  nhầm sang ô ngày hôm trước.
+- [x] Index `idx_orders_branch_created (branch_id, created_at DESC)`.
+
+### Frontend
+- [x] `ProfitReportPage.tsx`: tab **"Theo chi nhánh"** (mặc định) + bộ lọc chi nhánh áp cho mọi
+  tab còn lại + chọn kỳ so sánh. Bấm dòng CN → panel drill-down: 12 ô chỉ số, biểu đồ
+  ComposedChart (cột DT thuần + đường LN gộp) đổi được ngày/tuần/tháng, bảng Top 20 đổi được 5
+  chiều. Dải "đối chiếu" DT gộp − CK hóa đơn − hàng trả = DT thuần dưới KPI. CSV xuất đủ cột mới.
+- [x] Dòng **(Không chi nhánh)** hiện tường minh cho đơn thiếu `branch_id` — cố tình để lộ ra.
+- [x] 🕐 **Sửa mốc múi giờ:** trang gửi `T00:00:00` trần, DB chạy `TimeZone=UTC` → ranh giới
+  ngày lệch 7 giờ (đơn bán 00:00–07:00 giờ VN bị tính sang ngày hôm trước). Nay gửi kèm offset
+  `+07:00`. **Đo thực tế trên prod: chỉ 17/2.171 đơn nằm ở khung giờ 6h sáng VN (0,8%)** — cửa
+  hàng không bán trước 6h nên tác động thực tế nhỏ, chỉ là lệch NGÀY chứ không mất doanh thu
+  khỏi tổng tháng/năm. Vẫn sửa để chart theo ngày đúng ranh giới.
+  `ReportsHubPage` sửa cùng cách và chuyển KPI strip sang số **thuần** để khớp trang chi tiết.
+- [x] `tsc -b` + `npm run build` + 102/102 unit test PASS.
+
+### ✅ ĐÃ APPLY PROD + VERIFY (2026-07-27)
+- 8/8 function tồn tại đúng chữ ký; `authenticated` execute = true cho 7 RPC báo cáo,
+  **false cho `fn_profit_lines`**; `anon` = false cho cả 8. Bản `fn_profit_summary` 2 tham số cũ
+  đã biến mất (DROP sạch, không còn overload).
+- Guard: JWT giả role `branch_manager` (Hoài Ân) → RAISE `42501 Không có quyền` ✅.
+- **Cross-foot khớp tuyệt đối**: 4 RPC cũ lọc Phù Mỹ đều cộng ra đúng `74.234.000₫ /
+  10.039.165,55₫` bằng `fn_profit_branch_summary`. Trend day/week/month đủ ô (8/6/7) và tổng
+  đơn khớp `fn_profit_summary` (1.498). Breakdown chạy đủ 5 chiều; lọc CN đúng (share 100%).
+- **Hiệu năng**: `fn_profit_branch_summary` 7 tháng + so kỳ trước (gọi `fn_profit_lines` 2 lần
+  trên ~14 tháng dữ liệu) = **141 ms**.
+- Số thật 30 ngày (27/6–27/7): DT thuần **748,8tr**, LN gộp **64,1tr**, biên **8,57%**, 1.498 đơn.
+  **Hoài Ân 674,5tr / biên 8,02% / AOV 557K** — **Phù Mỹ 74,2tr / biên 13,52% / AOV 258K**.
+  Phù Mỹ chỉ 9,91% doanh thu nhưng **15,65% lợi nhuận**, tăng trưởng +146% DT / +162% LN so kỳ
+  trước. Hoài Ân +16% DT nhưng kỳ trước LN **âm 2,4tr** nên không tính được % tăng LN.
+  `invoice_discount` = 0 toàn kỳ (khớp: KM cấp đơn chưa từng áp), hàng trả = 0.
+- 0 đơn nào thiếu `branch_id` → dòng "(Không chi nhánh)" sẽ không xuất hiện.
+
+### ⚠️ CÒN LẠI
+- [ ] Commit + deploy FE + bấm "Tải lại" PWA.
+- [ ] **Xoay access token** đã cấp trong chat phiên này.
