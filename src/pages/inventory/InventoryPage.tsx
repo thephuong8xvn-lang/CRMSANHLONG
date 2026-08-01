@@ -203,6 +203,9 @@ export default function InventoryPage() {
   const [rejectReason, setRejectReason] = useState('')
   // Xem trước giá vốn mới ở kho đích (hiện cho admin ở bước duyệt)
   const [costPreview, setCostPreview] = useState<any[]>([])
+  // Sửa số lượng / đơn giá ngay trên phiếu (nháp: người lập; đã xuất: chỉ admin)
+  const [editingLines, setEditingLines] = useState(false)
+  const [lineEdits, setLineEdits] = useState<Record<string, { quantity: number; unitPrice: number }>>({})
   const [transferPending, setTransferPending] = useState<{
     in_transit_count: number; in_transit_cost: number;
     awaiting_count: number; awaiting_cost: number;
@@ -750,6 +753,56 @@ export default function InventoryPage() {
       { p_transfer_id: transfer.id, p_user_id: profile?.id },
       'Đã hủy yêu cầu chuyển kho.'
     )
+
+  // Ai được sửa dòng phiếu: nháp → người lập hoặc admin; đã xuất kho → chỉ admin.
+  const canEditTransferLines = (t: any) => {
+    if (!t) return false
+    if (t.status === 'draft') return isAdmin || t.created_by === profile?.id
+    if (t.status === 'in_transit' || t.status === 'received') return isAdmin
+    return false
+  }
+
+  const startEditingLines = () => {
+    const init: Record<string, { quantity: number; unitPrice: number }> = {}
+    for (const l of selectedTransferLines) {
+      init[l.id] = { quantity: Number(l.quantity), unitPrice: Number(l.unit_price || 0) }
+    }
+    setLineEdits(init)
+    setEditingLines(true)
+  }
+
+  const handleSaveLineEdits = async () => {
+    const payload = selectedTransferLines
+      .filter(l => {
+        const e = lineEdits[l.id]
+        return e && (e.quantity !== Number(l.quantity) || e.unitPrice !== Number(l.unit_price || 0))
+      })
+      .map(l => ({ line_id: l.id, quantity: lineEdits[l.id].quantity, unit_price: lineEdits[l.id].unitPrice }))
+
+    if (payload.length === 0) {
+      setEditingLines(false)
+      return
+    }
+    setSubmitting(true)
+    try {
+      const { error } = await supabase.rpc('fn_update_transfer_lines', {
+        p_transfer_id: selectedTransfer.id,
+        p_lines: payload
+      })
+      if (error) throw error
+
+      setAlertMsg({ type: 'success', text: 'Đã cập nhật phiếu chuyển kho.' })
+      setEditingLines(false)
+      await fetchTransferDetails(selectedTransfer.id)
+      await fetchCostPreview(selectedTransfer.id, selectedTransfer.status)
+      await reloadTransfers()
+    } catch (err: any) {
+      console.error(err)
+      setAlertMsg({ type: 'error', text: err.message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const handleCreateReturn = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1938,6 +1991,8 @@ export default function InventoryPage() {
                   fetchCostPreview(t.id, t.status)
                   setRejectingTransfer(false)
                   setRejectReason('')
+                  setEditingLines(false)
+                  setLineEdits({})
                   setShowTransferDetailModal(true)
                 }}
                 emptyText="Không tìm thấy phiếu chuyển kho nào"
@@ -2626,7 +2681,48 @@ export default function InventoryPage() {
 
               {/* Items Table */}
               <div className="space-y-2">
-                <h4 className="text-body-md font-bold text-gray-755">Sản phẩm luân chuyển</h4>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h4 className="text-body-md font-bold text-gray-755">Sản phẩm luân chuyển</h4>
+                  {canEditTransferLines(selectedTransfer) && (
+                    editingLines ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setEditingLines(false); setLineEdits({}) }}
+                          disabled={submitting}
+                          className="h-8 px-3 border border-gray-100 rounded-lg text-[12px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Hủy sửa
+                        </button>
+                        <button
+                          onClick={handleSaveLineEdits}
+                          disabled={submitting}
+                          className="h-8 px-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-[12px] font-semibold disabled:opacity-50"
+                        >
+                          {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={startEditingLines}
+                        className="h-8 px-3 border border-blue-100 bg-blue-50 text-blue-700 rounded-lg text-[12px] font-semibold hover:bg-blue-100 flex items-center gap-1.5"
+                      >
+                        <Pencil size={13} />
+                        Sửa số lượng / đơn giá
+                      </button>
+                    )
+                  )}
+                </div>
+
+                {editingLines && selectedTransfer.status !== 'draft' && (
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-[12px] text-amber-800">
+                    <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+                    <span>
+                      Hàng đã xuất khỏi kho nguồn. Giảm số lượng sẽ <strong>trả phần chênh về lại lô ở
+                      {' '}{selectedTransfer.from_wh?.name}</strong>, tăng thì trừ thêm — đều được ghi thẻ kho.
+                      Đặt số lượng = 0 để bỏ hẳn dòng đó.
+                    </span>
+                  </div>
+                )}
                 <div className="border border-gray-100 rounded-lg overflow-x-auto tbl-x">
                   <table className="w-full min-w-[680px] text-left border-collapse">
                     <thead>
@@ -2658,7 +2754,15 @@ export default function InventoryPage() {
                               {line.lot?.expiry_date ? new Date(line.lot.expiry_date).toLocaleDateString('vi-VN') : '---'}
                             </td>
                             <td className="px-3 py-2.5 text-center font-bold text-gray-800 whitespace-nowrap">
-                              {line.quantity} {line.product?.unit}
+                              {editingLines ? (
+                                <DecimalInput
+                                  value={lineEdits[line.id]?.quantity ?? Number(line.quantity)}
+                                  onChange={(v) => setLineEdits(p => ({ ...p, [line.id]: { ...p[line.id], quantity: v } }))}
+                                  className="w-20 text-center h-8 border border-blue-200 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-800"
+                                />
+                              ) : (
+                                <>{line.quantity} {line.product?.unit}</>
+                              )}
                             </td>
                             <td className="px-3 py-2.5 text-right whitespace-nowrap">
                               <span className="text-gray-500">
@@ -2666,15 +2770,34 @@ export default function InventoryPage() {
                               </span>
                             </td>
                             <td className="px-3 py-2.5 text-right text-gray-700 whitespace-nowrap">
-                              <span>{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</span>
-                              {edited && (
-                                <span className="block text-[10px] text-indigo-500" title="Đã sửa lệch khỏi bảng giá">
-                                  bảng giá: {Number(listPrice).toLocaleString('vi-VN')} ₫
-                                </span>
+                              {editingLines ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={lineEdits[line.id]?.unitPrice ?? Number(line.unit_price || 0)}
+                                  onChange={(e) => setLineEdits(p => ({
+                                    ...p,
+                                    [line.id]: { ...p[line.id], unitPrice: Math.max(0, parseFloat(e.target.value) || 0) }
+                                  }))}
+                                  className="w-28 text-right h-8 px-2 border border-blue-200 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-850"
+                                />
+                              ) : (
+                                <>
+                                  <span>{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</span>
+                                  {edited && (
+                                    <span className="block text-[10px] text-indigo-500" title="Đã sửa lệch khỏi bảng giá">
+                                      bảng giá: {Number(listPrice).toLocaleString('vi-VN')} ₫
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </td>
                             <td className="px-3 py-2.5 text-right font-bold text-gray-800 whitespace-nowrap">
-                              {Number((line.unit_price || 0) * line.quantity).toLocaleString('vi-VN')} ₫
+                              {editingLines
+                                ? ((lineEdits[line.id]?.quantity ?? Number(line.quantity)) *
+                                   (lineEdits[line.id]?.unitPrice ?? Number(line.unit_price || 0))).toLocaleString('vi-VN')
+                                : Number((line.unit_price || 0) * line.quantity).toLocaleString('vi-VN')} ₫
                             </td>
                           </tr>
                         );
@@ -2782,16 +2905,21 @@ export default function InventoryPage() {
                 </div>
               )}
 
-              {/* Transition actions */}
+              {/* Transition actions — ẩn khi đang sửa dòng để không bấm nhầm
+                  khi thay đổi chưa lưu */}
               <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-100">
                 <button
-                  onClick={() => { setShowTransferDetailModal(false); setRejectingTransfer(false); setRejectReason('') }}
+                  onClick={() => {
+                    setShowTransferDetailModal(false)
+                    setRejectingTransfer(false); setRejectReason('')
+                    setEditingLines(false); setLineEdits({})
+                  }}
                   className="flex-1 min-w-[100px] h-10 border border-gray-100 rounded-lg text-body-md font-semibold hover:bg-gray-50 text-gray-600 transition-colors"
                 >
                   Đóng
                 </button>
 
-                {selectedTransfer.status === 'draft' && (
+                {!editingLines && selectedTransfer.status === 'draft' && (
                   <>
                     <button
                       onClick={() => handleCancelTransfer(selectedTransfer)}
@@ -2811,7 +2939,7 @@ export default function InventoryPage() {
                   </>
                 )}
 
-                {selectedTransfer.status === 'in_transit' && (
+                {!editingLines && selectedTransfer.status === 'in_transit' && (
                   <>
                     <button
                       onClick={() => handleCancelTransfer(selectedTransfer)}
@@ -2832,7 +2960,7 @@ export default function InventoryPage() {
                 )}
 
                 {/* Bước cuối: CHỈ Admin/CEO. Duyệt xong hàng mới vào sổ kho đích. */}
-                {selectedTransfer.status === 'received' && (
+                {!editingLines && selectedTransfer.status === 'received' && (
                   isAdmin ? (
                     <>
                       {rejectingTransfer ? (
