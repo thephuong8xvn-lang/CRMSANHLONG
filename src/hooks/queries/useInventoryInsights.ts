@@ -126,6 +126,17 @@ export interface ReorderRow {
   weeks_observed: number
   /** Gợi ý đặt theo coverDays cũ (heuristic — giữ cho widget Dashboard tương thích). */
   suggestedQty: number
+  // ── Chiều phân loại (chỉ fn_reorder_planning trả về; product_reorder_view không có) ──
+  brand_id?: string | null
+  brand_name?: string | null
+  category_id?: string | null
+  category_name?: string | null
+  /** NCC SUY RA từ lần nhập gần nhất — products không có cột NCC. */
+  supplier_id?: string | null
+  supplier_name?: string | null
+  last_purchase_at?: string | null
+  /** Số lần nhập từ NCC đó trong 12 tháng (độ tin cậy của suy luận). */
+  supplier_receipts_12m?: number
 }
 
 export interface ReorderParams { coverDays?: number; minOrders?: number }
@@ -197,6 +208,14 @@ export function useReorderPlanning(minOrders: number = 3, enabled: boolean = tru
         weekly_stddev: Number(r.weekly_stddev) || 0,
         weeks_observed: Number(r.weeks_observed) || 0,
         suggestedQty: 0, // page tính lại qua computeReorderPlan
+        brand_id: r.brand_id ?? null,
+        brand_name: r.brand_name ?? null,
+        category_id: r.category_id ?? null,
+        category_name: r.category_name ?? null,
+        supplier_id: r.supplier_id ?? null,
+        supplier_name: r.supplier_name ?? null,
+        last_purchase_at: r.last_purchase_at ?? null,
+        supplier_receipts_12m: Number(r.supplier_receipts_12m) || 0,
       }))
     },
     staleTime: 5 * 60_000,

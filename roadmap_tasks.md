@@ -2148,3 +2148,52 @@ Mỗi tài khoản chi nhánh gán 6 vai trò = 67 quyền, nhưng riêng `branc
 - [ ] Hàng đang đi đường vẫn ngoài báo cáo định giá tồn kho (mới có banner cảnh báo ở tab).
 - [ ] Chưa có phiếu in chuyển kho để bên nhận ký; `inventory.transfer` chưa gắn vào RLS.
 - [ ] Nợ cũ: `fn_pos_edit_order` vẫn tin `invoice_discount` từ client.
+
+---
+
+## 📈 Phiên 2026-08-01 (tối) — Gợi ý đặt hàng theo Thương hiệu / NCC / Nhóm SP `[HOÀN THÀNH]`
+
+**Bối cảnh:** `/inventory/reorder` là 1 danh sách phẳng 346 dòng, không cắt được theo
+chiều nào → muốn lập phiếu đặt cho 1 nhà cung cấp phải tự dò tay.
+
+**Quyết định nghiệp vụ (user chốt):**
+- **NCC suy ra từ lịch sử nhập**, KHÔNG thêm cột `products.default_supplier_id`
+  (346 mặt hàng gán tay là quá tốn). Lấy NCC của phiếu nhập `completed` **gần nhất**.
+- **Lọc + gom nhóm** (không chỉ dropdown suông) — mỗi nhóm có nút tạo phiếu đặt riêng.
+- **KHÔNG đụng tới giá** — đã đề xuất cột "giá nhập gần nhất + ước tính tiền", user từ chối.
+  Đơn giá trên phiếu đặt vẫn để 0 như cũ. *Đừng nêu lại.*
+
+### DB `20260743000000_reorder_by_dimension.sql` (✅ apply prod + tracking + verify)
+- `DROP + CREATE fn_reorder_planning` (thêm cột OUT thì `CREATE OR REPLACE` không cho →
+  bắt buộc DROP). **Giữ nguyên chữ ký `(p_min_orders integer)`** → FE bản cũ đang chạy
+  không gãy, chỉ nhận thừa cột.
+- Thêm 8 cột: `brand_id/brand_name`, `category_id/category_name`,
+  `supplier_id/supplier_name`, `last_purchase_at`, `supplier_receipts_12m`.
+- NCC = `DISTINCT ON (product_id)` trên UNION của (1) `goods_receipt_lines` → `goods_receipts`
+  `status='completed'` và (2) `stock_lots` có `supplier_id` nhưng **`receipt_id IS NULL`**
+  — điều kiện này để KHÔNG đếm trùng lô do chính phiếu ở (1) sinh ra.
+- Index mới `idx_grl_product_receipt (product_id, receipt_id)` — trước đây
+  `goods_receipt_lines` **không có index nào theo product_id**.
+
+### FE
+- `useInventoryInsights.ts`: `ReorderRow` + 8 trường optional (`product_reorder_view`
+  không có → để optional, Dashboard/Expiry không vỡ).
+- `ReorderPage.tsx`: 3 dropdown lọc + ô "Gom nhóm theo". **Lựa chọn dropdown dựng từ dữ
+  liệu đang có kèm số đếm** (`Agriviet (64)`) chứ không nạp toàn bộ danh mục → không có
+  lựa chọn rỗng. Nhóm = khối thu gọn được, sắp theo số mặt hàng cần đặt ngay, "chưa gán"
+  xuống cuối. Nút "Tạo đơn đặt (n)" mỗi nhóm: ưu tiên dòng đã tick, chưa tick thì lấy
+  các mặt hàng *cần đặt ngay* của nhóm — n hiện trên nút nên không bất ngờ.
+- `PurchaseOrderFormPage.tsx`: nhận `prefillSupplierId` → vào form là **chọn sẵn NCC**.
+
+### Số liệu prod đo được (346 mặt hàng trong danh sách)
+- `brand_id` / `category_id` phủ **100%** (1080/1080 SP active). 39 thương hiệu, **chỉ 6
+  nhóm SP** (Vaccine 553 / Thuốc thú y 345 → lọc theo nhóm khá thô, thương hiệu hữu ích hơn).
+- Suy ra NCC được **345/346 (99,7%)**, 29 NCC khác nhau. 1 SP thiếu là
+  `SP-4427010-549` Zoetis-Vanguard — nhưng đủ bán 472 ngày nên vô hại.
+- Thời gian chạy RPC **86–117 ms** (3 lần) — join thêm không làm chậm.
+- Guard nguyên vẹn: không claims → `42501`; `branch_manager` (Hoài Ân) vẫn thấy đủ 346 dòng.
+
+### ⚠️ Ghi nhận cần dọn (KHÔNG tự sửa)
+- **`suppliers` có 2 bản ghi cùng là Vemedim**: "CÔNG TY TNHH MTV THUỐC THÚ Y VÀ CHẾ PHẨM
+  SINH HỌC VEMEDIM" (20 mặt hàng) và "Cty TNHH MTV Thuốc Thú Y & Chế phẩm sinh học Vemedim
+  (VMD" (13 mặt hàng) → gom nhóm sẽ tách làm 2. Cần user gộp thủ công.

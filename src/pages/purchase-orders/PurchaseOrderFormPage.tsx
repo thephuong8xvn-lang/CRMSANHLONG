@@ -124,13 +124,21 @@ export default function PurchaseOrderFormPage() {
 
   // Prefill dòng hàng từ trang Gợi ý đặt hàng (cầu nối). Chỉ nạp 1 lần khi vào.
   useEffect(() => {
-    const pre = (location.state as { prefillLines?: POLineItem[] } | null)?.prefillLines
+    const st = location.state as { prefillLines?: POLineItem[]; prefillSupplierId?: string } | null
+    const pre = st?.prefillLines
     if (pre && pre.length > 0) {
       setLineItems(pre.map(l => ({
         productId: l.productId, sku: l.sku, name: l.name,
         quantity: Number(l.quantity) || 0, unitPrice: Number(l.unitPrice) || 0,
       })))
-      setAlertMsg({ type: 'success', text: `Đã nạp ${pre.length} mặt hàng từ gợi ý đặt hàng. Chọn nhà cung cấp & kho để hoàn tất.` })
+      // Đến từ nhóm "theo nhà cung cấp" → chọn sẵn NCC, chỉ còn thiếu kho.
+      if (st?.prefillSupplierId) setSelectedSupplierId(st.prefillSupplierId)
+      setAlertMsg({
+        type: 'success',
+        text: st?.prefillSupplierId
+          ? `Đã nạp ${pre.length} mặt hàng và chọn sẵn nhà cung cấp từ gợi ý đặt hàng. Chọn kho & nhập đơn giá để hoàn tất.`
+          : `Đã nạp ${pre.length} mặt hàng từ gợi ý đặt hàng. Chọn nhà cung cấp & kho để hoàn tất.`,
+      })
       // Xóa state điều hướng để tải lại trang (F5) không nạp lại.
       window.history.replaceState({}, '')
     }
