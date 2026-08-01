@@ -182,7 +182,9 @@ function AppRoutes() {
       <Route path="/customers/:id" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerDetailPage /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute perms={['products.view', 'products.manage', 'pricing.manage', 'promotions.manage']}><ProductListPage /></ProtectedRoute>} />
       {/* ⚠️ Các route cụ thể PHẢI đứng TRƯỚC route wildcard /products/:id */}
-      <Route path="/products/prices" element={<ProtectedRoute perms={['pricing.manage']}><PriceListPage /></ProtectedRoute>} />
+      {/* Bảng giá bán: MỌI nhân viên đều xem/tra cứu được. Quyền chỉ chặn ở
+          thao tác SỬA giá (khớp RLS price_list_items), xem PriceListPage. */}
+      <Route path="/products/prices" element={<ProtectedRoute><PriceListPage /></ProtectedRoute>} />
       <Route path="/products/ingredients" element={<ProtectedRoute perms={['products.view', 'products.manage']}><ActiveIngredientsPage /></ProtectedRoute>} />
       <Route path="/products/:id" element={<ProtectedRoute perms={['products.view', 'products.manage']}><ProductDetailPage /></ProtectedRoute>} />
       <Route path="/suppliers" element={<ProtectedRoute perms={['purchase_orders.create', 'purchase_orders.approve', 'inventory.view', 'inventory.receive']}><SupplierListPage /></ProtectedRoute>} />

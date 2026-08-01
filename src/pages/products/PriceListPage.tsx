@@ -504,25 +504,31 @@ export default function PriceListPage() {
                   className="h-10 px-5 border border-gray-200 rounded-lg text-body-md font-semibold text-gray-600 hover:bg-gray-50 transition-all"
                   disabled={saving}
                 >
-                  Hủy bỏ
+                  {canManagePricing ? 'Hủy bỏ' : 'Quay lại'}
                 </button>
-                <button
-                  onClick={handleSaveChanges}
-                  className="h-10 px-6 bg-blue-500 text-gray-0 rounded-lg text-body-md font-bold flex items-center gap-2 hover:bg-blue-600 active:scale-[0.98] transition-all shadow-sm disabled:opacity-50"
-                  disabled={saving || Object.keys(dirtyPrices).length === 0}
-                >
-                  {saving ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-gray-0 border-t-transparent rounded-full animate-spin"></div>
-                      Đang lưu...
-                    </>
-                  ) : (
-                    <>
-                      <Save size={16} />
-                      Lưu thay đổi
-                    </>
-                  )}
-                </button>
+                {canManagePricing ? (
+                  <button
+                    onClick={handleSaveChanges}
+                    className="h-10 px-6 bg-blue-500 text-gray-0 rounded-lg text-body-md font-bold flex items-center gap-2 hover:bg-blue-600 active:scale-[0.98] transition-all shadow-sm disabled:opacity-50"
+                    disabled={saving || Object.keys(dirtyPrices).length === 0}
+                  >
+                    {saving ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-0 border-t-transparent rounded-full animate-spin"></div>
+                        Đang lưu...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        Lưu thay đổi
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <span className="h-10 px-4 rounded-lg bg-gray-50 border border-gray-200 text-body-md font-semibold text-gray-500 flex items-center">
+                    Chỉ xem
+                  </span>
+                )}
               </div>
             </div>
 
@@ -626,13 +632,21 @@ export default function PriceListPage() {
                             </td>
                             <td className="p-4 text-right bg-blue-50/10">
                               <div className="flex justify-end">
-                                <input
-                                  type="text"
-                                  className="w-36 h-9 px-3 text-right border border-gray-200 rounded-lg text-body-md font-bold text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all bg-gray-0"
-                                  value={isEdited ? formatNumber(dirtyPrices[prod.id]) : (currentSelling ? formatNumber(currentSelling) : '')}
-                                  onChange={e => handlePriceEdit(prod.id, e.target.value)}
-                                  placeholder="Nhập giá..."
-                                />
+                                {canManagePricing ? (
+                                  <input
+                                    type="text"
+                                    className="w-36 h-9 px-3 text-right border border-gray-200 rounded-lg text-body-md font-bold text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all bg-gray-0"
+                                    value={isEdited ? formatNumber(dirtyPrices[prod.id]) : (currentSelling ? formatNumber(currentSelling) : '')}
+                                    onChange={e => handlePriceEdit(prod.id, e.target.value)}
+                                    placeholder="Nhập giá..."
+                                  />
+                                ) : (
+                                  // Không có quyền sửa giá: hiển thị tĩnh. Nếu vẫn cho gõ
+                                  // thì RLS price_list_items sẽ chặn lúc lưu → báo lỗi khó hiểu.
+                                  <span className="w-36 h-9 px-3 flex items-center justify-end text-body-md font-bold text-gray-700 tabular-nums">
+                                    {currentSelling ? formatNumber(currentSelling) : '—'}
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="p-4 text-center">
