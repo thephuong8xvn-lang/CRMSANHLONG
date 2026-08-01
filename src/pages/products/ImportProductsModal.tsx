@@ -189,7 +189,7 @@ export default function ImportProductsModal({
     try {
       // Fetch price lists, categories, brands for defaults
       const [{ data: priceLists }, { data: categories }, { data: brands }] = await Promise.all([
-        supabase.from('price_lists').select('id, code').eq('is_active', true),
+        supabase.from('price_lists').select('id, code').eq('is_active', true).eq('usage', 'sales'),
         supabase.from('product_categories').select('id').eq('is_active', true).limit(1),
         supabase.from('brands').select('id').eq('is_active', true).limit(1)
       ])

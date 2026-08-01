@@ -10,12 +10,18 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
-  Sparkles
+  Sparkles,
+  Plus,
+  ArrowRightLeft,
+  Tag
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
+import { useAuth } from '../../contexts/AuthContext'
+
+type PriceListUsage = 'sales' | 'transfer'
 
 interface PriceList {
   id: string
@@ -23,6 +29,7 @@ interface PriceList {
   name: string
   description?: string | null
   is_default: boolean
+  usage: PriceListUsage
 }
 
 interface ProductCategory {
@@ -54,6 +61,8 @@ interface Product {
 export default function PriceListPage() {
   const navigate = useNavigate()
   const { settings } = useDisplaySettings()
+  const { userRole } = useAuth()
+  const isAdmin = userRole?.code === 'admin' || userRole?.code === 'ceo'
 
   const formatNumber = (val: number) => {
     if (val === null || val === undefined || isNaN(val)) return '0'
@@ -90,6 +99,13 @@ export default function PriceListPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
+  // Tạo bảng giá mới (admin) — dùng để dựng bảng giá CHUYỂN KHO NỘI BỘ
+  const [showNewListModal, setShowNewListModal] = useState(false)
+  const [newList, setNewList] = useState<{ code: string; name: string; description: string; usage: PriceListUsage }>({
+    code: '', name: '', description: '', usage: 'transfer'
+  })
+  const [creatingList, setCreatingList] = useState(false)
+
   // Trigger Toast
   const triggerToast = (msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ show: true, msg, type })
@@ -106,15 +122,17 @@ export default function PriceListPage() {
         // 1. Fetch active price lists
         const { data: listData, error: listErr } = await supabase
           .from('price_lists')
-          .select('id, code, name, description, is_default')
+          .select('id, code, name, description, is_default, usage')
           .eq('is_active', true)
+          .order('usage', { ascending: true })
           .order('is_default', { ascending: false })
 
         if (listErr) throw listErr
         if (listData) {
-          setPriceLists(listData)
-          if (listData.length > 0) {
-            setSelectedList(listData[0])
+          const lists = (listData as any[]).map(l => ({ ...l, usage: (l.usage ?? 'sales') as PriceListUsage }))
+          setPriceLists(lists)
+          if (lists.length > 0) {
+            setSelectedList(lists[0])
           }
         }
 
@@ -303,9 +321,83 @@ export default function PriceListPage() {
     }
   }
 
+  // Tạo bảng giá mới. Chủ yếu để admin dựng BẢNG GIÁ CHUYỂN KHO NỘI BỘ —
+  // giá ở đây chỉ là giá trị chứng từ khi luân chuyển hàng giữa các kho,
+  // KHÔNG phải giá vốn (giá vốn do server lấy từ lô nguồn).
+  const handleCreateList = async () => {
+    const code = newList.code.trim().toUpperCase()
+    const name = newList.name.trim()
+    if (!code || !name) {
+      triggerToast('Nhập đủ mã và tên bảng giá.', 'error')
+      return
+    }
+    setCreatingList(true)
+    try {
+      const { data, error } = await supabase
+        .from('price_lists')
+        .insert([{
+          code,
+          name,
+          description: newList.description.trim() || null,
+          usage: newList.usage,
+          is_active: true,
+          is_default: false
+        }])
+        .select('id, code, name, description, is_default, usage')
+        .single()
+
+      if (error) throw error
+
+      const created = { ...data, usage: (data.usage ?? 'sales') as PriceListUsage }
+      setPriceLists(prev => [...prev, created])
+      setSelectedList(created)
+      setShowNewListModal(false)
+      setNewList({ code: '', name: '', description: '', usage: 'transfer' })
+      triggerToast('Đã tạo bảng giá mới.')
+    } catch (err: any) {
+      console.error('Error creating price list:', err)
+      triggerToast(
+        err?.code === '23505'
+          ? 'Mã bảng giá đã tồn tại.'
+          : 'Không tạo được bảng giá: ' + (err?.message || 'lỗi không xác định'),
+        'error'
+      )
+    } finally {
+      setCreatingList(false)
+    }
+  }
+
+  const salesLists = priceLists.filter(l => l.usage !== 'transfer')
+  const transferLists = priceLists.filter(l => l.usage === 'transfer')
+
+  const renderListButton = (list: PriceList) => {
+    const isSelected = selectedList?.id === list.id
+    return (
+      <button
+        key={list.id}
+        onClick={() => setSelectedList(list)}
+        className={`w-full text-left px-6 py-4 border-l-[4px] transition-all flex flex-col gap-0.5 ${
+          isSelected
+            ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold'
+            : 'border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+        }`}
+      >
+        <span className="text-body-md font-bold leading-tight">{list.name}</span>
+        <span className="text-[10px] uppercase font-semibold tracking-wider text-gray-400 mt-1">
+          Mã: {list.code} {list.is_default && '• Mặc định'}
+        </span>
+        {list.description && (
+          <span className="text-tiny text-gray-400 truncate w-full mt-0.5">
+            {list.description}
+          </span>
+        )}
+      </button>
+    )
+  }
+
   return (
     <Layout activeMenu="Sản phẩm">
-      
+
       {/* Toast Notification Widget */}
       {toast.show && (
         <div className={`fixed bottom-10 right-10 z-50 flex items-center gap-3 px-6 py-4 rounded-xl shadow-lg border animate-in slide-in-from-bottom duration-300 ${
@@ -331,37 +423,46 @@ export default function PriceListPage() {
             <span className="text-tiny font-bold text-gray-400 uppercase tracking-wider font-semibold">Cấp bậc bảng giá</span>
             <FileSpreadsheet size={18} className="text-blue-500" />
           </div>
-          
+
           {loadingLists ? (
             <div className="flex justify-center items-center py-12">
               <div className="w-6 h-6 border-2 border-gray-100 border-t-blue-500 rounded-full animate-spin"></div>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto py-2 divide-y divide-gray-50">
-              {priceLists.map(list => {
-                const isSelected = selectedList?.id === list.id
-                return (
-                  <button
-                    key={list.id}
-                    onClick={() => setSelectedList(list)}
-                    className={`w-full text-left px-6 py-4 border-l-[4px] transition-all flex flex-col gap-0.5 ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold'
-                        : 'border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                    }`}
-                  >
-                    <span className="text-body-md font-bold leading-tight">{list.name}</span>
-                    <span className="text-[10px] uppercase font-semibold tracking-wider text-gray-400 mt-1">
-                      Mã: {list.code} {list.is_default && '• Mặc định'}
-                    </span>
-                    {list.description && (
-                      <span className="text-tiny text-gray-400 truncate w-full mt-0.5">
-                        {list.description}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
+            <div className="flex-1 overflow-y-auto py-2">
+              <div className="px-6 pt-2 pb-1 flex items-center gap-1.5">
+                <Tag size={12} className="text-gray-400" />
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Giá bán cho khách</span>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {salesLists.map(renderListButton)}
+              </div>
+
+              <div className="px-6 pt-5 pb-1 flex items-center gap-1.5 border-t border-gray-50 mt-2">
+                <ArrowRightLeft size={12} className="text-indigo-400" />
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Chuyển kho nội bộ</span>
+              </div>
+              {transferLists.length === 0 ? (
+                <p className="px-6 py-3 text-tiny text-gray-400 italic leading-relaxed">
+                  Chưa có bảng giá nội bộ. Tạo một bảng để nhân viên áp giá sẵn khi lập phiếu chuyển kho.
+                </p>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {transferLists.map(renderListButton)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+              <button
+                onClick={() => setShowNewListModal(true)}
+                className="w-full h-10 flex items-center justify-center gap-2 border border-dashed border-gray-200 rounded-lg text-body-md font-semibold text-gray-600 hover:bg-gray-0 hover:border-blue-500 hover:text-blue-600 transition-all"
+              >
+                <Plus size={16} />
+                Tạo bảng giá
+              </button>
             </div>
           )}
         </aside>
@@ -381,9 +482,17 @@ export default function PriceListPage() {
                   <span className="text-tiny text-gray-400 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5 font-bold uppercase">
                     {settings.currency_symbol}
                   </span>
+                  {selectedList?.usage === 'transfer' && (
+                    <span className="text-tiny text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-2 py-0.5 font-bold uppercase flex items-center gap-1">
+                      <ArrowRightLeft size={11} />
+                      Chuyển kho nội bộ
+                    </span>
+                  )}
                 </div>
                 <p className="text-body-md text-gray-500 mt-1">
-                  Thiết lập giá và theo dõi biên lợi nhuận trực quan so với giá vốn của sản phẩm.
+                  {selectedList?.usage === 'transfer'
+                    ? 'Giá bán nội bộ giữa các chi nhánh. Giá ở đây sẽ TRỞ THÀNH giá vốn của chi nhánh nhận hàng (bình quân gia quyền với tồn sẵn có), nên là cơ sở để chi nhánh đó tính giá bán và lãi lỗ.'
+                    : 'Thiết lập giá và theo dõi biên lợi nhuận trực quan so với giá vốn của sản phẩm.'}
                 </p>
               </div>
 
@@ -580,6 +689,102 @@ export default function PriceListPage() {
         </section>
 
       </div>
+
+      {/* Modal: tạo bảng giá mới */}
+      {showNewListModal && (
+        <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-0 w-full max-w-lg rounded-2xl shadow-2xl flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-base font-bold text-gray-800">Tạo bảng giá mới</h3>
+              <p className="text-tiny text-gray-400">Chọn đúng mục đích sử dụng — bảng giá nội bộ sẽ không xuất hiện khi bán hàng cho khách</p>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setNewList(v => ({ ...v, usage: 'transfer' }))}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    newList.usage === 'transfer'
+                      ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                      : 'border-gray-100 hover:bg-gray-25'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <ArrowRightLeft size={14} className="text-indigo-500" />
+                    <span className="text-body-md font-bold text-gray-800">Chuyển kho nội bộ</span>
+                  </div>
+                  <span className="text-tiny text-gray-500 leading-snug block">Giá bán giữa các chi nhánh — thành giá vốn của bên nhận</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNewList(v => ({ ...v, usage: 'sales' }))}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    newList.usage === 'sales'
+                      ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                      : 'border-gray-100 hover:bg-gray-25'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Tag size={14} className="text-blue-500" />
+                    <span className="text-body-md font-bold text-gray-800">Giá bán cho khách</span>
+                  </div>
+                  <span className="text-tiny text-gray-500 leading-snug block">Dùng ở POS, đơn hàng, gán cho khách hàng</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Mã <span className="text-red-500">*</span></label>
+                  <input
+                    value={newList.code}
+                    onChange={e => setNewList(v => ({ ...v, code: e.target.value }))}
+                    placeholder="VD: CK-NB"
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md font-mono uppercase focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="space-y-1.5 col-span-2">
+                  <label className="block text-body-md font-semibold text-gray-700">Tên bảng giá <span className="text-red-500">*</span></label>
+                  <input
+                    value={newList.name}
+                    onChange={e => setNewList(v => ({ ...v, name: e.target.value }))}
+                    placeholder="VD: Giá chuyển kho nội bộ 2026"
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-body-md font-semibold text-gray-700">Mô tả</label>
+                <input
+                  value={newList.description}
+                  onChange={e => setNewList(v => ({ ...v, description: e.target.value }))}
+                  placeholder="Ghi chú phạm vi áp dụng..."
+                  className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 pb-5 flex gap-3">
+              <button
+                onClick={() => setShowNewListModal(false)}
+                disabled={creatingList}
+                className="flex-1 h-10 border border-gray-100 rounded-lg text-body-md font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                onClick={handleCreateList}
+                disabled={creatingList}
+                className="flex-1 h-10 bg-blue-500 hover:bg-blue-600 text-gray-0 rounded-lg text-body-md font-bold transition-all shadow-sm disabled:opacity-50"
+              >
+                {creatingList ? 'Đang tạo...' : 'Tạo bảng giá'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

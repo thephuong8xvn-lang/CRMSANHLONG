@@ -309,6 +309,7 @@ export default function ImportCustomersModal({
         .from('price_lists')
         .select('id')
         .eq('is_active', true)
+        .eq('usage', 'sales')
         .eq('is_default', true)
         .limit(1)
         .maybeSingle()
@@ -319,6 +320,7 @@ export default function ImportCustomersModal({
           .from('price_lists')
           .select('id')
           .eq('is_active', true)
+          .eq('usage', 'sales')
           .limit(1)
           .maybeSingle()
         if (anyPlist) defaultPriceListId = anyPlist.id

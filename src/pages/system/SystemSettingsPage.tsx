@@ -261,6 +261,7 @@ export default function SystemSettingsPage() {
         .from('price_lists')
         .select('id, code, name')
         .eq('is_active', true)
+        .eq('usage', 'sales')
         .order('name')
       if (plData) setPriceLists(plData)
 

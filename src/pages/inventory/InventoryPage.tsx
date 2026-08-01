@@ -96,6 +96,19 @@ const RECEIPT_STATUS: Record<string, { label: string; cls: string }> = {
   cancelled: { label: 'Đã hủy', cls: 'bg-gray-100 text-gray-500 border-gray-200' }
 }
 
+// Vòng đời phiếu chuyển kho:
+//   draft → in_transit → received → completed (Admin duyệt → hàng mới vào sổ kho đích)
+//                                 ↘ rejected  (Admin từ chối → hàng hoàn về kho nguồn)
+//   draft | in_transit → cancelled
+const TRANSFER_STATUS: Record<string, { label: string; cls: string }> = {
+  draft:      { label: 'Nháp',       cls: 'bg-blue-50 text-blue-700 border-blue-100' },
+  in_transit: { label: 'Đang chuyển', cls: 'bg-amber-50 text-amber-700 border-amber-100' },
+  received:   { label: 'Chờ duyệt',  cls: 'bg-violet-50 text-violet-700 border-violet-100' },
+  completed:  { label: 'Hoàn thành', cls: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  rejected:   { label: 'Bị từ chối', cls: 'bg-red-50 text-red-700 border-red-100' },
+  cancelled:  { label: 'Đã hủy',     cls: 'bg-gray-100 text-gray-500 border-gray-200' }
+}
+
 interface InventorySetting {
   id: string
   product_id: string
@@ -176,20 +189,41 @@ export default function InventoryPage() {
   const [transfers, setTransfers] = useState<any[]>([])
   const [transferSearchTerm, setTransferSearchTerm] = useState('')
   const debouncedTransferSearch = useDebouncedValue(transferSearchTerm, 300)
+  const [transferStatusFilter, setTransferStatusFilter] = useState<string>('all')
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [showTransferDetailModal, setShowTransferDetailModal] = useState(false)
   const [selectedTransfer, setSelectedTransfer] = useState<any>(null)
   const [selectedTransferLines, setSelectedTransferLines] = useState<any[]>([])
   const [lotsForTransfer, setLotsForTransfer] = useState<any[]>([])
+  // Bảng giá chuyển kho nội bộ (price_lists.usage = 'transfer') do admin dựng
+  const [transferPriceLists, setTransferPriceLists] = useState<{ id: string; code: string; name: string }[]>([])
+  const [applyingPrices, setApplyingPrices] = useState(false)
+  // Từ chối phiếu (admin) — bắt buộc có lý do
+  const [rejectingTransfer, setRejectingTransfer] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  // Xem trước giá vốn mới ở kho đích (hiện cho admin ở bước duyệt)
+  const [costPreview, setCostPreview] = useState<any[]>([])
+  const [transferPending, setTransferPending] = useState<{
+    in_transit_count: number; in_transit_cost: number;
+    awaiting_count: number; awaiting_cost: number;
+  } | null>(null)
   const [newTransfer, setNewTransfer] = useState<{
     fromWarehouse: string;
     toWarehouse: string;
     notes: string;
-    lines: Array<{ lotId: string; productId: string; quantity: number; maxQty: number; name: string; sku: string; lotNumber: string; unitPrice: number; costPrice: number }>;
+    reason: string;
+    priceListId: string;
+    lines: Array<{
+      lotId: string; productId: string; quantity: number; maxQty: number;
+      name: string; sku: string; lotNumber: string;
+      unitPrice: number; listUnitPrice: number; costPrice: number;
+    }>;
   }>({
     fromWarehouse: '',
     toWarehouse: '',
     notes: '',
+    reason: '',
+    priceListId: '',
     lines: []
   })
 
@@ -277,6 +311,50 @@ export default function InventoryPage() {
       };
     });
   }, [lotsForTransfer, newTransfer.lines]);
+
+  // Áp bảng giá nội bộ lên các dòng đang có trong phiếu. Sản phẩm không nằm
+  // trong bảng giá thì giữ nguyên đơn giá hiện tại (báo lại cho người dùng
+  // biết bao nhiêu dòng không tra được giá).
+  const applyTransferPriceList = async (priceListId: string) => {
+    if (!priceListId || newTransfer.lines.length === 0) return
+    setApplyingPrices(true)
+    try {
+      const productIds = [...new Set(newTransfer.lines.map(l => l.productId))]
+      const { data, error } = await supabase
+        .from('price_list_items')
+        .select('product_id, selling_price, min_quantity')
+        .eq('price_list_id', priceListId)
+        .in('product_id', productIds)
+        .is('variant_id', null)
+        .order('min_quantity', { ascending: true })
+      if (error) throw error
+
+      // Bậc min_quantity thấp nhất thắng (order asc + chỉ nhận lần đầu)
+      const priceMap: Record<string, number> = {}
+      for (const it of data || []) {
+        if (priceMap[it.product_id] === undefined) priceMap[it.product_id] = Number(it.selling_price)
+      }
+
+      let missing = 0
+      const lines = newTransfer.lines.map(l => {
+        const p = priceMap[l.productId]
+        if (p === undefined) { missing++; return l }
+        return { ...l, unitPrice: p, listUnitPrice: p }
+      })
+      setNewTransfer({ ...newTransfer, lines })
+
+      setAlertMsg(
+        missing > 0
+          ? { type: 'error', text: `Đã áp bảng giá. ${missing}/${lines.length} dòng không có trong bảng giá — giữ nguyên đơn giá cũ.` }
+          : { type: 'success', text: `Đã áp bảng giá cho ${lines.length} dòng.` }
+      )
+    } catch (err: any) {
+      console.error(err)
+      setAlertMsg({ type: 'error', text: 'Lỗi áp bảng giá: ' + err.message })
+    } finally {
+      setApplyingPrices(false)
+    }
+  }
 
   const returnSupplierOptions = useMemo(() => {
     return suppliers.map(s => ({
@@ -424,6 +502,8 @@ export default function InventoryPage() {
         id,
         quantity,
         unit_price,
+        list_unit_price,
+        source_cost_price,
         lot_id,
         product_id,
         product:products(name, sku, unit),
@@ -434,6 +514,14 @@ export default function InventoryPage() {
     if (!error && data) {
       setSelectedTransferLines(data)
     }
+  }
+
+  // Giá vốn kho đích sẽ thành bao nhiêu sau khi nhập — thông tin Admin cần để
+  // chốt giá bán cho chi nhánh nhận. Chỉ tra ở bước chờ duyệt.
+  const fetchCostPreview = async (transferId: string, status: string) => {
+    if (status !== 'received') { setCostPreview([]); return }
+    const { data, error } = await supabase.rpc('fn_transfer_cost_preview', { p_transfer_id: transferId })
+    setCostPreview(!error && Array.isArray(data) ? data : [])
   }
 
   // Fetch detail lines for selected purchase return
@@ -480,12 +568,21 @@ export default function InventoryPage() {
 
   // Filtered transfers logic
   const filteredTransfers = useMemo(() => transfers.filter(t => {
+    if (transferStatusFilter !== 'all' && t.status !== transferStatusFilter) return false
+    const q = debouncedTransferSearch.toLowerCase()
+    if (!q) return true
     return (
-      t.transfer_code.toLowerCase().includes(debouncedTransferSearch.toLowerCase()) ||
-      (t.from_wh?.name || '').toLowerCase().includes(debouncedTransferSearch.toLowerCase()) ||
-      (t.to_wh?.name || '').toLowerCase().includes(debouncedTransferSearch.toLowerCase())
+      t.transfer_code.toLowerCase().includes(q) ||
+      (t.from_wh?.name || '').toLowerCase().includes(q) ||
+      (t.to_wh?.name || '').toLowerCase().includes(q)
     )
-  }), [transfers, debouncedTransferSearch])
+  }), [transfers, debouncedTransferSearch, transferStatusFilter])
+
+  // Số phiếu đang chờ Admin duyệt (hiện trên tab + banner)
+  const awaitingApprovalCount = useMemo(
+    () => transfers.filter(t => t.status === 'received').length,
+    [transfers]
+  )
 
   // Filtered returns logic
   const filteredReturns = useMemo(() => purchaseReturns.filter(r => {
@@ -495,6 +592,48 @@ export default function InventoryPage() {
       (r.warehouse?.name || '').toLowerCase().includes(debouncedReturnSearch.toLowerCase())
     )
   }), [purchaseReturns, debouncedReturnSearch])
+
+  // Nạp lại danh sách phiếu chuyển kho + tóm tắt hàng chưa vào sổ kho đích.
+  // (Trước đây khối select này bị lặp nguyên văn ở 4 handler.)
+  const reloadTransfers = async () => {
+    let query = supabase
+      .from('stock_transfers')
+      .select(`
+        id, transfer_code, from_warehouse, to_warehouse, status,
+        transfer_date, notes, reason, created_by, received_by, approved_by, rejected_by,
+        total_amount, total_cost, price_list_id,
+        shipped_at, received_at, approved_at, rejected_at, reject_reason,
+        from_wh:warehouses!from_warehouse(name),
+        to_wh:warehouses!to_warehouse(name),
+        creator:profiles!created_by(full_name),
+        receiver:profiles!received_by(full_name),
+        approver:profiles!approved_by(full_name),
+        rejecter:profiles!rejected_by(full_name),
+        price_list:price_lists!price_list_id(name)
+      `)
+
+    if (!isAdmin && profile?.branch_id) {
+      const { data: whs } = await supabase
+        .from('warehouses')
+        .select('id')
+        .eq('branch_id', profile.branch_id)
+      const myWhIds = whs?.map((w: { id: string }) => w.id) || []
+      if (myWhIds.length > 0) {
+        query = query.or(
+          `from_warehouse.in.(${myWhIds.map((id: string) => `"${id}"`).join(',')}),to_warehouse.in.(${myWhIds.map((id: string) => `"${id}"`).join(',')})`
+        )
+      } else {
+        query = query.eq('id', '00000000-0000-0000-0000-000000000000')
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(500)
+    if (error) throw error
+    setTransfers(data || [])
+
+    const { data: pend } = await supabase.rpc('fn_transfer_pending_summary')
+    setTransferPending(Array.isArray(pend) ? pend[0] : pend)
+  }
 
   const handleCreateTransfer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -512,53 +651,27 @@ export default function InventoryPage() {
     }
     setSubmitting(true)
     try {
-      const totalAmount = newTransfer.lines.reduce((sum, line) => sum + (line.quantity * (line.unitPrice || 0)), 0)
-      const { data: transferData, error: txError } = await supabase
-        .from('stock_transfers')
-        .insert([{
-          from_warehouse: newTransfer.fromWarehouse,
-          to_warehouse: newTransfer.toWarehouse,
-          notes: newTransfer.notes || null,
-          created_by: profile?.id,
-          status: 'draft',
-          total_amount: totalAmount
-        }])
-        .select()
-        .single()
-
-      if (txError) throw txError
-
-      const linesToInsert = newTransfer.lines.map(line => ({
-        transfer_id: transferData.id,
-        lot_id: line.lotId,
-        product_id: line.productId,
-        quantity: line.quantity,
-        unit_price: line.unitPrice
-      }))
-
-      const { error: linesError } = await supabase
-        .from('stock_transfer_lines')
-        .insert(linesToInsert)
-
-      if (linesError) throw linesError
+      // Tạo NGUYÊN TỬ qua RPC: server tự chốt tổng tiền, tự kiểm lô thuộc kho
+      // nguồn / tồn khả dụng / trùng lô — thay cho 2 lượt insert rời trước đây.
+      const { error } = await supabase.rpc('fn_create_transfer', {
+        p_from_warehouse: newTransfer.fromWarehouse,
+        p_to_warehouse: newTransfer.toWarehouse,
+        p_lines: newTransfer.lines.map(l => ({
+          lot_id: l.lotId,
+          quantity: l.quantity,
+          unit_price: l.unitPrice,
+          list_unit_price: l.listUnitPrice
+        })),
+        p_notes: newTransfer.notes || null,
+        p_reason: newTransfer.reason || null,
+        p_price_list_id: newTransfer.priceListId || null
+      })
+      if (error) throw error
 
       setAlertMsg({ type: 'success', text: 'Tạo yêu cầu chuyển kho thành công!' })
       setShowTransferModal(false)
-      setNewTransfer({ fromWarehouse: '', toWarehouse: '', notes: '', lines: [] })
-      
-      const { data } = await supabase
-        .from('stock_transfers')
-        .select(`
-          id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by, total_amount,
-          from_wh:warehouses!from_warehouse(name),
-          to_wh:warehouses!to_warehouse(name),
-          creator:profiles!created_by(full_name),
-          receiver:profiles!received_by(full_name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100)
-      setTransfers(data || [])
+      setNewTransfer({ fromWarehouse: '', toWarehouse: '', notes: '', reason: '', priceListId: '', lines: [] })
+      await reloadTransfers()
     } catch (err: any) {
       console.error(err)
       setAlertMsg({ type: 'error', text: 'Lỗi tạo phiếu chuyển: ' + err.message })
@@ -567,104 +680,76 @@ export default function InventoryPage() {
     }
   }
 
-  const handleStartTransfer = async (transfer: any, _lines: any[]) => {
+  // Chạy 1 RPC vòng đời rồi nạp lại danh sách — dùng chung cho mọi nút hành động.
+  // Trả true nếu thành công (để nơi gọi biết có nên dọn form hay không).
+  const runTransferAction = async (
+    rpc: string,
+    params: Record<string, any>,
+    successText: string
+  ): Promise<boolean> => {
     setSubmitting(true)
     try {
-      const { error } = await supabase.rpc('fn_start_transfer', {
-        p_transfer_id: transfer.id,
-        p_user_id: profile?.id
-      })
+      const { error } = await supabase.rpc(rpc, params)
       if (error) throw error
-
-      setAlertMsg({ type: 'success', text: 'Chuyển hàng thành công! Trạng thái: Đang đi đường.' })
+      setAlertMsg({ type: 'success', text: successText })
       setShowTransferDetailModal(false)
-
-      const { data } = await supabase
-        .from('stock_transfers')
-        .select(`
-          id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by, total_amount,
-          from_wh:warehouses!from_warehouse(name),
-          to_wh:warehouses!to_warehouse(name),
-          creator:profiles!created_by(full_name),
-          receiver:profiles!received_by(full_name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100)
-      setTransfers(data || [])
+      await reloadTransfers()
+      return true
     } catch (err: any) {
       console.error(err)
-      setAlertMsg({ type: 'error', text: 'Lỗi chuyển hàng: ' + err.message })
+      setAlertMsg({ type: 'error', text: err.message })
+      return false
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleReceiveTransfer = async (transfer: any, _lines: any[]) => {
-    setSubmitting(true)
-    try {
-      const { error } = await supabase.rpc('fn_receive_transfer', {
-        p_transfer_id: transfer.id,
-        p_user_id: profile?.id
-      })
-      if (error) throw error
+  const handleStartTransfer = (transfer: any) =>
+    runTransferAction(
+      'fn_start_transfer',
+      { p_transfer_id: transfer.id, p_user_id: profile?.id },
+      'Đã xuất kho. Trạng thái: Đang đi đường.'
+    )
 
-      setAlertMsg({ type: 'success', text: 'Nhận hàng và nhập kho thành công!' })
-      setShowTransferDetailModal(false)
+  // ⚠️ Bước này KHÔNG còn cộng tồn vào kho đích — chỉ ghi nhận kho đích đã
+  // nhận đủ hàng. Hàng chỉ vào sổ khi Admin duyệt (fn_complete_transfer).
+  const handleReceiveTransfer = (transfer: any) =>
+    runTransferAction(
+      'fn_receive_transfer',
+      { p_transfer_id: transfer.id, p_user_id: profile?.id },
+      'Đã xác nhận nhận hàng. Phiếu đang chờ Admin duyệt để nhập kho.'
+    )
 
-      const { data } = await supabase
-        .from('stock_transfers')
-        .select(`
-          id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by, total_amount,
-          from_wh:warehouses!from_warehouse(name),
-          to_wh:warehouses!to_warehouse(name),
-          creator:profiles!created_by(full_name),
-          receiver:profiles!received_by(full_name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100)
-      setTransfers(data || [])
-    } catch (err: any) {
-      console.error(err)
-      setAlertMsg({ type: 'error', text: 'Lỗi nhận hàng: ' + err.message })
-    } finally {
-      setSubmitting(false)
+  const handleCompleteTransfer = (transfer: any) =>
+    runTransferAction(
+      'fn_complete_transfer',
+      { p_transfer_id: transfer.id },
+      'Đã duyệt. Hàng đã nhập kho đích theo giá vốn lô nguồn.'
+    )
+
+  const handleRejectTransfer = async (transfer: any) => {
+    if (!rejectReason.trim()) {
+      setAlertMsg({ type: 'error', text: 'Vui lòng nhập lý do từ chối.' })
+      return
+    }
+    const ok = await runTransferAction(
+      'fn_reject_transfer',
+      { p_transfer_id: transfer.id, p_reason: rejectReason.trim() },
+      'Đã từ chối phiếu. Hàng được hoàn về kho nguồn.'
+    )
+    // Thất bại thì giữ nguyên lý do đã gõ để admin sửa và thử lại
+    if (ok) {
+      setRejectingTransfer(false)
+      setRejectReason('')
     }
   }
 
-  const handleCancelTransfer = async (transfer: any, _lines: any[]) => {
-    setSubmitting(true)
-    try {
-      const { error } = await supabase.rpc('fn_cancel_transfer', {
-        p_transfer_id: transfer.id,
-        p_user_id: profile?.id
-      })
-      if (error) throw error
-
-      setAlertMsg({ type: 'success', text: 'Đã hủy yêu cầu chuyển kho.' })
-      setShowTransferDetailModal(false)
-
-      const { data } = await supabase
-        .from('stock_transfers')
-        .select(`
-          id, transfer_code, from_warehouse, to_warehouse, status,
-          transfer_date, notes, created_by, received_by, total_amount,
-          from_wh:warehouses!from_warehouse(name),
-          to_wh:warehouses!to_warehouse(name),
-          creator:profiles!created_by(full_name),
-          receiver:profiles!received_by(full_name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100)
-      setTransfers(data || [])
-    } catch (err: any) {
-      console.error(err)
-      setAlertMsg({ type: 'error', text: 'Lỗi hủy phiếu chuyển: ' + err.message })
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  const handleCancelTransfer = (transfer: any) =>
+    runTransferAction(
+      'fn_cancel_transfer',
+      { p_transfer_id: transfer.id, p_user_id: profile?.id },
+      'Đã hủy yêu cầu chuyển kho.'
+    )
 
   const handleCreateReturn = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1067,35 +1152,16 @@ export default function InventoryPage() {
           )
           setProductList(prodData)
         } else if (activeTab === 'transfers') {
-          let query = supabase
-            .from('stock_transfers')
-            .select(`
-              id, transfer_code, from_warehouse, to_warehouse, status,
-              transfer_date, notes, created_by, received_by, total_amount,
-              from_wh:warehouses!from_warehouse(name),
-              to_wh:warehouses!to_warehouse(name),
-              creator:profiles!created_by(full_name),
-              receiver:profiles!received_by(full_name)
-            `)
+          await reloadTransfers()
 
-          if (userRole?.code !== 'admin' && userRole?.code !== 'ceo' && profile?.branch_id) {
-            const { data: whs } = await supabase
-              .from('warehouses')
-              .select('id')
-              .eq('branch_id', profile.branch_id)
-            const myWhIds = whs?.map((w: { id: string }) => w.id) || []
-            if (myWhIds.length > 0) {
-              query = query.or(`from_warehouse.in.(${myWhIds.map((id: string) => `"${id}"`).join(',')}),to_warehouse.in.(${myWhIds.map((id: string) => `"${id}"`).join(',')})`)
-            } else {
-              query = query.eq('id', '00000000-0000-0000-0000-000000000000')
-            }
-          }
-
-          const { data, error } = await query
-            .order('created_at', { ascending: false })
-            .limit(100)
-          if (error) throw error
-          setTransfers(data || [])
+          // Bảng giá chuyển kho nội bộ do admin dựng ở trang Bảng giá
+          const { data: plData } = await supabase
+            .from('price_lists')
+            .select('id, code, name')
+            .eq('is_active', true)
+            .eq('usage', 'transfer')
+            .order('name')
+          setTransferPriceLists(plData || [])
         } else if (activeTab === 'purchase_returns') {
           let query = supabase
             .from('purchase_returns')
@@ -1423,16 +1489,15 @@ export default function InventoryPage() {
     { key: 'creator', header: 'Người tạo', width: 120, render: t => <span className="text-[11px] font-medium text-gray-700" title={t.creator?.full_name || 'Hệ thống'}>{t.creator?.full_name || 'Hệ thống'}</span> },
     { key: 'total', header: 'Tổng giá trị', width: 120, align: 'right', render: t => <span className="text-[11px] font-bold text-gray-700">{t.total_amount ? `${Number(t.total_amount).toLocaleString('vi-VN')} ₫` : '0 ₫'}</span> },
     {
-      key: 'status', header: 'Trạng thái', width: 110, align: 'center', noTruncate: true, mobileHeaderRight: true,
-      render: t => (
-        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-          t.status === 'received' ? 'bg-emerald-50 text-emerald-700'
-            : t.status === 'in_transit' ? 'bg-amber-50 text-amber-700'
-            : t.status === 'draft' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'
-        }`}>
-          {t.status === 'draft' ? 'Nháp' : t.status === 'in_transit' ? 'Đang chuyển' : t.status === 'received' ? 'Đã nhận' : 'Đã hủy'}
-        </span>
-      )
+      key: 'status', header: 'Trạng thái', width: 118, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: t => {
+        const s = TRANSFER_STATUS[t.status] || { label: t.status, cls: TRANSFER_STATUS.cancelled.cls }
+        return (
+          <span className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase ${s.cls}`}>
+            {s.label}
+          </span>
+        )
+      }
     }
   ]
 
@@ -1570,6 +1635,14 @@ export default function InventoryPage() {
             >
               <ArrowRightLeft size={16} />
               <span>Chuyển kho</span>
+              {awaitingApprovalCount > 0 && (
+                <span
+                  title={`${awaitingApprovalCount} phiếu chờ Admin duyệt`}
+                  className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-violet-500 text-white text-[10px] font-bold flex items-center justify-center"
+                >
+                  {awaitingApprovalCount}
+                </span>
+              )}
             </button>
 
             <button
@@ -1782,24 +1855,72 @@ export default function InventoryPage() {
             <div className="p-6 space-y-6">
               {/* Header inside Tab */}
               <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="relative w-full md:w-80">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                  <input
-                    type="text"
-                    placeholder="Tìm mã chuyển kho, tên kho..."
-                    value={transferSearchTerm}
-                    onChange={(e) => setTransferSearchTerm(e.target.value)}
-                    className="w-full h-10 pl-10 pr-4 bg-gray-25 border border-gray-100 rounded-lg text-body-md placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                  />
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                  <div className="relative w-full sm:w-72">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Tìm mã chuyển kho, tên kho..."
+                      value={transferSearchTerm}
+                      onChange={(e) => setTransferSearchTerm(e.target.value)}
+                      className="w-full h-10 pl-10 pr-4 bg-gray-25 border border-gray-100 rounded-lg text-body-md placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <select
+                    value={transferStatusFilter}
+                    onChange={(e) => setTransferStatusFilter(e.target.value)}
+                    className="h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="all">Tất cả trạng thái</option>
+                    {Object.entries(TRANSFER_STATUS).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <button
                   onClick={() => setShowTransferModal(true)}
-                  className="bg-blue-505 bg-blue-500 text-white px-3 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all w-full md:w-auto"
+                  className="bg-blue-500 text-white px-3 py-2.5 rounded-lg font-semibold text-body-md hover:bg-blue-600 flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all w-full md:w-auto"
                 >
                   <ArrowRightLeft size={16} />
                   <span>Tạo yêu cầu chuyển kho</span>
                 </button>
               </div>
+
+              {/* Hàng đã rời kho nguồn nhưng CHƯA vào sổ kho đích — điểm mù của
+                  báo cáo định giá tồn kho, nên nêu rõ ngay trên tab. */}
+              {transferPending && (transferPending.in_transit_count > 0 || transferPending.awaiting_count > 0) && (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {transferPending.in_transit_count > 0 && (
+                    <div className="flex-1 flex items-center gap-3 bg-amber-50 border border-amber-100 rounded-lg px-4 py-3">
+                      <ArrowRightLeft size={18} className="text-amber-600 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-body-md font-bold text-amber-800">
+                          {transferPending.in_transit_count} phiếu đang đi đường
+                        </p>
+                        <p className="text-tiny text-amber-700">
+                          Vốn kho nguồn {Number(transferPending.in_transit_cost).toLocaleString('vi-VN')} ₫ chưa nằm ở kho nào
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {transferPending.awaiting_count > 0 && (
+                    <button
+                      onClick={() => setTransferStatusFilter('received')}
+                      className="flex-1 flex items-center gap-3 bg-violet-50 border border-violet-100 rounded-lg px-4 py-3 text-left hover:bg-violet-100 transition-colors"
+                    >
+                      <Clock size={18} className="text-violet-600 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-body-md font-bold text-violet-800">
+                          {transferPending.awaiting_count} phiếu chờ Admin duyệt
+                        </p>
+                        <p className="text-tiny text-violet-700">
+                          Vốn kho nguồn {Number(transferPending.awaiting_cost).toLocaleString('vi-VN')} ₫ — duyệt xong mới nhập kho đích
+                        </p>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Data Table (layout chuẩn dùng chung) */}
               <DataTable
@@ -1810,8 +1931,15 @@ export default function InventoryPage() {
                 card={false}
                 pageSize={20}
                 itemLabel="phiếu chuyển"
-                resetSignal={debouncedTransferSearch}
-                onRowClick={t => { setSelectedTransfer(t); fetchTransferDetails(t.id); setShowTransferDetailModal(true) }}
+                resetSignal={`${debouncedTransferSearch}|${transferStatusFilter}`}
+                onRowClick={t => {
+                  setSelectedTransfer(t)
+                  fetchTransferDetails(t.id)
+                  fetchCostPreview(t.id, t.status)
+                  setRejectingTransfer(false)
+                  setRejectReason('')
+                  setShowTransferDetailModal(true)
+                }}
                 emptyText="Không tìm thấy phiếu chuyển kho nào"
                 emptyIcon={<ArrowRightLeft className="w-12 h-12 text-gray-300 mx-auto" />}
               />
@@ -2080,6 +2208,49 @@ export default function InventoryPage() {
                 </div>
               </div>
 
+              {/* Bảng giá nội bộ + lý do chuyển */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Bảng giá chuyển kho nội bộ</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={newTransfer.priceListId}
+                      onChange={(e) => setNewTransfer({ ...newTransfer, priceListId: e.target.value })}
+                      className="flex-1 h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 bg-white"
+                    >
+                      <option value="">-- Không dùng bảng giá --</option>
+                      {transferPriceLists.map(pl => (
+                        <option key={pl.id} value={pl.id}>{pl.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!newTransfer.priceListId || newTransfer.lines.length === 0 || applyingPrices}
+                      onClick={() => applyTransferPriceList(newTransfer.priceListId)}
+                      title="Điền đơn giá cho tất cả dòng theo bảng giá đã chọn"
+                      className="h-10 px-4 rounded-lg text-body-md font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors disabled:opacity-40 whitespace-nowrap"
+                    >
+                      {applyingPrices ? 'Đang áp...' : 'Áp giá'}
+                    </button>
+                  </div>
+                  {transferPriceLists.length === 0 && (
+                    <p className="text-tiny text-gray-400 italic">
+                      Chưa có bảng giá nội bộ. Admin tạo ở trang Bảng giá → “Tạo bảng giá” → Chuyển kho nội bộ.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">Lý do chuyển</label>
+                  <input
+                    value={newTransfer.reason}
+                    onChange={(e) => setNewTransfer({ ...newTransfer, reason: e.target.value })}
+                    placeholder="VD: Cân đối tồn, chi nhánh thiếu hàng bán..."
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
               {/* Add item to transfer */}
               {newTransfer.fromWarehouse && (
                 <div className="bg-gray-25 border border-gray-100 rounded-lg p-4 space-y-4">
@@ -2090,10 +2261,25 @@ export default function InventoryPage() {
                       <SmartSearchSelect
                         options={transferLotOptions}
                         value={modalLotId}
-                        onChange={(val) => {
+                        onChange={async (val) => {
                           setModalLotId(val);
                           const lot = lotsForTransfer.find((l: any) => l.id === val);
-                          if (lot) setModalUnitPrice(lot.cost_price);
+                          if (!lot) return;
+                          // Ưu tiên giá từ bảng giá nội bộ; không có thì lấy giá vốn lô
+                          let price = lot.cost_price;
+                          if (newTransfer.priceListId && lot.product_id) {
+                            const { data } = await supabase
+                              .from('price_list_items')
+                              .select('selling_price')
+                              .eq('price_list_id', newTransfer.priceListId)
+                              .eq('product_id', lot.product_id)
+                              .is('variant_id', null)
+                              .order('min_quantity', { ascending: true })
+                              .limit(1)
+                              .maybeSingle();
+                            if (data?.selling_price != null) price = Number(data.selling_price);
+                          }
+                          setModalUnitPrice(price);
                         }}
                         placeholder="-- Chọn lô hàng còn tồn --"
                         searchPlaceholder="Tìm kiếm lô hàng..."
@@ -2144,7 +2330,8 @@ export default function InventoryPage() {
                               costPrice: lot.cost_price,
                               name: lot.name,
                               sku: lot.sku,
-                              lotNumber: lot.lot_number
+                              lotNumber: lot.lot_number,
+                              listUnitPrice: modalUnitPrice
                             };
                             setNewTransfer({
                               ...newTransfer,
@@ -2175,6 +2362,7 @@ export default function InventoryPage() {
                         <th className="px-4 py-2">Sản phẩm / SKU</th>
                         <th className="px-4 py-2">Số lô</th>
                         <th className="px-4 py-2 text-center w-24">Số lượng</th>
+                        <th className="px-4 py-2 text-right w-32">Vốn kho nguồn</th>
                         <th className="px-4 py-2 text-right w-36">Đơn giá chuyển</th>
                         <th className="px-4 py-2 text-right w-32">Thành tiền</th>
                         <th className="px-4 py-2 w-12"></th>
@@ -2183,18 +2371,14 @@ export default function InventoryPage() {
                     <tbody className="divide-y divide-gray-50 text-[13px] text-gray-600">
                       {newTransfer.lines.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-6 text-center text-gray-400 italic">Chưa chọn sản phẩm nào. Vui lòng thêm từ form ở trên.</td>
+                          <td colSpan={7} className="px-4 py-6 text-center text-gray-400 italic">Chưa chọn sản phẩm nào. Vui lòng thêm từ form ở trên.</td>
                         </tr>
                       ) : (
                         newTransfer.lines.map((line, idx) => (
                           <tr key={idx} className="hover:bg-gray-25/30">
                             <td className="px-3 py-2.5">
                               <p className="font-bold text-gray-700">{line.name}</p>
-                              <div className="flex gap-2 items-center text-tiny">
-                                <span className="text-gray-455 font-mono">SKU: {line.sku}</span>
-                                <span className="text-gray-300">|</span>
-                                <span className="text-amber-600 font-medium">Vốn: {line.costPrice?.toLocaleString('vi-VN')} ₫</span>
-                              </div>
+                              <span className="text-gray-455 font-mono text-tiny">SKU: {line.sku}</span>
                             </td>
                             <td className="px-3 py-2.5 font-mono text-blue-500 font-semibold">{line.lotNumber}</td>
                             <td className="px-3 py-2.5 text-center">
@@ -2209,19 +2393,38 @@ export default function InventoryPage() {
                                 className="w-20 text-center h-8 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-800"
                               />
                             </td>
+                            {/* Giá vốn của bên BÁN — chỉ để đối chiếu biên nội bộ,
+                                không ghi sổ. Giá vốn bên MUA là đơn giá chuyển. */}
+                            <td className="px-3 py-2.5 text-right">
+                              <span className="text-gray-500">{line.costPrice?.toLocaleString('vi-VN')} ₫</span>
+                              {line.unitPrice > 0 && line.costPrice > 0 && (
+                                <span className={`block text-[10px] font-semibold ${
+                                  line.unitPrice >= line.costPrice ? 'text-emerald-600' : 'text-red-500'
+                                }`}>
+                                  {line.unitPrice >= line.costPrice ? '+' : ''}
+                                  {Math.round((line.unitPrice - line.costPrice) / line.costPrice * 1000) / 10}%
+                                </span>
+                              )}
+                            </td>
                             <td className="px-3 py-2.5 text-right">
                               <input
                                 type="number"
                                 min="0"
+                                step="any"
                                 value={line.unitPrice}
                                 onChange={(e) => {
-                                  const val = Math.max(0, parseInt(e.target.value) || 0)
+                                  const val = Math.max(0, parseFloat(e.target.value) || 0)
                                   const updated = [...newTransfer.lines]
                                   updated[idx] = { ...line, unitPrice: val }
                                   setNewTransfer({ ...newTransfer, lines: updated })
                                 }}
                                 className="w-28 text-right h-8 px-2 border border-gray-100 rounded focus:outline-none focus:border-blue-500 font-bold text-gray-850"
                               />
+                              {line.listUnitPrice > 0 && line.unitPrice !== line.listUnitPrice && (
+                                <span className="block text-[10px] text-indigo-500 mt-0.5">
+                                  bảng giá: {line.listUnitPrice.toLocaleString('vi-VN')} ₫
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-2.5 text-right font-bold text-gray-800">
                               {(line.quantity * (line.unitPrice || 0)).toLocaleString('vi-VN')} ₫
@@ -2244,6 +2447,27 @@ export default function InventoryPage() {
                     </tbody>
                   </table>
                 </div>
+
+                {newTransfer.lines.length > 0 && (
+                  <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 px-1">
+                    <span className="text-body-md text-gray-500">
+                      Vốn kho nguồn: <strong className="text-gray-700">
+                        {newTransfer.lines.reduce((s, l) => s + l.quantity * (l.costPrice || 0), 0).toLocaleString('vi-VN')} ₫
+                      </strong>
+                    </span>
+                    <span className="text-body-md text-gray-500">
+                      Tổng giá trị chuyển: <strong className="text-body-lg text-gray-800">
+                        {newTransfer.lines.reduce((s, l) => s + l.quantity * (l.unitPrice || 0), 0).toLocaleString('vi-VN')} ₫
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
+                <p className="text-tiny text-gray-500 bg-gray-25 border border-gray-100 rounded-lg px-3 py-2 leading-relaxed">
+                  <strong className="text-gray-700">Đơn giá chuyển sẽ trở thành giá vốn của kho đích</strong> (bình quân gia quyền
+                  với tồn sẵn có), vì mỗi chi nhánh hạch toán độc lập. Cột “Vốn kho nguồn” chỉ để đối chiếu biên nội bộ.
+                  Admin sẽ thấy giá vốn mới ở kho đích khi duyệt phiếu.
+                </p>
               </div>
 
               {/* Notes */}
@@ -2252,7 +2476,7 @@ export default function InventoryPage() {
                 <textarea
                   value={newTransfer.notes}
                   onChange={(e) => setNewTransfer({ ...newTransfer, notes: e.target.value })}
-                  placeholder="Lý do chuyển, tài xế vận chuyển, v.v..."
+                  placeholder="Tài xế vận chuyển, biển số xe, người áp tải..."
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                 />
@@ -2264,7 +2488,7 @@ export default function InventoryPage() {
                   type="button"
                   onClick={() => {
                     setShowTransferModal(false);
-                    setNewTransfer({ fromWarehouse: '', toWarehouse: '', notes: '', lines: [] });
+                    setNewTransfer({ fromWarehouse: '', toWarehouse: '', notes: '', reason: '', priceListId: '', lines: [] });
                   }}
                   className="flex-1 h-10 border border-gray-100 rounded-lg text-body-md font-semibold hover:bg-gray-50 text-gray-600 transition-colors"
                 >
@@ -2319,18 +2543,10 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Trạng thái</span>
-                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
-                    selectedTransfer.status === 'received' 
-                      ? 'bg-emerald-50 text-emerald-700' 
-                      : selectedTransfer.status === 'in_transit' 
-                      ? 'bg-amber-50 text-amber-700' 
-                      : selectedTransfer.status === 'draft' 
-                      ? 'bg-blue-50 text-blue-700' 
-                      : 'bg-gray-100 text-gray-500'
+                  <span className={`px-2 py-0.5 rounded border text-[11px] font-bold uppercase ${
+                    (TRANSFER_STATUS[selectedTransfer.status] || TRANSFER_STATUS.cancelled).cls
                   }`}>
-                    {selectedTransfer.status === 'draft' ? 'Nháp' :
-                     selectedTransfer.status === 'in_transit' ? 'Đang chuyển' :
-                     selectedTransfer.status === 'received' ? 'Đã nhận' : 'Đã hủy'}
+                    {(TRANSFER_STATUS[selectedTransfer.status] || { label: selectedTransfer.status }).label}
                   </span>
                 </div>
                 <div>
@@ -2339,8 +2555,53 @@ export default function InventoryPage() {
                 </div>
                 {selectedTransfer.received_by && (
                   <div>
-                    <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Người nhận hàng</span>
+                    <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Kho đích xác nhận nhận</span>
                     <span className="font-medium text-gray-700">{selectedTransfer.receiver?.full_name || 'Hệ thống'}</span>
+                    {selectedTransfer.received_at && (
+                      <span className="block text-[10px] text-gray-400">
+                        {new Date(selectedTransfer.received_at).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {selectedTransfer.approved_by && (
+                  <div>
+                    <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Admin duyệt</span>
+                    <span className="font-medium text-emerald-700">{selectedTransfer.approver?.full_name || 'Hệ thống'}</span>
+                    {selectedTransfer.approved_at && (
+                      <span className="block text-[10px] text-gray-400">
+                        {new Date(selectedTransfer.approved_at).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {selectedTransfer.rejected_by && (
+                  <div>
+                    <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Admin từ chối</span>
+                    <span className="font-medium text-red-700">{selectedTransfer.rejecter?.full_name || 'Hệ thống'}</span>
+                    {selectedTransfer.rejected_at && (
+                      <span className="block text-[10px] text-gray-400">
+                        {new Date(selectedTransfer.rejected_at).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {selectedTransfer.price_list?.name && (
+                  <div>
+                    <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Bảng giá áp dụng</span>
+                    <span className="font-medium text-indigo-700">{selectedTransfer.price_list.name}</span>
+                  </div>
+                )}
+                {selectedTransfer.reason && (
+                  <div className="col-span-full">
+                    <span className="text-gray-400 block text-[11px] leading-none mb-0.5">Lý do chuyển</span>
+                    <span className="text-gray-700">{selectedTransfer.reason}</span>
+                  </div>
+                )}
+                {selectedTransfer.reject_reason && (
+                  <div className="col-span-full bg-red-50 border border-red-100 rounded px-2 py-1.5">
+                    <span className="text-red-500 block text-[11px] leading-none mb-0.5 font-semibold">Lý do từ chối</span>
+                    <span className="text-red-700">{selectedTransfer.reject_reason}</span>
                   </div>
                 )}
                 <div className="col-span-full border-t border-gray-100/50 pt-2 mt-0.5">
@@ -2348,6 +2609,20 @@ export default function InventoryPage() {
                   <span className="text-gray-700 italic">{selectedTransfer.notes || 'Không có ghi chú'}</span>
                 </div>
               </div>
+
+              {/* Nhắc rõ hàng đã rời kho nguồn nhưng CHƯA vào sổ kho đích */}
+              {(selectedTransfer.status === 'in_transit' || selectedTransfer.status === 'received') && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-[12px] text-amber-800">
+                  <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+                  <span>
+                    Hàng đã trừ khỏi <strong>{selectedTransfer.from_wh?.name}</strong> nhưng chưa nhập vào{' '}
+                    <strong>{selectedTransfer.to_wh?.name}</strong>
+                    {selectedTransfer.status === 'received'
+                      ? ' — đang chờ Admin duyệt để vào sổ.'
+                      : ' — chờ kho đích xác nhận đã nhận đủ.'}
+                  </span>
+                </div>
+              )}
 
               {/* Items Table */}
               <div className="space-y-2">
@@ -2360,13 +2635,18 @@ export default function InventoryPage() {
                         <th className="px-3 py-2.5 whitespace-nowrap">Số lô</th>
                         <th className="px-3 py-2.5 text-center whitespace-nowrap">Hạn sử dụng</th>
                         <th className="px-3 py-2.5 text-center whitespace-nowrap">Số lượng</th>
+                        <th className="px-3 py-2.5 text-right whitespace-nowrap">Vốn kho nguồn</th>
                         <th className="px-3 py-2.5 text-right whitespace-nowrap">Đơn giá chuyển</th>
                         <th className="px-3 py-2.5 text-right whitespace-nowrap">Thành tiền</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[13px] text-gray-600">
                       {selectedTransferLines.map((line) => {
-                        const costPrice = line.lot?.cost_price;
+                        // Giá vốn bên BÁN (đối chiếu biên nội bộ). Giá vốn bên MUA
+                        // là đơn giá chuyển ở cột kế bên.
+                        const bookCost = line.source_cost_price ?? line.lot?.cost_price;
+                        const listPrice = line.list_unit_price;
+                        const edited = listPrice != null && Number(listPrice) !== Number(line.unit_price || 0);
                         return (
                           <tr key={line.id} className="hover:bg-gray-25/30">
                             <td className="px-3 py-2.5 min-w-[200px]">
@@ -2380,13 +2660,18 @@ export default function InventoryPage() {
                             <td className="px-3 py-2.5 text-center font-bold text-gray-800 whitespace-nowrap">
                               {line.quantity} {line.product?.unit}
                             </td>
+                            <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                              <span className="text-gray-500">
+                                {bookCost != null ? `${Number(bookCost).toLocaleString('vi-VN')} ₫` : '---'}
+                              </span>
+                            </td>
                             <td className="px-3 py-2.5 text-right text-gray-700 whitespace-nowrap">
-                              <div>
-                                <span>{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</span>
-                                {costPrice !== undefined && (
-                                  <span className="block text-[10px] text-gray-400">Vốn: {Number(costPrice).toLocaleString('vi-VN')} ₫</span>
-                                )}
-                              </div>
+                              <span>{Number(line.unit_price || 0).toLocaleString('vi-VN')} ₫</span>
+                              {edited && (
+                                <span className="block text-[10px] text-indigo-500" title="Đã sửa lệch khỏi bảng giá">
+                                  bảng giá: {Number(listPrice).toLocaleString('vi-VN')} ₫
+                                </span>
+                              )}
                             </td>
                             <td className="px-3 py-2.5 text-right font-bold text-gray-800 whitespace-nowrap">
                               {Number((line.unit_price || 0) * line.quantity).toLocaleString('vi-VN')} ₫
@@ -2398,19 +2683,110 @@ export default function InventoryPage() {
                   </table>
                 </div>
                 {selectedTransferLines.length > 0 && (
-                  <div className="flex justify-end p-2">
-                    <span className="text-body-md text-gray-500">Tổng tiền chuyển kho: <strong className="text-body-lg text-gray-800">
-                      {selectedTransferLines.reduce((sum, line) => sum + (line.quantity * (line.unit_price || 0)), 0).toLocaleString('vi-VN')} ₫
-                    </strong></span>
+                  <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 p-2">
+                    <span className="text-body-md text-gray-500">
+                      Vốn kho nguồn: <strong className="text-gray-700">
+                        {selectedTransferLines
+                          .reduce((sum, l) => sum + l.quantity * Number(l.source_cost_price ?? l.lot?.cost_price ?? 0), 0)
+                          .toLocaleString('vi-VN')} ₫
+                      </strong>
+                    </span>
+                    <span className="text-body-md text-gray-500">
+                      Tổng giá trị chuyển: <strong className="text-body-lg text-gray-800">
+                        {selectedTransferLines
+                          .reduce((sum, l) => sum + l.quantity * Number(l.unit_price || 0), 0)
+                          .toLocaleString('vi-VN')} ₫
+                      </strong>
+                    </span>
                   </div>
                 )}
               </div>
 
+              {/* Giá vốn kho đích SAU khi duyệt — cơ sở để Admin chốt giá bán
+                  cho chi nhánh nhận. Đây là mục đích chính của bước duyệt. */}
+              {selectedTransfer.status === 'received' && isAdmin && costPreview.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-body-md font-bold text-gray-755">
+                    Giá vốn tại {selectedTransfer.to_wh?.name} sau khi duyệt
+                  </h4>
+                  <div className="border border-emerald-100 bg-emerald-50/30 rounded-lg overflow-x-auto tbl-x">
+                    <table className="w-full min-w-[640px] text-left border-collapse">
+                      <thead>
+                        <tr className="bg-emerald-50 border-b border-emerald-100 text-emerald-800 font-semibold text-[11px] uppercase">
+                          <th className="px-3 py-2.5 min-w-[180px]">Sản phẩm</th>
+                          <th className="px-3 py-2.5 text-right whitespace-nowrap">Vốn kho nguồn</th>
+                          <th className="px-3 py-2.5 text-right whitespace-nowrap">Đơn giá chuyển</th>
+                          <th className="px-3 py-2.5 text-right whitespace-nowrap">Tồn sẵn ở kho đích</th>
+                          <th className="px-3 py-2.5 text-right whitespace-nowrap">Giá vốn MỚI</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-emerald-100/60 text-[13px] text-gray-600">
+                        {costPreview.map((r: any) => {
+                          const before = Number(r.dest_cost_before || 0)
+                          const after = Number(r.dest_cost_after || 0)
+                          const delta = before > 0 ? Math.round((after - before) / before * 1000) / 10 : null
+                          return (
+                            <tr key={r.line_id}>
+                              <td className="px-3 py-2.5 min-w-[180px]">
+                                <p className="font-bold text-gray-700 break-words">{r.product_name}</p>
+                                <span className="text-[11px] text-gray-400 font-mono">SKU: {r.sku}</span>
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-gray-500 whitespace-nowrap">
+                                {Number(r.source_cost || 0).toLocaleString('vi-VN')} ₫
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-semibold text-gray-800 whitespace-nowrap">
+                                {Number(r.transfer_price || 0).toLocaleString('vi-VN')} ₫
+                              </td>
+                              <td className="px-3 py-2.5 text-right text-gray-500 whitespace-nowrap">
+                                {Number(r.dest_qty_before || 0) > 0
+                                  ? <>{Number(r.dest_qty_before).toLocaleString('vi-VN')} × {before.toLocaleString('vi-VN')} ₫</>
+                                  : <span className="italic text-gray-400">chưa có</span>}
+                              </td>
+                              <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                <span className="font-bold text-emerald-700">{after.toLocaleString('vi-VN')} ₫</span>
+                                {delta !== null && delta !== 0 && (
+                                  <span className={`block text-[10px] font-semibold ${delta > 0 ? 'text-amber-600' : 'text-blue-500'}`}>
+                                    {delta > 0 ? '+' : ''}{delta}% so với hiện tại
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-tiny text-gray-500 leading-relaxed">
+                    Duyệt xong, đây là giá vốn mà <strong className="text-gray-700">{selectedTransfer.to_wh?.name}</strong> dùng
+                    để tính lãi lỗ. Cân nhắc con số này trước khi chốt giá bán cho chi nhánh.
+                  </p>
+                </div>
+              )}
+
+              {/* Ô nhập lý do từ chối (chỉ hiện khi admin bấm Từ chối) */}
+              {rejectingTransfer && selectedTransfer.status === 'received' && (
+                <div className="space-y-1.5 bg-red-50 border border-red-100 rounded-lg p-3">
+                  <label className="block text-body-md font-semibold text-red-700">
+                    Lý do từ chối <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    autoFocus
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="VD: Thiếu 3 hộp so với phiếu, hàng móp vỡ khi nhận..."
+                    className="w-full h-10 px-3 border border-red-100 rounded-lg text-body-md bg-white focus:outline-none focus:border-red-500"
+                  />
+                  <p className="text-tiny text-red-600">
+                    Từ chối sẽ hoàn toàn bộ số lượng về kho <strong>{selectedTransfer.from_wh?.name}</strong>.
+                  </p>
+                </div>
+              )}
+
               {/* Transition actions */}
-              <div className="flex gap-4 pt-4 border-t border-gray-100">
+              <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-100">
                 <button
-                  onClick={() => setShowTransferDetailModal(false)}
-                  className="flex-1 h-10 border border-gray-100 rounded-lg text-body-md font-semibold hover:bg-gray-50 text-gray-600 transition-colors"
+                  onClick={() => { setShowTransferDetailModal(false); setRejectingTransfer(false); setRejectReason('') }}
+                  className="flex-1 min-w-[100px] h-10 border border-gray-100 rounded-lg text-body-md font-semibold hover:bg-gray-50 text-gray-600 transition-colors"
                 >
                   Đóng
                 </button>
@@ -2418,19 +2794,19 @@ export default function InventoryPage() {
                 {selectedTransfer.status === 'draft' && (
                   <>
                     <button
-                      onClick={() => handleCancelTransfer(selectedTransfer, selectedTransferLines)}
+                      onClick={() => handleCancelTransfer(selectedTransfer)}
                       disabled={submitting}
                       className="bg-red-50 text-red-650 hover:bg-red-100 h-10 px-4 rounded-lg text-body-md font-semibold transition-colors disabled:opacity-50"
                     >
                       Hủy yêu cầu
                     </button>
                     <button
-                      onClick={() => handleStartTransfer(selectedTransfer, selectedTransferLines)}
+                      onClick={() => handleStartTransfer(selectedTransfer)}
                       disabled={submitting}
-                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white h-10 rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                      className="flex-1 min-w-[180px] bg-blue-500 hover:bg-blue-600 text-white h-10 rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                       <ArrowRightLeft size={16} />
-                      <span>Bắt đầu chuyển</span>
+                      <span>Xuất kho &amp; bắt đầu chuyển</span>
                     </button>
                   </>
                 )}
@@ -2438,21 +2814,72 @@ export default function InventoryPage() {
                 {selectedTransfer.status === 'in_transit' && (
                   <>
                     <button
-                      onClick={() => handleCancelTransfer(selectedTransfer, selectedTransferLines)}
+                      onClick={() => handleCancelTransfer(selectedTransfer)}
                       disabled={submitting}
                       className="bg-red-50 text-red-650 hover:bg-red-100 h-10 px-4 rounded-lg text-body-md font-semibold transition-colors disabled:opacity-50"
                     >
                       Hủy yêu cầu
                     </button>
                     <button
-                      onClick={() => handleReceiveTransfer(selectedTransfer, selectedTransferLines)}
+                      onClick={() => handleReceiveTransfer(selectedTransfer)}
                       disabled={submitting}
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white h-10 rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                      className="flex-1 min-w-[180px] bg-violet-500 hover:bg-violet-600 text-white h-10 rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                       <CheckCircle2 size={16} />
-                      <span>Xác nhận nhận hàng</span>
+                      <span>Xác nhận đã nhận đủ</span>
                     </button>
                   </>
+                )}
+
+                {/* Bước cuối: CHỈ Admin/CEO. Duyệt xong hàng mới vào sổ kho đích. */}
+                {selectedTransfer.status === 'received' && (
+                  isAdmin ? (
+                    <>
+                      {rejectingTransfer ? (
+                        <>
+                          <button
+                            onClick={() => { setRejectingTransfer(false); setRejectReason('') }}
+                            disabled={submitting}
+                            className="h-10 px-4 border border-gray-100 rounded-lg text-body-md font-semibold text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                          >
+                            Quay lại
+                          </button>
+                          <button
+                            onClick={() => handleRejectTransfer(selectedTransfer)}
+                            disabled={submitting || !rejectReason.trim()}
+                            className="flex-1 min-w-[180px] bg-red-500 hover:bg-red-600 text-white h-10 rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            <Ban size={16} />
+                            <span>Xác nhận từ chối</span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setRejectingTransfer(true)}
+                            disabled={submitting}
+                            className="bg-red-50 text-red-650 hover:bg-red-100 h-10 px-4 rounded-lg text-body-md font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+                          >
+                            <Ban size={15} />
+                            Từ chối
+                          </button>
+                          <button
+                            onClick={() => handleCompleteTransfer(selectedTransfer)}
+                            disabled={submitting}
+                            className="flex-1 min-w-[200px] bg-emerald-500 hover:bg-emerald-600 text-white h-10 rounded-lg text-body-md font-semibold transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            <CheckCircle2 size={16} />
+                            <span>Duyệt &amp; nhập kho đích</span>
+                          </button>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex-1 min-w-[200px] h-10 rounded-lg bg-violet-50 border border-violet-100 text-violet-700 text-body-md font-semibold flex items-center justify-center gap-2">
+                      <Clock size={15} />
+                      Chờ Admin duyệt
+                    </div>
+                  )
                 )}
               </div>
             </div>

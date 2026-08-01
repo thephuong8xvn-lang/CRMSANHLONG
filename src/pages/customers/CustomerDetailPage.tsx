@@ -857,6 +857,7 @@ export default function CustomerDetailPage() {
         .from('price_lists')
         .select('id, name')
         .eq('is_active', true)
+        .eq('usage', 'sales')
       if (plist) setPriceLists(plist)
 
       const reps = await fetchAllRows<{ id: string; full_name: string }>((from, to) =>

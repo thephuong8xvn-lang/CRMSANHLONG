@@ -131,6 +131,7 @@ export default function AddProductModal({ isOpen, onClose, onSuccess }: AddProdu
         const { data: plData, error: plErr } = await supabase
           .from('price_lists')
           .select('id, code, name, is_active')
+          .eq('usage', 'sales')
         
         if (plErr) {
           console.warn('[AddProduct] price_lists error:', plErr.message)

@@ -116,6 +116,7 @@ export default function EditProductModal({ isOpen, onClose, onSuccess, productId
         const { data: plData } = await supabase
           .from('price_lists')
           .select('id, code, name, is_active')
+          .eq('usage', 'sales')
         
         let loadedPriceLists: PriceList[] = []
         if (plData) {

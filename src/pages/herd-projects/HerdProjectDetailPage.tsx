@@ -949,6 +949,7 @@ export default function HerdProjectDetailPage() {
         const { data: defaultList } = await supabase
           .from('price_lists')
           .select('id')
+          .eq('usage', 'sales')
           .eq('is_default', true)
           .single()
         if (defaultList) priceListId = defaultList.id

@@ -74,6 +74,7 @@ export default function AddCustomerModal({ isOpen, onClose, onSuccess }: AddCust
           .from('price_lists')
           .select('id, name')
           .eq('is_active', true)
+          .eq('usage', 'sales')
         if (!plistErr && plist) {
           setPriceLists(plist)
           // Default to first price list if available

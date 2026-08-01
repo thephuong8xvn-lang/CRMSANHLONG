@@ -559,6 +559,7 @@ export default function POSPage() {
           .from('price_lists')
           .select('id, code, name, is_default')
           .eq('is_active', true)
+          .eq('usage', 'sales')
         if (plData) {
           setPriceLists(plData)
           const def = plData.find((pl: any) => pl.id === branchPlId) ||
