@@ -61,8 +61,10 @@ interface Product {
 export default function PriceListPage() {
   const navigate = useNavigate()
   const { settings } = useDisplaySettings()
-  const { userRole } = useAuth()
-  const isAdmin = userRole?.code === 'admin' || userRole?.code === 'ceo'
+  const { hasPermission } = useAuth()
+  // Khớp guard của route (/products/prices cần 'pricing.manage') và RLS
+  // price_lists_insert. hasPermission đã tự trả true cho admin/ceo.
+  const canManagePricing = hasPermission('pricing.manage')
 
   const formatNumber = (val: number) => {
     if (val === null || val === undefined || isNaN(val)) return '0'
@@ -454,7 +456,7 @@ export default function PriceListPage() {
             </div>
           )}
 
-          {isAdmin && (
+          {canManagePricing && (
             <div className="p-4 border-t border-gray-100 bg-gray-50/50">
               <button
                 onClick={() => setShowNewListModal(true)}
