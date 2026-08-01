@@ -499,10 +499,10 @@ export default function CustomerSettingsPage() {
 
         {/* Tab Horizontal Select */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-100 px-6 overflow-x-auto tbl-x no-scrollbar">
+          <div className="flex flex-wrap border-b border-gray-100 px-3">
             <button
               onClick={() => setActiveTab('teams')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'teams'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -514,7 +514,7 @@ export default function CustomerSettingsPage() {
 
             <button
               onClick={() => setActiveTab('classifications')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'classifications'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -526,7 +526,7 @@ export default function CustomerSettingsPage() {
 
             <button
               onClick={() => setActiveTab('tiers')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'tiers'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'

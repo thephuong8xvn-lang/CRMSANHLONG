@@ -1641,10 +1641,10 @@ export default function InventoryPage() {
 
         {/* Tab Selection Headers */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-100 px-6 overflow-x-auto tbl-x no-scrollbar">
+          <div className="flex flex-wrap border-b border-gray-100 px-3">
             <button
               onClick={() => setActiveTab('lots')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'lots'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1656,7 +1656,7 @@ export default function InventoryPage() {
             
             <button
               onClick={() => setActiveTab('pos')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'pos'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1668,7 +1668,7 @@ export default function InventoryPage() {
 
             <button
               onClick={() => setActiveTab('receipts')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'receipts'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1680,7 +1680,7 @@ export default function InventoryPage() {
 
             <button
               onClick={() => setActiveTab('transfers')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'transfers'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1700,7 +1700,7 @@ export default function InventoryPage() {
 
             <button
               onClick={() => setActiveTab('purchase_returns')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'purchase_returns'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1712,7 +1712,7 @@ export default function InventoryPage() {
 
             <button
               onClick={() => setActiveTab('settings')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'settings'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'

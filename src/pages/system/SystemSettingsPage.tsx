@@ -1098,10 +1098,10 @@ export default function SystemSettingsPage() {
 
         {/* Tab Horizontal Select */}
         <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-100 px-6 overflow-x-auto tbl-x no-scrollbar">
+          <div className="flex flex-wrap border-b border-gray-100 px-3">
             <button
               onClick={() => setActiveTab('employees')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'employees'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1113,7 +1113,7 @@ export default function SystemSettingsPage() {
 
             <button
               onClick={() => setActiveTab('branches')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'branches'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1125,7 +1125,7 @@ export default function SystemSettingsPage() {
 
             <button
               onClick={() => setActiveTab('warehouses')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'warehouses'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1137,7 +1137,7 @@ export default function SystemSettingsPage() {
 
             <button
               onClick={() => setActiveTab('funds')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'funds'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1151,7 +1151,7 @@ export default function SystemSettingsPage() {
 
             <button
               onClick={() => setActiveTab('roles')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'roles'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1163,7 +1163,7 @@ export default function SystemSettingsPage() {
 
             <button
               onClick={() => setActiveTab('display')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'display'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -1175,7 +1175,7 @@ export default function SystemSettingsPage() {
 
             <button
               onClick={() => setActiveTab('print')}
-              className={`px-6 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
+              className={`px-4 py-4 text-body-md font-semibold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'print'
                   ? 'border-blue-500 text-blue-600 font-bold'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
