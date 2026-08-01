@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Shield, X, Loader2, CheckCircle2, AlertTriangle, Lock, Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { fetchAllRows } from '../../lib/fetchAllRows'
 import { useAuth } from '../../contexts/AuthContext'
 import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import {
@@ -43,6 +44,8 @@ export default function RolePermissionMatrix() {
   // Editor state
   const [editRole, setEditRole] = useState<Role | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Quyền role đang có nhưng catalog chưa mô tả — hiện để admin biết, không sửa được từ đây
+  const [outOfScope, setOutOfScope] = useState<string[]>([])
   const [editorLoading, setEditorLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -50,14 +53,24 @@ export default function RolePermissionMatrix() {
 
   const loadRoles = useCallback(async () => {
     setLoading(true)
+    setErr('')
     try {
-      const [{ data: rolesData }, { data: rpData }] = await Promise.all([
+      // fetchAllRows: role_permissions đã >200 dòng, select thường bị cap 1000
+      // → "Số quyền" đếm thiếu mà không báo gì.
+      const [{ data: rolesData, error: rolesErr }, rpData] = await Promise.all([
         supabase.from('roles').select('id, code, name, is_system').order('name'),
-        supabase.from('role_permissions').select('role_id'),
+        fetchAllRows<{ role_id: string }>((from, to) =>
+          supabase.from('role_permissions').select('role_id').order('role_id').range(from, to)),
       ])
+      // Nuốt lỗi ở đây = danh sách rỗng, mở editor ra trống, bấm Lưu là mất quyền.
+      if (rolesErr) throw rolesErr
+
       const counts = new Map<string, number>()
-      ;(rpData ?? []).forEach((rp: any) => counts.set(rp.role_id, (counts.get(rp.role_id) ?? 0) + 1))
+      ;(rpData ?? []).forEach(rp => counts.set(rp.role_id, (counts.get(rp.role_id) ?? 0) + 1))
       setRoles((rolesData ?? []).map((r: any) => ({ ...r, permCount: counts.get(r.id) ?? 0 })))
+    } catch (e: any) {
+      setErr('Không tải được danh sách vai trò: ' + (e.message || 'lỗi không xác định'))
+      setRoles([])
     } finally {
       setLoading(false)
     }
@@ -69,14 +82,22 @@ export default function RolePermissionMatrix() {
     setEditRole(role); setMsg(''); setErr(''); setEditorLoading(true)
     setSelected(new Set())
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('role_permissions')
         .select('permission:permissions(code)')
         .eq('role_id', role.id)
-      const codes = (data ?? [])
-        .map((rp: any) => rp.permission?.code)
-        .filter((c: string) => ALL_PERMISSION_CODES.includes(c)) // chỉ giữ code có trong catalog
-      setSelected(new Set(codes))
+      // Trước đây lỗi bị nuốt → editor mở ra KHÔNG tick gì, bấm Lưu là thu hồi sạch.
+      if (error) throw error
+
+      const all = (data ?? []).map((rp: any) => rp.permission?.code).filter(Boolean)
+      const known = all.filter((c: string) => ALL_PERMISSION_CODES.includes(c))
+      // Quyền DB có mà catalog không biết: KHÔNG tick (không hiển thị được),
+      // nhưng cũng KHÔNG bị xoá — vì scope gửi lên server chỉ gồm mã catalog.
+      setOutOfScope(all.filter((c: string) => !ALL_PERMISSION_CODES.includes(c)))
+      setSelected(new Set(known))
+    } catch (e: any) {
+      setErr('Không đọc được quyền hiện tại: ' + (e.message || 'lỗi không xác định'))
+      setEditRole(null)
     } finally {
       setEditorLoading(false)
     }
@@ -85,7 +106,8 @@ export default function RolePermissionMatrix() {
   const toggle = (code: string) => {
     setSelected(prev => {
       const next = new Set(prev)
-      next.has(code) ? next.delete(code) : next.add(code)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
       return next
     })
   }
@@ -102,9 +124,12 @@ export default function RolePermissionMatrix() {
     if (!editRole) return
     setSaving(true); setErr(''); setMsg('')
     try {
+      // p_scope = toàn bộ mã catalog biết. Server CHỈ được thu hồi trong phạm vi
+      // này → quyền DB có mà catalog chưa liệt kê không bao giờ bị xoá nhầm.
       const { error } = await supabase.rpc('fn_set_role_permissions', {
         p_role_id: editRole.id,
         p_codes: Array.from(selected),
+        p_scope: ALL_PERMISSION_CODES,
       })
       if (error) throw error
       setMsg(`Đã lưu phân quyền cho "${editRole.name}".`)
@@ -204,7 +229,18 @@ export default function RolePermissionMatrix() {
               {editorLoading ? (
                 <div className="py-12 flex justify-center"><Loader2 size={26} className="animate-spin text-blue-500" /></div>
               ) : (
-                GROUPED.map(([group, modules]) => (
+                <>
+                {outOfScope.length > 0 && (
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-[12px] text-amber-800">
+                    <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+                    <span>
+                      Vai trò này còn <strong>{outOfScope.length} quyền</strong> chưa được mô tả trong
+                      danh mục nên không hiện ở đây: <span className="font-mono">{outOfScope.join(', ')}</span>.
+                      Lưu thay đổi sẽ <strong>không đụng tới</strong> chúng.
+                    </span>
+                  </div>
+                )}
+                {GROUPED.map(([group, modules]) => (
                   <div key={group} className="space-y-2">
                     <p className="text-tiny font-bold text-gray-400 uppercase tracking-wider">{group}</p>
                     <div className="border border-gray-100 rounded-xl divide-y divide-gray-50 overflow-hidden">
@@ -247,7 +283,8 @@ export default function RolePermissionMatrix() {
                       })}
                     </div>
                   </div>
-                ))
+                ))}
+                </>
               )}
               <p className="flex items-center gap-1.5 text-[10px] text-gray-400 italic">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Chấm xanh = quyền đã được server kiểm tra thật (enforce). Còn lại đang chuyển dần — admin/ceo luôn toàn quyền.
