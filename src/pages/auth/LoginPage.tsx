@@ -127,7 +127,17 @@ export default function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => {
+    // AuthContext đá người bị khoá ra ngoài và để lại cờ này — đọc xong xoá
+    // ngay để lần đăng nhập sau không hiện lại thông báo cũ.
+    try {
+      if (sessionStorage.getItem('slv_auth_blocked')) {
+        sessionStorage.removeItem('slv_auth_blocked')
+        return 'Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.'
+      }
+    } catch { /* private mode */ }
+    return ''
+  })
 
   const strength = getPasswordStrength(password)
 
@@ -142,6 +152,8 @@ export default function LoginPage() {
       const msg = err.message
       if (msg.includes('Invalid login credentials')) {
         setError('Email hoặc mật khẩu không đúng. Vui lòng thử lại.')
+      } else if (/banned|blocked/i.test(msg)) {
+        setError('Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.')
       } else if (msg.includes('Email not confirmed')) {
         setError('Vui lòng kiểm tra hộp thư để xác nhận email trước khi đăng nhập.')
       } else if (msg.includes('Too many requests')) {

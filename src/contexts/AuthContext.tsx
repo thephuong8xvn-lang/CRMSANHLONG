@@ -72,6 +72,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.error('[Auth] loadProfile error:', error.message)
         return
       }
+
+      // Tài khoản đã bị khoá: đá ra ngay kèm lý do. Trước đây không kiểm ở đây
+      // nên người bị khoá vẫn vào được app rồi mắc kẹt ở spinner vô tận (RLS
+      // chặn hết dữ liệu mà không ai báo gì).
+      if (data && (data as Profile).is_active === false) {
+        try { sessionStorage.setItem('slv_auth_blocked', '1') } catch { /* private mode */ }
+        setProfile(null)
+        await supabase.auth.signOut()
+        return
+      }
+
       setProfile(data as Profile)
     } catch (err) {
       logger.error('[Auth] loadProfile exception:', err)

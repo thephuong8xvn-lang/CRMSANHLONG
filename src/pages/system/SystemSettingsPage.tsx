@@ -296,11 +296,12 @@ export default function SystemSettingsPage() {
         .order('code')
       if (tmData) setTeams(tmData as unknown as Team[])
 
-      // 4. Fetch roles (không lấy vai trò admin và ceo)
+      // 4. Fetch roles — LẤY CẢ admin/ceo. Trước đây lọc bỏ nên không tài nào
+      //    gán/gỡ quyền quản trị từ giao diện, phải chạy SQL tay. Việc chặn tự
+      //    khoá do fn_set_user_roles lo ở server.
       const { data: rData } = await supabase
         .from('roles')
         .select('id, code, name, description')
-        .not('code', 'in', '("admin","ceo")')
         .order('name')
       if (rData) setRoles(rData)
 
@@ -422,95 +423,111 @@ export default function SystemSettingsPage() {
     setShowEmployeeModal(true)
   }
 
+  // Gọi Edge Function admin-users. Trả về data.error cho lỗi nghiệp vụ (HTTP
+  // 4xx có body JSON) nên phải kiểm CẢ HAI, invoke không tự throw.
+  const callAdminUsers = async (payload: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke('admin-users', { body: payload })
+    if (error) {
+      throw new Error(
+        /Failed to send|FunctionsFetchError|not found/i.test(error.message)
+          ? 'Chưa deploy Edge Function "admin-users". Chạy: npx supabase functions deploy admin-users'
+          : error.message,
+      )
+    }
+    if (data?.error) throw new Error(data.error)
+    return data
+  }
+
   const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!empEmail || !empFullName) {
       showToast('error', 'Vui lòng điền Email và Họ tên.')
       return
     }
+    if (empSelectedRoles.length === 0) {
+      showToast('error', 'Phải chọn ít nhất một vai trò. Muốn ngưng truy cập thì khoá tài khoản.')
+      return
+    }
+    // Gán quyền quản trị là việc hệ trọng → hỏi lại cho chắc.
+    const superRoleNames = roles
+      .filter(r => empSelectedRoles.includes(r.id) && (r.code === 'admin' || r.code === 'ceo'))
+      .map(r => r.name)
+    const hadSuper = !!selectedEmployee?.user_roles?.some(
+      ur => ur.role.code === 'admin' || ur.role.code === 'ceo',
+    )
+    if (superRoleNames.length > 0 && !hadSuper) {
+      const ok = window.confirm(
+        `Cấp quyền ${superRoleNames.join(' + ')} cho "${empFullName}"?\n\n` +
+        'Người này sẽ xem và sửa được toàn bộ dữ liệu của mọi chi nhánh, ' +
+        'kể cả giá vốn, lợi nhuận và tài khoản nhân viên khác.',
+      )
+      if (!ok) return
+    }
 
     setSaving(true)
     try {
-      let userId = selectedEmployee?.id
+      const userId = selectedEmployee?.id
 
       if (!userId) {
-        // Create new user using temp client (so admin isn't logged out)
-        if (!empPassword) {
-          showToast('error', 'Mật khẩu là bắt buộc khi tạo tài khoản nhân viên mới.')
+        // ── TẠO MỚI ──
+        // Trước đây dùng tempClient.auth.signUp bằng anon key. Cách đó buộc
+        // project phải bật tự đăng ký công khai, VÀ do project bắt buộc xác
+        // nhận email (không có SMTP riêng, giới hạn 2 thư/giờ) nên nhân viên
+        // mới không đăng nhập được — đúng thứ đã xảy ra với CN Mỹ Thành.
+        if (!empPassword || empPassword.length < 6) {
+          showToast('error', 'Mật khẩu phải có ít nhất 6 ký tự.')
           setSaving(false)
           return
         }
 
-        const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL
-        const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY
-        const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
-          auth: { persistSession: false }
-        })
-
-        const { data: authData, error: authError } = await tempClient.auth.signUp({
-          email: empEmail,
+        await callAdminUsers({
+          action: 'create',
+          email: empEmail.trim(),
           password: empPassword,
-          options: {
-            data: { full_name: empFullName }
-          }
+          full_name: empFullName.trim(),
+          employee_code: empCode || null,
+          phone: empPhone || null,
+          job_title: empJobTitle || null,
+          branch_id: empBranchId || null,
+          team_id: empTeamId || null,
+          role_ids: empSelectedRoles,
         })
 
-        if (authError) throw authError
-        if (!authData.user) throw new Error('Không tạo được tài khoản Auth.')
-
-        userId = authData.user.id
-
-        // Profiles row is automatically inserted via fn_handle_new_user trigger.
-        // We will now update additional profile fields
-        const { error: profileErr } = await supabase
-          .from('profiles')
-          .update({
-            employee_code: empCode || null,
-            phone: empPhone || null,
-            job_title: empJobTitle || null,
-            branch_id: empBranchId || null,
-            team_id: empTeamId || null
-          })
-          .eq('id', userId)
-
-        if (profileErr) throw profileErr
-
-      } else {
-        // Edit existing profile details
-        const { error: profileErr } = await supabase
-          .from('profiles')
-          .update({
-            full_name: empFullName,
-            phone: empPhone || null,
-            employee_code: empCode || null,
-            job_title: empJobTitle || null,
-            branch_id: empBranchId || null,
-            team_id: empTeamId || null
-          })
-          .eq('id', userId)
-
-        if (profileErr) throw profileErr
+        showToast('success', `Đã tạo tài khoản cho ${empFullName}. Nhân viên đăng nhập được ngay bằng email + mật khẩu vừa đặt.`)
+        setShowEmployeeModal(false)
+        loadData()
+        return
       }
 
-      // Sync roles in user_roles (chỉ áp dụng cho tài khoản thường, không đè lên admin/ceo)
-      const isSuperUser = selectedEmployee?.user_roles?.some(ur => ur.role.code === 'admin' || ur.role.code === 'ceo')
+      // ── CẬP NHẬT ──
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .update({
+          full_name: empFullName,
+          employee_code: empCode || null,
+          phone: empPhone || null,
+          job_title: empJobTitle || null,
+          branch_id: empBranchId || null,
+          team_id: empTeamId || null,
+        })
+        .eq('id', userId)
+      if (profileErr) throw profileErr
 
-      if (!isSuperUser) {
-        // 1. Delete existing roles
-        await supabase.from('user_roles').delete().eq('user_id', userId)
-
-        // 2. Insert selected roles
-        if (empSelectedRoles.length > 0) {
-          const rolesToInsert = empSelectedRoles.map(roleId => ({
-            user_id: userId,
-            role_id: roleId
-          }))
-          const { error: roleInsertErr } = await supabase.from('user_roles').insert(rolesToInsert)
-          if (roleInsertErr) throw roleInsertErr
-        }
+      // Đổi email đăng nhập (phải qua Edge Function vì đụng auth.users)
+      const newEmail = empEmail.trim()
+      if (newEmail && newEmail.toLowerCase() !== (selectedEmployee?.email || '').toLowerCase()) {
+        await callAdminUsers({ action: 'update_email', target_user_id: userId, new_email: newEmail })
       }
 
-      showToast('success', selectedEmployee ? 'Cập nhật nhân viên thành công!' : 'Tạo tài khoản nhân viên thành công!')
+      // Vai trò: RPC nguyên tử thay cho delete-rồi-insert (cách cũ nuốt lỗi ở
+      // bước delete, hỏng giữa chừng là nhân viên còn 0 vai trò → mất hết quyền)
+      const { error: roleErr } = await supabase.rpc('fn_set_user_roles', {
+        p_user_id: userId,
+        p_role_ids: empSelectedRoles,
+      })
+      if (roleErr) throw roleErr
+
+      showToast('success', 'Cập nhật nhân viên thành công!')
       setShowEmployeeModal(false)
       loadData()
     } catch (err: any) {
@@ -520,8 +537,6 @@ export default function SystemSettingsPage() {
       setSaving(false)
     }
   }
-
-  // Deactivate Toggle Logic with reassignment wizard check
   const handleToggleEmployeeActive = async (emp: Profile) => {
     const nextActiveState = !emp.is_active
 
@@ -554,13 +569,12 @@ export default function SystemSettingsPage() {
 
     // Direct toggle if active state is true or has no customers
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_active: nextActiveState })
-        .eq('id', emp.id)
-
-      if (error) throw error
-      showToast('success', `${nextActiveState ? 'Mở khóa' : 'Khóa'} tài khoản nhân viên thành công!`)
+      // Qua Edge Function để khoá ở CẢ tầng auth (ban + thu hồi phiên đang mở),
+      // không chỉ is_active. Trước đây người bị khoá vẫn đăng nhập bình thường.
+      await callAdminUsers({ action: 'set_active', target_user_id: emp.id, is_active: nextActiveState })
+      showToast('success', nextActiveState
+        ? 'Đã mở khóa tài khoản nhân viên.'
+        : 'Đã khóa tài khoản — nhân viên bị đăng xuất và không đăng nhập lại được.')
       loadData()
     } catch (err: any) {
       showToast('error', 'Lỗi thay đổi trạng thái: ' + err.message)
@@ -599,13 +613,10 @@ export default function SystemSettingsPage() {
       // và trg_audit_profiles đã ghi đủ: từng khách đổi primary_sales_id, và
       // profile bị khóa.
 
-      // 4. Update profiles is_active = false
-      const { error: profErr } = await supabase
-        .from('profiles')
-        .update({ is_active: false })
-        .eq('id', deactivatingUser.id)
-
-      if (profErr) throw profErr
+      // 4. Khoá tài khoản ở cả tầng auth (ban + thu hồi phiên) lẫn is_active
+      await callAdminUsers({
+        action: 'set_active', target_user_id: deactivatingUser.id, is_active: false,
+      })
 
       showToast('success', `Đã bàn giao khách hàng và vô hiệu hóa tài khoản ${deactivatingUser.full_name}.`)
       setShowReassignModal(false)
@@ -644,14 +655,11 @@ export default function SystemSettingsPage() {
 
     setResettingPw(true)
     try {
-      const { data, error } = await supabase.functions.invoke('admin-reset-password', {
-        body: { target_user_id: resetTarget.id, new_password: resetPw },
+      await callAdminUsers({
+        action: 'reset_password', target_user_id: resetTarget.id, new_password: resetPw,
       })
-      // functions.invoke không throw cho lỗi HTTP 4xx/5xx có body JSON → kiểm tra cả 2.
-      if (error) throw new Error(error.message)
-      if (data?.error) throw new Error(data.error)
 
-      showToast('success', `Đã đặt lại mật khẩu cho ${resetTarget.full_name || resetTarget.email}.`)
+      showToast('success', `Đã đặt lại mật khẩu cho ${resetTarget.full_name || resetTarget.email}. Các thiết bị đang đăng nhập đã bị đăng xuất.`)
       setShowResetPwModal(false)
       setResetTarget(null)
       setResetPw('')
@@ -1779,12 +1787,17 @@ export default function SystemSettingsPage() {
                     <input
                       type="email"
                       required
-                      disabled={!!selectedEmployee}
                       placeholder="email@sanhlongvetco.vn..."
                       value={empEmail}
                       onChange={(e) => setEmpEmail(e.target.value)}
                       className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
                     />
+                    {selectedEmployee && empEmail.trim().toLowerCase() !== (selectedEmployee.email || '').toLowerCase() && (
+                      <p className="text-tiny text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1">
+                        Lưu thay đổi sẽ đổi luôn email <strong>đăng nhập</strong>. Nhân viên phải dùng
+                        địa chỉ mới từ lần sau, mật khẩu giữ nguyên.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="block text-body-md font-semibold text-gray-700">Số điện thoại</label>
