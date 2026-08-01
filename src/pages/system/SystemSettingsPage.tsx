@@ -630,9 +630,9 @@ export default function SystemSettingsPage() {
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Đặt lại mật khẩu (admin → user khác) qua Edge Function admin-reset-password.
+  // Đặt lại mật khẩu (admin → user khác) qua Edge Function admin-users.
   // service_role nằm trong function, không bao giờ ra client. Function tự kiểm
-  // tra người gọi là admin (defense-in-depth).
+  // tra người gọi là admin (defense-in-depth) và thu hồi phiên đang mở của họ.
   // ─────────────────────────────────────────────────────────────
   const openResetPassword = (emp: Profile) => {
     setResetTarget(emp)

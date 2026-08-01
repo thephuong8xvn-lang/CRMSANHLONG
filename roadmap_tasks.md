@@ -1860,7 +1860,7 @@ Audit toàn bộ module: danh sách chính đã ổn (DataTable); phần "không
 - [x] **Admin reset mật khẩu**:
   - Edge Function **`supabase/functions/admin-reset-password/index.ts`** (NEW): verify JWT + `fn_is_admin()` server-side → `auth.admin.updateUserById` (service_role chỉ trong function) → ghi `audit_logs` (cột đúng: `user_id/action/table_name/record_id/new_data`, KHÔNG lưu mật khẩu). Min 6 ký tự.
   - UI (`src/pages/system/SystemSettingsPage.tsx`): nút icon `KeyRound` mỗi dòng NV → modal nhập MK mới + xác nhận → `supabase.functions.invoke('admin-reset-password')`.
-- **⚠️ CÒN LẠI [BẠN]:** deploy Edge Function: `npx supabase functions deploy admin-reset-password --project-ref <ref>` (service_role/anon tự cấp, không cần thêm secret). Trước khi deploy, nút reset sẽ báo lỗi invoke.
+- ~~**⚠️ CÒN LẠI [BẠN]:** deploy Edge Function `admin-reset-password`~~ → **KHÔNG BAO GIỜ ĐƯỢC DEPLOY.** Nút reset mật khẩu vì thế chưa từng chạy được trong suốt 6 tuần. Phiên 2026-08-01 đã thay bằng Edge Function **`admin-users`** (gộp 4 thao tác) và deploy thành công qua Management API — xem mục dưới cùng file này.
 - **Ghi nhận (ngoài phạm vi):** insert `audit_logs` trong `handleConfirmReassignment` (SystemSettingsPage) đang dùng cột sai (`performed_by/target_table/notes`) so với schema thật (`user_id/table_name/new_data`) → khả năng fail âm thầm; nên sửa dịp khác.
 - **Build:** `tsc -b` PASS · `npm run build` PASS (✓ 46s).
 
@@ -2034,3 +2034,117 @@ phí Sổ quỹ (Sổ quỹ chưa vận hành thật) → báo cáo dừng ở l
 ### ⚠️ CÒN LẠI
 - [ ] Commit + deploy FE + bấm "Tải lại" PWA.
 - [ ] **Xoay access token** đã cấp trong chat phiên này.
+
+---
+
+## 2026-08-01 — CHUYỂN KHO có duyệt · BẢNG GIÁ · QUẢN LÝ NHÂN VIÊN · PHÂN QUYỀN
+
+7 commit (`3fcf648` → `0ae16e7`), 5 migration `20260738`–`20260742` **đã apply + verify prod**,
+Edge Function `admin-users` **đã deploy** (ACTIVE v1), tự đăng ký công khai **đã tắt**.
+
+### ✅ Chuyển kho — Admin duyệt bước cuối (`20260738`, `20260739`)
+- **Quy tắc nghiệp vụ (user chốt):** chi nhánh hạch toán **độc lập kiểu nhượng quyền** →
+  chi nhánh nhận *mua* hàng của chi nhánh nguồn, nên **đơn giá chuyển TRỞ THÀNH giá vốn của
+  lô ở kho đích**, bình quân gia quyền **theo LÔ** (cùng `product_id, lot_number,
+  warehouse_id, is_vat`). Đề xuất tách đôi đơn giá khỏi giá vốn đã **bị bác** — đừng nêu lại.
+- Vòng đời: `draft → in_transit → received → completed` (**chỉ Admin/CEO**) / `rejected`
+  (hoàn hàng về kho nguồn). Tồn kho + giá vốn **CHỈ** ghi vào kho đích ở bước duyệt;
+  `fn_receive_transfer` đổi hành vi thành chỉ ghi nhận "kho đích đã nhận đủ".
+- `fn_transfer_cost_preview` — màn hình duyệt hiện *vốn nguồn → đơn giá chuyển → tồn sẵn →
+  **giá vốn MỚI*** để admin chốt giá bán cho chi nhánh nhận. Dùng chung công thức với
+  `fn_complete_transfer` nên số xem trước luôn khớp số ghi thật.
+- `fn_update_transfer_lines` (`20260739`) — sửa SL/đơn giá sau khi lập. Hàng đã xuất kho thì
+  mọi thay đổi SL **bù trừ lại lô nguồn + ghi thẻ kho** (giảm → `transfer_in`, tăng →
+  `transfer_out` có kiểm tồn, SL=0 → xoá dòng).
+- **Vá kèm:** policy `transfer_lines_manage` cũ (`FOR ALL`, không kiểm status) cho sửa dòng
+  phiếu ở MỌI trạng thái → nay chỉ khi `draft`; tạo phiếu nguyên tử qua `fn_create_transfer`
+  (trước là 2 lượt insert rời); `fn_guard_transfer_status` chặn đổi status thẳng qua PostgREST.
+- Backfill 157 phiếu `received` → `completed` (tồn đã ghi theo mô hình cũ).
+
+### ✅ Bảng giá
+- **Trang `/products/prices` trước đây KHÔNG có mục menu nào** — chỉ vào được qua nút chìm
+  trong màn hình Sản phẩm. Thêm menu **Kho & Hàng hóa → Bảng giá**.
+- Bảng giá **nội bộ**: tái dùng `price_lists` + cột mới `usage` (`sales` | `transfer`).
+  **Đã thêm bộ lọc `usage = sales` vào 9 màn chọn bảng giá bán hàng** — thêm chỗ mới thì
+  NHỚ lọc, không thì bảng nội bộ lọt vào POS/khách hàng.
+- Mở trang cho **mọi nhân viên** (giá bán là thông tin ai cũng cần tra), chỉ khoá thao tác
+  **sửa** theo `pricing.manage` — khớp RLS `price_list_items`, tránh lỗi khó hiểu lúc lưu.
+
+### 🚨 Phân quyền — GỠ MÌN (`20260740`)
+`fn_set_role_permissions` xoá sạch rồi ghi lại theo mã UI gửi lên, mà UI lọc theo
+`permissionCatalog.ts`: **catalog 53 mã / DB 73 mã**. Bấm "Lưu phân quyền" cho **bất kỳ**
+vai trò nào là **xoá vĩnh viễn 20 mã**. Đo được: `sales` mất 7/25 gồm `customers.view_own`,
+`orders.view_own`, `opportunities.create` → **nhân viên bán hàng mất sạch Khách hàng, Đơn
+hàng, Pipeline** (App.tsx dùng đúng các mã đó làm route guard). team_lead 14/38,
+branch_manager 13/54, accountant 4/21.
+- Vá 2 lớp: catalog bổ sung đủ **73/73 khớp DB**, và RPC thêm `p_scope` — **chỉ thu hồi
+  quyền trong phạm vi client khai báo**. Catalog sót mã lần sau chỉ còn hậu quả "không quản
+  được từ UI", không còn là "bị xoá mất". Overload 2 tham số cũ định nghĩa lại thành
+  chỉ-cấp-thêm.
+- **QUY TẮC: thêm permission code vào DB thì PHẢI thêm vào `permissionCatalog.ts`.**
+- `RolePermissionMatrix` ngừng nuốt lỗi ở `loadRoles`/`openEditor` (đọc lỗi mà bỏ qua thì
+  editor mở ra trống, bấm Lưu là thu hồi sạch); đếm quyền qua `fetchAllRows` (cũ cap 1000).
+
+### ✅ Quản lý Nhân viên (`20260741`) — 3/5 chức năng vốn hỏng hẳn
+- **Tạo NV hỏng:** dùng `auth.signUp` bằng anon key, mà project bật *bắt buộc xác nhận
+  email* và **không có SMTP riêng** (mailer mặc định 2 thư/giờ) → nhân viên mới không đăng
+  nhập được. Bằng chứng: `sanhlong4mt@gmail.com` có `email_confirmed_at`/`last_sign_in_at`
+  = NULL, UI vẫn báo "Tạo thành công" + trạng thái xanh. → `createUser({ email_confirm: true })`.
+- **Mật khẩu hỏng:** `admin-reset-password` chưa từng deploy.
+- **Đổi email:** không có code path nào; ô input bị `disabled`.
+- **Khoá TK yếu:** `is_active` chỉ chặn dữ liệu, **không chặn đăng nhập**; người bị khoá
+  không đọc nổi hồ sơ của mình → `rbacReady` mãi false → **spinner vô tận không thông báo**;
+  và `profiles_update_self` không giới hạn cột → **tự đổi `is_active` để mở khoá lại**.
+- **Gán vai trò:** delete+insert không nguyên tử, **nuốt lỗi ở delete** → hỏng giữa chừng là
+  còn 0 vai trò, rơi về `guest`, mất quyền mọi trang.
+
+**Edge Function `admin-users`** (một function, 4 action: `create` | `reset_password` |
+`update_email` | `set_active`). Khoá TK nay **2 tầng**: `ban_duration` ở auth + thu hồi phiên
+đang mở, và `profiles.is_active`.
+
+**Migration `20260741`:** `fn_set_user_roles` (nguyên tử, chặn bỏ trống / tự gỡ admin / gỡ
+admin cuối) · `profiles_select_self` · `fn_guard_profile_self_update` (RLS không giới hạn
+được theo cột → dùng trigger; người thường chỉ đổi `full_name`/`phone`/`avatar_url`) ·
+`fn_sync_profile_email` · **bỏ hard-code email** khỏi RLS `user_roles_*` và
+`fn_handle_new_user` (sắp mở đổi email → đổi xong là mất quyền) · `fn_handle_new_user`
+không tự cấp vai trò `sales` nữa.
+
+**E2E prod 8/8 đạt** (tạo TK tạm rồi xoá, còn 0 rác): tạo NV → **đăng nhập được NGAY không
+cần link** → vai trò đúng → email trùng bị chặn → đổi email + đồng bộ hồ sơ → **khoá thì
+đăng nhập BỊ CHẶN** → đổi MK → tự khoá mình bị chặn.
+
+### ✅ Dọn vai trò (`20260742`)
+Mỗi tài khoản chi nhánh gán 6 vai trò = 67 quyền, nhưng riêng `branch_manager` đã 54;
+5 vai trò kia chỉ thêm 13 quyền (phần lớn là bản hẹp của thứ đã có bản rộng).
+- Thêm **đủ 13** quyền vào `branch_manager` (không chỉ 7 "thực sự cần") → tập quyền sau khi
+  gộp khớp 1-1, **chứng minh bằng 67 = 67**. Migration tự `RAISE` nếu còn thiếu.
+- 3 tài khoản chi nhánh → **1 vai trò**, quyền 67 → 67. Admin → `branch_id` để trống.
+  CN Mỹ Thành → gán vào `Chi Nhánh Mỹ Thành - Ân Hảo` (trước bỏ trống nên mọi policy
+  `branch_id = fn_my_branch_id()` không bao giờ đúng).
+- **Lỗ leo thang (có thật, kiểm chứng 2 chiều):** `branch_manager` có `users.assign_role`;
+  RLS `user_roles_manage_manager` cho sửa vai trò người **cùng chi nhánh**, mà admin lại nằm
+  trong Chi nhánh Hoài Ân → đóng vai Hoài Ân **xoá sạch 8 vai trò của admin**. Sau khi tách
+  chi nhánh: không nhìn thấy, xoá không ăn, admin còn nguyên 8.
+
+### 🔧 Kỹ thuật vận hành rút ra
+- **Deploy Edge Function KHÔNG cần Docker/CLI:** `POST /v1/projects/{ref}/functions/deploy?slug=<slug>`
+  với FormData (`metadata` JSON + `file` blob). Nhanh hơn nhiều so với bảo user chạy
+  `npx supabase functions deploy` (user từng dán nhầm lệnh đó vào SQL Editor).
+- **Test nghiệp vụ trên prod an toàn:** bọc trong khối `DO` rồi `RAISE EXCEPTION` ở cuối
+  → tự rollback, kết quả trả về qua thông điệp lỗi. Giả lập user bằng
+  `set_config('request.jwt.claims', …)` + `set_config('role','authenticated')`.
+- 🔴 **BẪY ĐO SAI (đã dính):** sau khi thao tác dưới danh tính giả lập, câu đếm kiểm chứng
+  **cũng chịu RLS của danh tính đó** → "không nhìn thấy" bị hiểu nhầm thành "đã xoá".
+  **Phải `set_config('role','postgres')` rồi mới đếm.**
+- `SUPABASE_SERVICE_ROLE_KEY` trong `.env`/`.env.local` **đã hết hiệu lực** (401).
+  Lấy key hiện hành qua Management API `/api-keys?reveal=true`.
+
+### ⚠️ CÒN LẠI
+- [ ] **[BẠN] Xoay access token** đã cấp trong chat phiên này.
+- [ ] **[BẠN] Ép nhân viên tải lại app** — FE đổi nhiều đợt này.
+- [ ] **[BẠN]** Điền `employee_code` / `job_title` (đang trống hết → hiện `---`/`Thành viên`).
+- [ ] **[BẠN]** Tạo bảng giá "Chuyển kho nội bộ" ở `/products/prices`.
+- [ ] Chưa có SMTP riêng → "Quên mật khẩu" tự phục vụ vẫn kẹt giới hạn 2 thư/giờ.
+- [ ] Hàng đang đi đường vẫn ngoài báo cáo định giá tồn kho (mới có banner cảnh báo ở tab).
+- [ ] Chưa có phiếu in chuyển kho để bên nhận ký; `inventory.transfer` chưa gắn vào RLS.
+- [ ] Nợ cũ: `fn_pos_edit_order` vẫn tin `invoice_discount` từ client.
