@@ -81,8 +81,23 @@ export interface DataTableProps<T> {
   totalItems?: number
   /** Click dòng → mở panel chi tiết inline bên dưới. Tham số 2 = hàm đóng panel. */
   expandedRowRender?: (row: T, collapse: () => void) => ReactNode
-  /** 1 dòng <tr> tổng hợp render ngay dưới header (desktop). */
+  /** 1 dòng <tr> tổng hợp render ngay dưới header (desktop). Tự dựng <td> — dùng `totals` thay thế. */
   headerSummary?: ReactNode
+
+  // ── Dòng tổng (khuyến nghị dùng thay cho headerSummary) ──
+  /**
+   * Tổng của từng cột: `{ [column.key]: nội dung }`. Cột không có mặt → ô trống.
+   * Tự khớp theo `columns` nên KHÔNG vỡ khi thêm/bớt/ẩn cột (vd cột "Thao tác"
+   * chỉ hiện với admin). Render cả dòng <tr> dưới header (desktop) lẫn dải tổng
+   * phía trên danh sách card (mobile).
+   * ⚠️ Với phân trang server-side, truyền tổng của TOÀN BỘ tập lọc — không phải
+   * tổng của trang đang xem.
+   */
+  totals?: Record<string, ReactNode>
+  /** Nhãn của dòng tổng. Mặc định "Tổng cộng". */
+  totalsLabel?: string
+  /** Cột đặt nhãn. Mặc định: cột flex (cột chính), không có thì cột đầu tiên. */
+  totalsLabelKey?: string
 
   // ── Sort header (controlled, server-side — chỉ tác dụng với cột sortable) ──
   /** Key cột đang sort (null = không sort). */
@@ -118,6 +133,9 @@ export default function DataTable<T>({
   totalItems,
   expandedRowRender,
   headerSummary,
+  totals,
+  totalsLabel = 'Tổng cộng',
+  totalsLabelKey,
   sortKey = null,
   sortDir = 'asc',
   onSortChange
@@ -146,6 +164,42 @@ export default function DataTable<T>({
   }
   const clickable = expandable || !!onRowClick
   const rowCls = `transition-colors group hover:bg-gray-25/50 ${clickable ? 'cursor-pointer' : ''}`
+
+  // ── Dòng tổng (tự dựng theo columns) ──
+  const showTotals = !!totals && !loading && displayTotal > 0
+  const labelKey = totalsLabelKey ?? (columns.find(c => c.flex)?.key ?? columns[0]?.key)
+  const totalsRow = showTotals && (
+    <tr className="bg-blue-50/30 border-b border-gray-100">
+      {columns.map(c => {
+        const val = totals[c.key]
+        return (
+          <td
+            key={c.key}
+            // text-tiny: cột tiền hẹp (vd 130px) sẽ cắt mất chữ số nếu để 13px đậm
+            className={`${PAD} whitespace-nowrap overflow-hidden ${alignClass(c.align)} ${
+              val != null ? 'text-tiny font-extrabold text-[#143C69] tabular-nums' : ''
+            }`}
+            title={typeof val === 'string' ? val : undefined}
+          >
+            {val ?? (c.key === labelKey
+              ? <span className="text-tiny font-semibold italic text-gray-400 normal-case">{totalsLabel}</span>
+              : null)}
+          </td>
+        )
+      })}
+    </tr>
+  )
+  const totalsStrip = showTotals && (
+    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-2.5 bg-blue-50/30">
+      <span className="text-tiny font-semibold italic text-gray-400">{totalsLabel}</span>
+      {columns.filter(c => totals[c.key] != null).map(c => (
+        <span key={c.key} className="text-tiny">
+          <span className="text-gray-400">{c.header}: </span>
+          <span className="font-extrabold text-[#143C69] tabular-nums">{totals[c.key]}</span>
+        </span>
+      ))}
+    </div>
+  )
 
   // ── Desktop table ──
   const desktop = (
@@ -181,6 +235,7 @@ export default function DataTable<T>({
             })}
           </tr>
           {headerSummary && !loading && displayTotal > 0 && headerSummary}
+          {totalsRow}
         </thead>
         <tbody className="divide-y divide-gray-50 text-gray-700">
           {loading ? (
@@ -228,6 +283,7 @@ export default function DataTable<T>({
 
   const mobile = (
     <div className="block md:hidden divide-y divide-gray-100">
+      {totalsStrip}
       {!loading && pagedRows.map(row => {
         const key = getRowKey(row)
         const isExpanded = expandable && expandedKey === key

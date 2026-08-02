@@ -274,6 +274,31 @@ export default function ReorderPage() {
     return cols
   }
 
+  /**
+   * Dòng tổng của bảng đang vẽ (toàn bộ hoặc 1 nhóm NCC/thương hiệu/nhóm SP).
+   * Cột số lượng chỉ cộng khi cả tập cùng ĐVT — cộng "kg + chai + lọ" ra con số
+   * vô nghĩa. Con số luôn dùng được là SỐ MẶT HÀNG cần đặt.
+   */
+  const buildTotals = (scope: ReorderVM[]) => {
+    if (scope.length === 0) return undefined
+    const unit = scope.every(r => r.unit === scope[0].unit) ? scope[0].unit : null
+    const needCount = scope.filter(r => r.plan.suggestedQty > 0).length
+    const mixed = (
+      <span className="text-gray-300 font-normal" title="Các mặt hàng đang xem có nhiều đơn vị tính khác nhau nên không cộng được">
+        — <span className="text-tiny">nhiều ĐVT</span>
+      </span>
+    )
+    return {
+      soh: unit ? <>{numFmt(scope.reduce((s, r) => s + r.stock_on_hand, 0))} <span className="font-normal text-tiny text-gray-400">{unit}</span></> : mixed,
+      suggest: (
+        <span className="text-blue-700">
+          {unit ? `${numFmt(scope.reduce((s, r) => s + r.plan.suggestedQty, 0))} ${unit} · ` : ''}
+          {needCount} mặt hàng
+        </span>
+      ),
+    }
+  }
+
   const inputCls = 'h-9 px-2.5 bg-gray-25 border border-gray-150 rounded-lg text-tiny focus:border-blue-500 focus:outline-none'
   const activeFilterCount = (Object.keys(DIMENSIONS) as Dimension[]).filter(d => filters[d]).length
   const filterSignal = `${debounced}|${minOrders}|${filters.supplier}|${filters.brand}|${filters.category}`
@@ -395,6 +420,8 @@ export default function ReorderPage() {
             itemLabel="mặt hàng"
             emptyIcon={<AlertCircle className="mx-auto text-gray-300 mb-2" size={44} />}
             emptyText="Không có mặt hàng nào cần đặt thêm"
+            totals={buildTotals(rows)}
+            totalsLabel={`Tổng ${rows.length} mặt hàng`}
           />
         ) : groups.length === 0 ? (
           <div className="bg-gray-0 border border-gray-100 rounded-xl p-10 text-center text-tiny text-gray-400 shadow-sm">
@@ -451,6 +478,8 @@ export default function ReorderPage() {
                       resetSignal={filterSignal}
                       itemLabel="mặt hàng"
                       emptyText="Không có mặt hàng"
+                      totals={buildTotals(g.rows)}
+                      totalsLabel={`Tổng ${g.rows.length} mặt hàng`}
                     />
                   )}
                 </div>
@@ -461,7 +490,8 @@ export default function ReorderPage() {
 
         {/* Ghi chú phạm vi dữ liệu */}
         <p className="text-[11px] text-gray-400 px-1">
-          Số liệu bán dựa trên phạm vi đơn hàng bạn được xem. Để gợi ý đặt hàng đầy đủ toàn công ty, dùng tài khoản quản trị/thủ kho.
+          Số liệu bán là <strong>cầu ròng toàn công ty</strong>: hàng thực xuất kho trừ hàng khách trả — cùng một định nghĩa với Báo cáo Kho hàng theo Giá vốn, nên hai trang luôn khớp số.
+          {' '}<strong>Biến động σ</strong> tính trên các tuần <em>thực có dữ liệu</em> (hệ thống chạy từ 28/05/2026), không nhồi tuần trống thành 0.
           {' '}Nhà cung cấp được suy ra từ <strong>lần nhập kho gần nhất</strong> của từng mặt hàng (sản phẩm chưa từng có phiếu nhập sẽ nằm ở nhóm “Chưa có lịch sử nhập”).
         </p>
       </div>

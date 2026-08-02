@@ -25,7 +25,9 @@ export default function ExpiryPage() {
   const tiersQuery = useExpiryDiscountTiers()
   const colors = colorsQuery.data ?? DEFAULT_EXPIRY_COLORS
   const tiers = tiersQuery.data ?? DEFAULT_EXPIRY_DISCOUNT_TIERS
-  const lots = lotsQuery.data ?? []
+  // useMemo để tham chiếu mảng ổn định (nếu không, các useMemo tổng bên dưới
+  // tính lại mỗi lần render).
+  const lots = useMemo(() => lotsQuery.data ?? [], [lotsQuery.data])
 
   // Modal cấu hình (màu mốc + % giảm gợi ý)
   const [cfgModal, setCfgModal] = useState(false)
@@ -39,6 +41,23 @@ export default function ExpiryPage() {
 
   const totalValue = useMemo(() => lots.reduce((s, l) => s + l.value, 0), [lots])
   const fmtDate = (s: string) => s.split('-').reverse().join('/')
+
+  // Dòng tổng: số tiền đang có NGUY CƠ MẤT ở mốc đang xem. Cột SL tồn chỉ cộng
+  // khi các lô cùng ĐVT (kg + chai + lọ cộng lại là con số vô nghĩa).
+  const totals = useMemo(() => {
+    if (lots.length === 0) return undefined
+    const unit = lots.every(l => l.unit === lots[0].unit) ? lots[0].unit : null
+    const atRisk = lots.filter(l => l.sellRisk).reduce((s, l) => s + l.value, 0)
+    return {
+      qty: unit
+        ? <>{lots.reduce((s, l) => s + l.qty, 0).toLocaleString('vi-VN')} <span className="font-normal text-tiny text-gray-400">{unit}</span></>
+        : <span className="text-gray-300 font-normal" title="Các lô đang xem có nhiều đơn vị tính khác nhau nên không cộng được">— <span className="text-tiny">nhiều ĐVT</span></span>,
+      sell: atRisk > 0
+        ? <span className="text-rose-600 text-tiny" title="Giá trị các lô được ước là bán KHÔNG kịp trước hạn">{formatCurrency(atRisk)} không kịp</span>
+        : null,
+      value: <span className="text-rose-600">{formatCurrency(totalValue)}</span>,
+    }
+  }, [lots, totalValue, formatCurrency])
   const colorOf = (daysLeft: number) => colors[bucketForDays(daysLeft).key] || '#64748b'
 
   const openCfg = () => {
@@ -161,6 +180,8 @@ export default function ExpiryPage() {
           itemLabel="lô"
           emptyIcon={<AlertCircle className="mx-auto text-gray-300 mb-2" size={44} />}
           emptyText={`Không có lô nào trong mốc ${bucket.label}`}
+          totals={totals}
+          totalsLabel={`Tổng ${lots.length} lô — mốc ${bucket.label}`}
         />
       </div>
 

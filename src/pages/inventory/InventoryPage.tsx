@@ -41,6 +41,7 @@ interface StockLot {
     id: string
     name: string
     sku: string
+    unit: string | null
     category: {
       name: string
     } | null
@@ -125,6 +126,20 @@ interface InventorySetting {
     name: string
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Tiện ích cho dòng "Tổng cộng" trên đầu bảng.
+// Mọi bảng ở trang này phân trang CLIENT-SIDE (đã nạp đủ dòng) nên cộng ở
+// client là đúng — khác báo cáo giá vốn phân trang server-side.
+// ─────────────────────────────────────────────────────────────
+const vnd = (n: number) => `${Math.round(n).toLocaleString('vi-VN')} ₫`
+const sumBy = <T,>(rows: T[], f: (r: T) => number) => rows.reduce((s, r) => s + (Number(f(r)) || 0), 0)
+/** Cột số lượng không cộng được khi tập gồm nhiều đơn vị tính. */
+const MIXED_UNIT = (
+  <span className="text-gray-300 font-normal" title="Các dòng đang xem có nhiều đơn vị tính khác nhau (kg, chai, lọ…) nên không cộng được">
+    — <span className="text-tiny">nhiều ĐVT</span>
+  </span>
+)
 
 export default function InventoryPage() {
   const navigate = useNavigate()
@@ -1020,6 +1035,7 @@ export default function InventoryPage() {
                   id,
                   sku,
                   name,
+                  unit,
                   category:product_categories(name)
                 ),
                 warehouse:warehouses!inner(id, name, branch_id),
@@ -1056,6 +1072,7 @@ export default function InventoryPage() {
               id: lot.product?.id || '',
               sku: lot.product?.sku || '',
               name: lot.product?.name || 'Sản phẩm không rõ',
+              unit: lot.product?.unit || null,
               category: lot.product?.category ? { name: lot.product.category.name } : null
             },
             warehouse: {
@@ -1329,6 +1346,35 @@ export default function InventoryPage() {
 
   // Phân trang (20 dòng/trang) do <DataTable> tự xử lý — không cần state/slice ở đây.
 
+  // ── Dòng "Tổng cộng" của từng bảng (tổng của TẬP ĐANG LỌC) ──
+  const lotTotals = useMemo(() => {
+    if (filteredLots.length === 0) return undefined
+    const u = filteredLots[0].product?.unit
+    const uniform = !!u && filteredLots.every(l => l.product?.unit === u)
+    return {
+      qty: uniform
+        ? `${sumBy(filteredLots, l => l.quantity_on_hand).toLocaleString('vi-VN')} ${u}`
+        : MIXED_UNIT,
+      value: vnd(sumBy(filteredLots, l => l.quantity_on_hand * l.cost_price)),
+    }
+  }, [filteredLots])
+
+  const poTotals = useMemo(() => (
+    filteredPOs.length === 0 ? undefined : { total: vnd(sumBy(filteredPOs, po => po.grand_total)) }
+  ), [filteredPOs])
+
+  const receiptTotals = useMemo(() => (
+    filteredReceipts.length === 0 ? undefined : { total: vnd(sumBy(filteredReceipts, gr => gr.total_amount)) }
+  ), [filteredReceipts])
+
+  const transferTotals = useMemo(() => (
+    filteredTransfers.length === 0 ? undefined : { total: vnd(sumBy(filteredTransfers, t => t.total_amount)) }
+  ), [filteredTransfers])
+
+  const returnTotals = useMemo(() => (
+    filteredReturns.length === 0 ? undefined : { total: vnd(sumBy(filteredReturns, r => r.total_amount)) }
+  ), [filteredReturns])
+
   const reloadInvSettings = async () => {
     let query = supabase
       .from('inventory_settings')
@@ -1466,8 +1512,12 @@ export default function InventoryPage() {
         )
       }
     },
-    { key: 'cost', header: 'Giá vốn', width: 120, align: 'right', render: lot => <span className="text-[11px] font-semibold text-gray-700">{lot.cost_price.toLocaleString('vi-VN')} ₫</span> },
-    { key: 'qty', header: 'Tồn KD', width: 96, align: 'center', render: lot => <span className="font-bold text-gray-850">{lot.quantity_on_hand}</span> },
+    { key: 'cost', header: 'Giá vốn', width: 116, align: 'right', render: lot => <span className="text-[11px] font-semibold text-gray-700">{lot.cost_price.toLocaleString('vi-VN')} ₫</span> },
+    { key: 'qty', header: 'Tồn KD', width: 92, align: 'center', render: lot => <span className="font-bold text-gray-850">{lot.quantity_on_hand}</span> },
+    {
+      key: 'value', header: 'Giá trị vốn', width: 124, align: 'right',
+      render: lot => <span className="text-[11px] font-bold text-[#143C69] tabular-nums">{(lot.quantity_on_hand * lot.cost_price).toLocaleString('vi-VN')} ₫</span>
+    },
     {
       key: 'status', header: 'Trạng thái', width: 104, align: 'center', noTruncate: true, mobileHeaderRight: true,
       render: lot => (
@@ -1822,6 +1872,8 @@ export default function InventoryPage() {
                 resetSignal={`${debouncedLotSearch}|${whFilter}|${lotQuickFilter}`}
                 emptyText="Không tìm thấy lô hàng nào"
                 emptyIcon={<Layers className="w-12 h-12 text-gray-300 mx-auto" />}
+                totals={lotTotals}
+                totalsLabel={`Tổng ${filteredLots.length} lô đang lọc`}
               />
             </div>
           )}
@@ -1867,6 +1919,8 @@ export default function InventoryPage() {
                 resetSignal={`${debouncedPoSearch}|${poStatusFilter}`}
                 emptyText="Không tìm thấy đơn hàng nào"
                 emptyIcon={<FileText className="w-12 h-12 text-gray-300 mx-auto" />}
+                totals={poTotals}
+                totalsLabel={`Tổng ${filteredPOs.length} đơn đặt`}
               />
             </div>
           )}
@@ -1897,6 +1951,8 @@ export default function InventoryPage() {
                 itemLabel="phiếu nhập"
                 resetSignal={debouncedReceiptSearch}
                 onRowClick={gr => navigate(`/goods-receipts/${gr.id}`)}
+                totals={receiptTotals}
+                totalsLabel={`Tổng ${filteredReceipts.length} phiếu nhập`}
                 emptyText="Không tìm thấy phiếu nhập kho nào"
                 emptyIcon={<WarehouseIcon className="w-12 h-12 text-gray-300 mx-auto" />}
               />
@@ -1997,6 +2053,8 @@ export default function InventoryPage() {
                 }}
                 emptyText="Không tìm thấy phiếu chuyển kho nào"
                 emptyIcon={<ArrowRightLeft className="w-12 h-12 text-gray-300 mx-auto" />}
+                totals={transferTotals}
+                totalsLabel={`Tổng ${filteredTransfers.length} phiếu chuyển`}
               />
             </div>
           )}
@@ -2038,6 +2096,8 @@ export default function InventoryPage() {
                 onRowClick={r => { setSelectedReturn(r); fetchReturnDetails(r.id); setShowReturnDetailModal(true) }}
                 emptyText="Không tìm thấy phiếu trả hàng nào"
                 emptyIcon={<RotateCcw className="w-12 h-12 text-gray-300 mx-auto" />}
+                totals={returnTotals}
+                totalsLabel={`Tổng ${filteredReturns.length} phiếu trả`}
               />
             </div>
           )}
