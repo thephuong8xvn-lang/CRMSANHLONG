@@ -125,16 +125,20 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
       ]
     },
     {
-      label: 'Tài chính & Báo cáo',
+      // Sổ quỹ đứng độc lập: đây là 1 trong 4 phân hệ chi nhánh dùng hằng ngày,
+      // không phải thứ để lẫn cùng Báo cáo (vốn chỉ admin xem được).
+      label: 'Sổ quỹ',
       items: [
-        { label: 'Sổ quỹ', icon: Wallet, path: '/cashbook', perms: ['cashbook.view', 'cashbook.create', 'cashbook.approve'] },
-        { label: 'Báo cáo', icon: BarChart2, path: '/reports', perms: [], adminOnly: true }
+        { label: 'Sổ quỹ', icon: Wallet, path: '/cashbook', perms: ['cashbook.view', 'cashbook.create', 'cashbook.approve'] }
       ]
     },
     {
-      label: 'Hệ thống',
+      // Báo cáo dồn về đây cùng Cấu hình: cả hai đều adminOnly, nên với nhân viên
+      // chi nhánh cả nhóm rỗng → biến mất khỏi thanh menu.
+      label: 'Cấu hình',
       items: [
-        { label: 'Cấu hình', icon: Settings, path: '/system-settings', perms: [], adminOnly: true }
+        { label: 'Cấu hình hệ thống', icon: Settings, path: '/system-settings', perms: [], adminOnly: true },
+        { label: 'Báo cáo', icon: BarChart2, path: '/reports', perms: [], adminOnly: true }
       ]
     }
   ]
