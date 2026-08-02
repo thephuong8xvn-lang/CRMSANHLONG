@@ -1872,9 +1872,15 @@ export default function SystemSettingsPage() {
                 {/* RBAC Role Selection (Checkboxes) */}
                 <div className="space-y-2 pt-2">
                   <label className="block text-body-md font-semibold text-gray-700">Vai trò / Phân quyền hệ thống</label>
-                  {selectedEmployee?.user_roles?.some(ur => ur.role.code === 'admin' || ur.role.code === 'ceo') ? (
+                  {/* Chỉ khoá lưới khi admin đang sửa hồ sơ CỦA CHÍNH MÌNH. Trước đây
+                      khoá theo "người được sửa có admin/ceo" → cấp nhầm quyền cao nhất
+                      là hết đường thu hồi bằng giao diện (cửa một chiều). Việc chặn tự
+                      gỡ admin của mình / gỡ admin cuối cùng đã do fn_set_user_roles lo
+                      ở server, nên chốt chặn phía client là thừa và gây hại. */}
+                  {selectedEmployee && selectedEmployee.id === profile?.id ? (
                     <div className="p-3 bg-blue-50 border border-blue-100 text-blue-700 rounded-lg text-body-md font-semibold">
-                      Tài khoản có quyền cao nhất (Admin/CEO) - Không cần điều chỉnh phân quyền.
+                      Đây là tài khoản của chính bạn — không thể tự sửa vai trò của mình.
+                      Nhờ một Quản trị viên khác điều chỉnh giúp.
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2 bg-gray-50 p-4 rounded-lg border border-gray-100">
