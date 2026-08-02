@@ -50,6 +50,7 @@ import CollectDebtModal from './CollectDebtModal'
 import SmartSearchSelect from '../../components/SmartSearchSelect'
 import { useDisplaySettings, primaryPhone } from '../../contexts/DisplaySettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { fetchLedgerAttribution } from '../../lib/customerStatement'
 
 // ─────────────────────────────────────────────────────────────
 // Type Definitions
@@ -217,6 +218,8 @@ interface LedgerItem {
   // false = dòng phái sinh (Khách trả trước / Phải hoàn trả): tiền đã nằm ở dòng
   // thanh toán → KHÔNG cộng vào số dư, chỉ hiển thị thông tin.
   affectsBalance: boolean
+  createdBy: string    // Người lập chứng từ
+  branchName: string   // Chi nhánh phát sinh
 }
 
 interface Activity {
@@ -706,9 +709,31 @@ export default function CustomerDetailPage() {
       if (dpData) debtPaymentsData = dpData
 
       const orderCodeMap = new Map<string, string>()
+      const orderBranchMap = new Map<string, string | null>()
       custData.orders?.forEach((o: any) => {
         orderCodeMap.set(o.id, o.order_code)
+        orderBranchMap.set(o.id, o.branch_id ?? null)
       })
+
+      // Quy kết "ai lập / chi nhánh nào" — dùng chung quy ước với sổ ở View nhanh
+      // (xem customerStatement.ts): chứng từ gắn đơn lấy chi nhánh của ĐƠN, còn
+      // thu nợ / điều chỉnh nợ lấy chi nhánh của NGƯỜI LẬP vì bảng không có cột.
+      const attribution = await fetchLedgerAttribution(
+        [
+          ...(custData.orders ?? []).map((o: any) => o.owner_user_id),
+          ...orderPaymentsData.map((op: any) => op.created_by),
+          ...debtPaymentsData.map((dp: any) => dp.recorded_by),
+          ...returnsData.map((r: any) => r.created_by ?? r.processed_by),
+          ...(custData.customer_debts ?? []).map((cd: any) => cd.created_by),
+        ],
+        (custData.orders ?? []).map((o: any) => o.branch_id),
+      )
+      const who = (uid?: string | null) => (uid && attribution.userName.get(uid)) || '—'
+      const branchOfOrder = (orderId?: string | null) => {
+        const bid = orderId ? orderBranchMap.get(orderId) : null
+        return (bid && attribution.branchName.get(bid)) || '—'
+      }
+      const branchOfUser = (uid?: string | null) => (uid && attribution.userBranch.get(uid)) || '—'
 
       const items: LedgerItem[] = []
 
@@ -728,7 +753,9 @@ export default function CustomerDetailPage() {
               notes: o.notes || 'Hóa đơn mua hàng',
               runningBalance: 0,
               refOrderId: o.id,
-              affectsBalance: true
+              affectsBalance: true,
+              createdBy: who(o.owner_user_id),
+              branchName: branchOfOrder(o.id)
             })
           }
         })
@@ -749,7 +776,9 @@ export default function CustomerDetailPage() {
           notes: op.notes || `Thanh toán cho đơn hàng ${oCode}`,
           runningBalance: 0,
           refOrderId: op.order_id || null,
-          affectsBalance: true
+          affectsBalance: true,
+          createdBy: who(op.created_by),
+          branchName: branchOfOrder(op.order_id)
         })
       })
 
@@ -767,7 +796,9 @@ export default function CustomerDetailPage() {
           notes: dp.notes || 'Khách hàng thanh toán nợ',
           runningBalance: 0,
           refOrderId: null,
-          affectsBalance: true
+          affectsBalance: true,
+          createdBy: who(dp.recorded_by),
+          branchName: branchOfUser(dp.recorded_by)
         })
       })
 
@@ -787,7 +818,9 @@ export default function CustomerDetailPage() {
           notes: r.reason || `Khách trả hàng cho đơn ${oCode}`,
           runningBalance: 0,
           refOrderId: r.order_id || null,
-          affectsBalance: true
+          affectsBalance: true,
+          createdBy: who(r.created_by ?? r.processed_by),
+          branchName: branchOfOrder(r.order_id)
         })
       })
 
@@ -816,7 +849,9 @@ export default function CustomerDetailPage() {
               notes: cd.notes || 'Điều chỉnh số dư nợ',
               runningBalance: 0,
               refOrderId: null,
-              affectsBalance: isManualAdjust
+              affectsBalance: isManualAdjust,
+              createdBy: who(cd.created_by),
+              branchName: branchOfUser(cd.created_by)
             })
           }
         })
@@ -2235,6 +2270,8 @@ export default function CustomerDetailPage() {
                                   <th className="px-6 py-4">Thời gian</th>
                                   <th className="px-6 py-4">Mã chứng từ</th>
                                   <th className="px-6 py-4">Loại giao dịch</th>
+                                  <th className="px-6 py-4">Người lập</th>
+                                  <th className="px-6 py-4">Chi nhánh</th>
                                   <th className="px-6 py-4 text-right">Giá trị phát sinh</th>
                                   <th className="px-6 py-4 text-right">Thực thu/trả</th>
                                   <th className="px-6 py-4 text-right">Ảnh hưởng nợ</th>
@@ -2278,6 +2315,12 @@ export default function CustomerDetailPage() {
                                         }`}>
                                           {item.typeLabel}
                                         </span>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-tiny text-gray-600" title={item.createdBy}>
+                                        {item.createdBy}
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-tiny text-gray-500" title={item.branchName}>
+                                        {item.branchName}
                                       </td>
                                       <td className="px-6 py-4 text-right font-semibold text-gray-700 tabular-nums">
                                         {item.value !== 0 ? formatVND(item.value) : '---'}

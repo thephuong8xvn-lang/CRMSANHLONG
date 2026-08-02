@@ -36,6 +36,64 @@ export interface StatementRow {
   kind: 'invoice' | 'payment' | 'return' | 'adjustment' | 'advance' // phục vụ click → chi tiết
   refId: string | null  // order_id / return_id / payment_id… để mở chi tiết
   info?: boolean        // true = dòng thông tin, KHÔNG ảnh hưởng số dư (vd Khách trả trước)
+  createdBy: string     // Người lập chứng từ ('—' nếu không tra được)
+  branchName: string    // Chi nhánh phát sinh ('—' nếu không tra được)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Quy kết "ai lập / ở chi nhánh nào" cho từng dòng sổ.
+//
+// Chi nhánh lấy theo NGUỒN ĐÁNG TIN NHẤT của từng loại chứng từ:
+//   • Bán hàng / Thanh toán theo đơn / Trả hàng → `orders.branch_id`
+//     (chi nhánh thực sự bán — dứt khoát, không suy diễn)
+//   • Thu nợ / Điều chỉnh nợ → chi nhánh của NGƯỜI LẬP
+//     (`debt_payments` và `customer_debts` không có cột chi nhánh nào)
+//
+// Cố ý KHÔNG tra chi nhánh của phiếu thu nợ qua sổ quỹ: RLS sổ quỹ chặn theo
+// chi nhánh nên nhân viên chi nhánh khác sẽ đọc rỗng → cột lúc có lúc không.
+// ─────────────────────────────────────────────────────────────
+export interface LedgerAttribution {
+  userName: Map<string, string>    // profile id → họ tên
+  userBranch: Map<string, string>  // profile id → tên chi nhánh của người đó
+  branchName: Map<string, string>  // branch id  → tên chi nhánh
+}
+
+export const EMPTY_ATTRIBUTION: LedgerAttribution = {
+  userName: new Map(), userBranch: new Map(), branchName: new Map(),
+}
+
+/** Tra tên người + tên chi nhánh cho một mớ id. `profiles`/`branches` đều cho
+ *  mọi tài khoản đang hoạt động đọc nên không vướng RLS. */
+export async function fetchLedgerAttribution(
+  userIds: (string | null | undefined)[],
+  branchIds: (string | null | undefined)[],
+): Promise<LedgerAttribution> {
+  const uniq = (xs: (string | null | undefined)[]) =>
+    [...new Set(xs.filter((x): x is string => !!x))]
+
+  const users = uniq(userIds)
+  const result: LedgerAttribution = {
+    userName: new Map(), userBranch: new Map(), branchName: new Map(),
+  }
+
+  const [profRes, brRes] = await Promise.all([
+    users.length
+      ? supabase.from('profiles').select('id, full_name, branch_id').in('id', users)
+      : Promise.resolve({ data: [] as any[] }),
+    supabase.from('branches').select('id, name'),
+  ])
+
+  ;(brRes.data ?? []).forEach((b: any) => result.branchName.set(b.id, b.name || ''))
+  ;(profRes.data ?? []).forEach((p: any) => {
+    result.userName.set(p.id, p.full_name || '')
+    const bn = p.branch_id ? result.branchName.get(p.branch_id) : undefined
+    if (bn) result.userBranch.set(p.id, bn)
+  })
+
+  // branchIds chỉ dùng để chắc chắn đã nạp đủ tên chi nhánh — `branches` nhỏ nên
+  // nạp trọn bảng, không cần lọc.
+  void branchIds
+  return result
 }
 
 export interface CustomerStatement {
@@ -62,6 +120,8 @@ interface LedgerEntry {
   // false = dòng phái sinh (Khách trả trước / Phải hoàn trả) — tiền đã nằm ở
   // dòng thanh toán nên KHÔNG cộng vào số dư, chỉ hiển thị thông tin.
   affectsBalance: boolean
+  createdBy: string
+  branchName: string
 }
 
 /**
@@ -81,11 +141,25 @@ export function buildStatement(input: {
   toMs: number
   fromISO: string
   toISO: string
+  attribution?: LedgerAttribution
 }): CustomerStatement {
   const { customer, branch, orders, orderPayments, debtPayments, returns, debts, linesByOrder, fromMs, toMs, fromISO, toISO } = input
+  const attr = input.attribution ?? EMPTY_ATTRIBUTION
 
   const orderCodeMap = new Map<string, string>()
-  orders.forEach(o => orderCodeMap.set(o.id, o.order_code))
+  const orderBranchMap = new Map<string, string | null>()
+  orders.forEach(o => {
+    orderCodeMap.set(o.id, o.order_code)
+    orderBranchMap.set(o.id, o.branch_id ?? null)
+  })
+
+  // '—' khi không tra được: thà để trống còn hơn đoán sai người/chi nhánh.
+  const who = (uid?: string | null) => (uid && attr.userName.get(uid)) || '—'
+  const branchOfOrder = (orderId?: string | null) => {
+    const bid = orderId ? orderBranchMap.get(orderId) : null
+    return (bid && attr.branchName.get(bid)) || '—'
+  }
+  const branchOfUser = (uid?: string | null) => (uid && attr.userBranch.get(uid)) || '—'
 
   const entries: LedgerEntry[] = []
 
@@ -102,6 +176,8 @@ export function buildStatement(input: {
         kind: 'invoice',
         refId: o.id,
         affectsBalance: true,
+        createdBy: who(o.owner_user_id),
+        branchName: branchOfOrder(o.id),
       })
     }
   })
@@ -119,6 +195,8 @@ export function buildStatement(input: {
       kind: 'payment',
       refId: op.order_id || null,
       affectsBalance: true,
+      createdBy: who(op.created_by),
+      branchName: branchOfOrder(op.order_id),
     })
   })
 
@@ -134,6 +212,9 @@ export function buildStatement(input: {
       kind: 'payment',
       refId: null,
       affectsBalance: true,
+      // debt_payments không có cột chi nhánh → lấy theo người ghi phiếu
+      createdBy: who(dp.recorded_by),
+      branchName: branchOfUser(dp.recorded_by),
     })
   })
 
@@ -151,6 +232,8 @@ export function buildStatement(input: {
       kind: 'return',
       refId: r.order_id || null,
       affectsBalance: true,
+      createdBy: who(r.created_by ?? r.processed_by),
+      branchName: branchOfOrder(r.order_id),
     })
   })
 
@@ -175,6 +258,8 @@ export function buildStatement(input: {
         kind: isManualAdjust ? 'adjustment' : 'advance',
         refId: null,
         affectsBalance: isManualAdjust,
+        createdBy: who(cd.created_by),
+        branchName: branchOfUser(cd.created_by),
       })
     }
   })
@@ -221,6 +306,8 @@ export function buildStatement(input: {
       kind: e.kind,
       refId: e.refId,
       info: !e.affectsBalance,
+      createdBy: e.createdBy,
+      branchName: e.branchName,
     })
   }
 
@@ -264,7 +351,7 @@ export async function fetchCustomerStatement(
   // Đơn hàng của KH (toàn bộ — cần để tính nợ đầu kỳ)
   const { data: orders, error: ordErr } = await supabase
     .from('orders')
-    .select('id, order_code, created_at, grand_total, status, notes')
+    .select('id, order_code, created_at, grand_total, status, notes, owner_user_id, branch_id')
     .eq('customer_id', customerId)
   if (ordErr) { logger.error('[statement] orders error:', ordErr.message); throw ordErr }
 
@@ -273,13 +360,13 @@ export async function fetchCustomerStatement(
   // Thanh toán / trả hàng / thu nợ / điều chỉnh nợ
   const [opRes, retRes, dpRes, debtRes] = await Promise.all([
     orderIds.length
-      ? supabase.from('order_payments').select('order_id, amount, payment_date, created_at, payment_method, reference_no, notes').in('order_id', orderIds)
+      ? supabase.from('order_payments').select('order_id, amount, payment_date, created_at, payment_method, reference_no, notes, created_by').in('order_id', orderIds)
       : Promise.resolve({ data: [] as any[] }),
     orderIds.length
-      ? supabase.from('sales_returns').select('order_id, total_amount, created_at, return_code, refund_method, reason').in('order_id', orderIds)
+      ? supabase.from('sales_returns').select('order_id, total_amount, created_at, return_code, refund_method, reason, created_by, processed_by').in('order_id', orderIds)
       : Promise.resolve({ data: [] as any[] }),
-    supabase.from('debt_payments').select('amount, payment_date, created_at, payment_method, reference_no, notes').eq('customer_id', customerId),
-    supabase.from('customer_debts').select('id, amount, created_at, debt_type, order_id, notes').eq('customer_id', customerId),
+    supabase.from('debt_payments').select('amount, payment_date, created_at, payment_method, reference_no, notes, recorded_by').eq('customer_id', customerId),
+    supabase.from('customer_debts').select('id, amount, created_at, debt_type, order_id, notes, created_by').eq('customer_id', customerId),
   ])
 
   // Chi tiết dòng hàng cho các đơn NẰM TRONG kỳ
@@ -315,7 +402,20 @@ export async function fetchCustomerStatement(
     })
   }
 
+  // Tra tên người lập + tên chi nhánh cho mọi dòng sổ
+  const attribution = await fetchLedgerAttribution(
+    [
+      ...(orders ?? []).map((o: any) => o.owner_user_id),
+      ...(opRes.data ?? []).map((op: any) => op.created_by),
+      ...(dpRes.data ?? []).map((dp: any) => dp.recorded_by),
+      ...(retRes.data ?? []).map((r: any) => r.created_by ?? r.processed_by),
+      ...(debtRes.data ?? []).map((cd: any) => cd.created_by),
+    ],
+    (orders ?? []).map((o: any) => o.branch_id),
+  )
+
   return buildStatement({
+    attribution,
     customer: {
       id: customerId,
       code: cust?.code || '',

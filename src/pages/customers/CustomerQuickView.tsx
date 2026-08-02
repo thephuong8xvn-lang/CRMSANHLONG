@@ -190,6 +190,8 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
                         <th className="p-2.5">Thời gian</th>
                         <th className="p-2.5">Mã chứng từ</th>
                         <th className="p-2.5">Loại</th>
+                        <th className="p-2.5">Người lập</th>
+                        <th className="p-2.5">Chi nhánh</th>
                         <th className="p-2.5 text-right">Ghi nợ</th>
                         <th className="p-2.5 text-right">Ghi có</th>
                         <th className="p-2.5 text-right">Dư nợ</th>
@@ -211,6 +213,8 @@ export default function CustomerQuickView({ customer, onClose, onOpenDetail }: C
                             <td className="p-2.5">
                               <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${KIND_BADGE[r.kind]}`}>{r.typeLabel}</span>
                             </td>
+                            <td className="p-2.5 whitespace-nowrap text-[11px] text-gray-600" title={r.createdBy}>{r.createdBy}</td>
+                            <td className="p-2.5 whitespace-nowrap text-[11px] text-gray-500" title={r.branchName}>{r.branchName}</td>
                             <td className="p-2.5 text-right tabular-nums font-semibold text-red-600">{r.debit ? formatCurrency(r.debit) : '—'}</td>
                             <td className="p-2.5 text-right tabular-nums font-semibold text-emerald-600">{r.credit ? formatCurrency(r.credit) : '—'}</td>
                             <td className="p-2.5 text-right tabular-nums font-bold text-gray-700">{r.info ? '—' : formatCurrency(r.balance)}</td>

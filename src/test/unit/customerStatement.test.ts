@@ -73,3 +73,67 @@ describe('buildStatement — không đếm trùng advance_from_customer', () => 
     expect(st.totalDebit).toBe(50000)
   })
 })
+
+describe('buildStatement — cột Người lập / Chi nhánh', () => {
+  const attribution = {
+    userName: new Map([['u-ha', 'Hoài Ân'], ['u-pm', 'Phù Mỹ'], ['u-admin', 'Quản trị viên']]),
+    userBranch: new Map([['u-ha', 'Chi nhánh Hoài Ân'], ['u-pm', 'Chi nhánh Phù Mỹ']]),
+    branchName: new Map([['b-ha', 'Chi nhánh Hoài Ân'], ['b-pm', 'Chi nhánh Phù Mỹ']]),
+  }
+
+  const orders = [
+    { id: 'o1', order_code: 'DH-1', created_at: '2026-07-01T00:00:00Z', grand_total: 100000, status: 'completed', notes: '', owner_user_id: 'u-pm', branch_id: 'b-pm' },
+  ]
+
+  it('Bán hàng: người lập = chủ đơn, chi nhánh = chi nhánh CỦA ĐƠN', () => {
+    const st = build({ orders, attribution })
+    const row = st.rows.find(r => r.kind === 'invoice')!
+    expect(row.createdBy).toBe('Phù Mỹ')
+    expect(row.branchName).toBe('Chi nhánh Phù Mỹ')
+  })
+
+  it('Thanh toán theo đơn lấy chi nhánh của ĐƠN, không phải của người thu', () => {
+    const st = build({
+      orders,
+      orderPayments: [{ order_id: 'o1', amount: 40000, payment_date: '2026-07-02T00:00:00Z', reference_no: 'TT-1', notes: '', created_by: 'u-ha' }],
+      attribution,
+    })
+    const row = st.rows.find(r => r.code === 'TT-1')!
+    expect(row.createdBy).toBe('Hoài Ân')
+    expect(row.branchName).toBe('Chi nhánh Phù Mỹ')
+  })
+
+  it('Thu nợ không gắn đơn → lấy chi nhánh của NGƯỜI GHI phiếu', () => {
+    const st = build({
+      debtPayments: [{ amount: 50000, payment_date: '2026-07-03T00:00:00Z', reference_no: 'TN-1', notes: '', recorded_by: 'u-ha' }],
+      attribution,
+    })
+    const row = st.rows.find(r => r.code === 'TN-1')!
+    expect(row.createdBy).toBe('Hoài Ân')
+    expect(row.branchName).toBe('Chi nhánh Hoài Ân')
+  })
+
+  it('không tra được thì để "—", KHÔNG đoán bừa', () => {
+    // u-admin có tên nhưng branch_id NULL; u-la không có trong bảng tra
+    const st = build({
+      debtPayments: [
+        { amount: 1000, payment_date: '2026-07-04T00:00:00Z', reference_no: 'TN-2', notes: '', recorded_by: 'u-admin' },
+        { amount: 2000, payment_date: '2026-07-05T00:00:00Z', reference_no: 'TN-3', notes: '', recorded_by: 'u-la' },
+      ],
+      attribution,
+    })
+    const r2 = st.rows.find(r => r.code === 'TN-2')!
+    expect(r2.createdBy).toBe('Quản trị viên')
+    expect(r2.branchName).toBe('—')
+    const r3 = st.rows.find(r => r.code === 'TN-3')!
+    expect(r3.createdBy).toBe('—')
+    expect(r3.branchName).toBe('—')
+  })
+
+  it('không truyền attribution thì mọi dòng là "—" (tương thích ngược)', () => {
+    const st = build({ orders })
+    const row = st.rows.find(r => r.kind === 'invoice')!
+    expect(row.createdBy).toBe('—')
+    expect(row.branchName).toBe('—')
+  })
+})
