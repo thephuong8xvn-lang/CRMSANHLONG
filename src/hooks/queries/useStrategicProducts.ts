@@ -64,6 +64,19 @@ export interface StratProductRow {
   is_violation: boolean
   missing_cost: boolean
   total_count: number
+  // ── Tổng của TOÀN BỘ tập lọc (server lặp lại trên mọi dòng) ──
+  // Dùng cho dòng tổng: tổng 50 dòng của trang đang xem là số vô nghĩa.
+  sum_qty: number
+  sum_revenue: number
+  sum_cogs: number
+  sum_profit: number
+  sum_sold_30d: number
+  sum_stock_qty: number
+  sum_stock_value: number
+  sum_profit_90d: number
+  violation_count: number
+  missing_cost_count: number
+  unit_uniform: boolean
 }
 
 export interface StratSuggestionRow {
@@ -78,6 +91,9 @@ export interface StratSuggestionRow {
   markup_90d: number | null
   order_count_90d: number
   total_count: number
+  sum_revenue_90d: number
+  sum_qty_90d: number
+  sum_profit_90d: number
 }
 
 export interface StratAlertRow {
@@ -124,6 +140,9 @@ export interface StratTodayOrderRow {
   grand_total: number
   revenue_strategic: number
   revenue_baseline: number
+  revenue_other: number
+  /** Tổng thuần cấp dòng = N1 + N2 + Thường. Khác grand_total (cấp đơn). */
+  revenue_net_total: number
   status: string
 }
 
@@ -205,46 +224,65 @@ export interface StratProductParams extends StratPeriod {
   offset?: number
 }
 
+/** Gọi RPC danh sách SP + chuẩn hóa kiểu. Dùng chung cho hook và xuất CSV
+ *  (numeric của Postgres về JS là chuỗi — không chuẩn hóa thì cộng ra "12" + "34"). */
+export async function fetchStrategicProducts(params: StratProductParams): Promise<StratProductRow[]> {
+  const { data, error } = await supabase.rpc('fn_strategic_products', {
+    p_year: params.year,
+    p_month: params.month,
+    p_branch_id: params.branchId || null,
+    p_class: params.cls,
+    p_search: params.search || null,
+    p_sort: params.sort ?? 'revenue',
+    p_limit: params.limit ?? 50,
+    p_offset: params.offset ?? 0,
+  })
+  if (error) { logger.error('[fetchStrategicProducts]', error.message); throw error }
+  return (data ?? []).map(mapStratProductRow)
+}
+
+function mapStratProductRow(r: Record<string, unknown>): StratProductRow {
+  return {
+    product_id: r.product_id as string,
+    sku: (r.sku as string) || '',
+    product_name: (r.product_name as string) || '—',
+    unit: (r.unit as string) || '',
+    brand_name: (r.brand_name as string) || '',
+    class: (r.class as string) || 'other',
+    note: (r.note as string) || null,
+    qty: num(r.qty),
+    revenue: num(r.revenue),
+    cogs: num(r.cogs),
+    profit: num(r.profit),
+    markup_actual: numOrNull(r.markup_actual),
+    margin: numOrNull(r.margin),
+    order_count: num(r.order_count),
+    sold_30d: num(r.sold_30d),
+    stock_on_hand: num(r.stock_on_hand),
+    stock_value: num(r.stock_value),
+    days_to_oos: numOrNull(r.days_to_oos),
+    gmroi: numOrNull(r.gmroi),
+    is_violation: !!r.is_violation,
+    missing_cost: !!r.missing_cost,
+    total_count: num(r.total_count),
+    sum_qty: num(r.sum_qty),
+    sum_revenue: num(r.sum_revenue),
+    sum_cogs: num(r.sum_cogs),
+    sum_profit: num(r.sum_profit),
+    sum_sold_30d: num(r.sum_sold_30d),
+    sum_stock_qty: num(r.sum_stock_qty),
+    sum_stock_value: num(r.sum_stock_value),
+    sum_profit_90d: num(r.sum_profit_90d),
+    violation_count: num(r.violation_count),
+    missing_cost_count: num(r.missing_cost_count),
+    unit_uniform: !!r.unit_uniform,
+  }
+}
+
 export function useStrategicProductList(params: StratProductParams) {
   return useQuery<StratProductRow[]>({
     queryKey: qk.reports.stratProducts(params as object),
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('fn_strategic_products', {
-        p_year: params.year,
-        p_month: params.month,
-        p_branch_id: params.branchId || null,
-        p_class: params.cls,
-        p_search: params.search || null,
-        p_sort: params.sort ?? 'revenue',
-        p_limit: params.limit ?? 50,
-        p_offset: params.offset ?? 0,
-      })
-      if (error) { logger.error('[useStrategicProductList]', error.message); throw error }
-      return (data ?? []).map((r: Record<string, unknown>) => ({
-        product_id: r.product_id as string,
-        sku: (r.sku as string) || '',
-        product_name: (r.product_name as string) || '—',
-        unit: (r.unit as string) || '',
-        brand_name: (r.brand_name as string) || '',
-        class: (r.class as string) || 'other',
-        note: (r.note as string) || null,
-        qty: num(r.qty),
-        revenue: num(r.revenue),
-        cogs: num(r.cogs),
-        profit: num(r.profit),
-        markup_actual: numOrNull(r.markup_actual),
-        margin: numOrNull(r.margin),
-        order_count: num(r.order_count),
-        sold_30d: num(r.sold_30d),
-        stock_on_hand: num(r.stock_on_hand),
-        stock_value: num(r.stock_value),
-        days_to_oos: numOrNull(r.days_to_oos),
-        gmroi: numOrNull(r.gmroi),
-        is_violation: !!r.is_violation,
-        missing_cost: !!r.missing_cost,
-        total_count: num(r.total_count),
-      }))
-    },
+    queryFn: () => fetchStrategicProducts(params),
     placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   })
@@ -272,6 +310,9 @@ export function useStrategicSuggestions(params: { branchId?: string | null; limi
         markup_90d: numOrNull(r.markup_90d),
         order_count_90d: num(r.order_count_90d),
         total_count: num(r.total_count),
+        sum_revenue_90d: num(r.sum_revenue_90d),
+        sum_qty_90d: num(r.sum_qty_90d),
+        sum_profit_90d: num(r.sum_profit_90d),
       }))
     },
     placeholderData: keepPreviousData,
@@ -370,6 +411,8 @@ export function useStrategicTodayOrders(branchId?: string | null, limit = 20) {
         grand_total: num(r.grand_total),
         revenue_strategic: num(r.revenue_strategic),
         revenue_baseline: num(r.revenue_baseline),
+        revenue_other: num(r.revenue_other),
+        revenue_net_total: num(r.revenue_net_total),
         status: (r.status as string) || '',
       }))
     },
@@ -447,6 +490,30 @@ export function useAssignStrategy() {
           )
         if (error) throw error
       }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.reports.strategicAll })
+    },
+  })
+}
+
+/**
+ * Gán / gỡ nhóm HÀNG LOẠT (cls=null → gỡ). Trả số dòng đã đổi.
+ * Qua RPC chứ không upsert thẳng bảng: server ghi được `assigned_by`
+ * (đường upsert cũ bỏ trống nên không truy được ai phân loại).
+ */
+export function useAssignStrategyBulk() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { productIds: string[]; cls: StrategyClass | null; note?: string }) => {
+      if (input.productIds.length === 0) return 0
+      const { data, error } = await supabase.rpc('fn_assign_strategy_bulk', {
+        p_product_ids: input.productIds,
+        p_class: input.cls,
+        p_note: input.note || null,
+      })
+      if (error) { logger.error('[useAssignStrategyBulk]', error.message); throw error }
+      return num(data)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.reports.strategicAll })

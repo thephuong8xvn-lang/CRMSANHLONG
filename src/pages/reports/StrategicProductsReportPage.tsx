@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import Papa from 'papaparse'
@@ -6,7 +6,7 @@ import {
   ChevronRight, ChevronLeft, Download, Target, Layers, Radio,
   LineChart as LineChartIcon, Lightbulb, Flag, AlertTriangle,
   Building2, Package, TrendingUp, Coins, Scale, ShoppingCart, Plus,
-  Settings2, ChevronDown, ChevronUp,
+  Settings2, ChevronDown, ChevronUp, CheckSquare, Square, PieChart,
 } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -24,8 +24,8 @@ import { qk } from '../../lib/queryClient'
 import {
   useStrategicSummary, useStrategicProductList, useStrategicSuggestions,
   useStrategicAlerts, useStrategicTrend, useStrategicToday, useStrategicTodayOrders,
-  useBranchMonthTargets, useStrategicConfig, useAssignStrategy,
-  useUpsertBranchTarget, useSaveStrategicConfig,
+  useBranchMonthTargets, useStrategicConfig, useAssignStrategy, useAssignStrategyBulk,
+  useUpsertBranchTarget, useSaveStrategicConfig, fetchStrategicProducts,
   StratProductRow, StratSuggestionRow, StratAlertRow, StratTodayOrderRow,
   StratSummaryRow, StratProductSort, StrategyClass, DEFAULT_STRATEGIC_CONFIG,
 } from '../../hooks/queries/useStrategicProducts'
@@ -94,6 +94,11 @@ function alertText(a: StratAlertRow, formatCurrency: (n: number) => string): str
   }
 }
 
+/** Cộng số lượng khác đơn vị tính là vô nghĩa (chai + thùng + kg). */
+function MixedUnit() {
+  return <span className="text-tiny font-normal italic text-gray-400" title="Các dòng có đơn vị tính khác nhau nên không cộng được">nhiều ĐVT</span>
+}
+
 function ClassBadge({ cls }: { cls: string }) {
   if (cls === 'strategic')
     return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-tiny font-bold bg-blue-50 text-[#1E5A9C]"><Target size={10} />Nhóm 1</span>
@@ -126,8 +131,12 @@ export default function StrategicProductsReportPage() {
   const [assignDefault, setAssignDefault] = useState<StrategyClass>('strategic')
   const [configOpen, setConfigOpen] = useState(false)
 
-  useEffect(() => { setPage(1) }, [debouncedSearch, sort, branchFilter, ym, activeTab])
-  useEffect(() => { setSuggestPage(1) }, [branchFilter])
+  // Chọn nhiều để thao tác hàng loạt (chuyển nhóm / gỡ / chấp nhận gợi ý)
+  const [selProducts, setSelProducts] = useState<Set<string>>(new Set())
+  const [selSuggestions, setSelSuggestions] = useState<Set<string>>(new Set())
+
+  useEffect(() => { setPage(1); setSelProducts(new Set()) }, [debouncedSearch, sort, branchFilter, ym, activeTab])
+  useEffect(() => { setSuggestPage(1); setSelSuggestions(new Set()) }, [branchFilter])
 
   // ── Queries ──
   const branchesQ = useBranches()
@@ -150,19 +159,25 @@ export default function StrategicProductsReportPage() {
   const config = configQ.data ?? DEFAULT_STRATEGIC_CONFIG
 
   const assignMutation = useAssignStrategy()
+  const bulkMutation = useAssignStrategyBulk()
   const targetMutation = useUpsertBranchTarget()
   const configMutation = useSaveStrategicConfig()
 
-  // ── Realtime: đơn mới/đổi trạng thái → debounce 2s → invalidate toàn module ──
+  // ── Realtime: chỉ làm mới 2 query của tab "Hôm nay" ──
+  // Trước đây mỗi đơn bất kỳ invalidate CẢ 7 RPC (kể cả khi đang xem tab Mục
+  // tiêu) → mỗi lần lại quét tổng hợp 30/90 ngày. ~50 đơn/ngày mà để trang mở
+  // là hàng chục lượt tính lại vô ích trên gói Free.
+  const isTodayTab = activeTab === 'today'
   const invalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleOrderChange = useCallback(() => {
     if (invalidateTimer.current) clearTimeout(invalidateTimer.current)
     invalidateTimer.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: qk.reports.strategicAll })
+      queryClient.invalidateQueries({ queryKey: ['reports', 'strategic', 'today'] })
+      queryClient.invalidateQueries({ queryKey: ['reports', 'strategic', 'today-orders'] })
     }, 2000)
   }, [queryClient])
   useEffect(() => () => { if (invalidateTimer.current) clearTimeout(invalidateTimer.current) }, [])
-  useRealtimeTable({ table: 'orders', event: '*', onData: handleOrderChange })
+  useRealtimeTable({ table: 'orders', event: '*', onData: handleOrderChange, enabled: isTodayTab })
 
   const errorMsg = summaryQ.error?.message || productsQ.error?.message
     || alertsQ.error?.message || todayQ.error?.message || suggestionsQ.error?.message
@@ -173,7 +188,7 @@ export default function StrategicProductsReportPage() {
     const acc = {
       revenue: 0, revStrategic: 0, revBaseline: 0, revOther: 0,
       profitS: 0, profitB: 0, target: 0, hasTarget: false,
-      violations: 0, deepLoss: 0, elapsed: 0,
+      violations: 0, deepLoss: 0, elapsed: 0, shareTargetW: 0,
     }
     for (const r of summaryRows) {
       acc.revenue += r.revenue_total
@@ -185,13 +200,23 @@ export default function StrategicProductsReportPage() {
       acc.violations += r.strategic_violation_count
       acc.deepLoss += r.baseline_deep_loss_count
       acc.elapsed = r.month_elapsed_ratio
+      // Mục tiêu tỉ trọng N1: bình quân gia quyền theo doanh thu chi nhánh.
+      // Trước đây FE ghi cứng 30% trong khi DB có mục tiêu riêng từng CN → đặt
+      // 40% cho Hoài Ân mà thẻ KPI vẫn khoe "≥30%" và tô xanh khi đạt 32%.
+      acc.shareTargetW += r.strategic_share_target * r.revenue_total
       if (r.revenue_target != null) { acc.target += r.revenue_target; acc.hasTarget = true }
     }
     return acc
   }, [summaryRows])
   const overviewShare = overview.revenue > 0 ? overview.revStrategic / overview.revenue : null
+  const shareTarget = overview.revenue > 0 ? overview.shareTargetW / overview.revenue : 0.3
   const paceExpected = overview.hasTarget ? overview.target * overview.elapsed : null
   const pacePct = paceExpected && paceExpected > 0 ? overview.revenue / paceExpected : null
+  // Độ phủ phân loại: chưa phủ đủ thì tỉ trọng N1 thấp là do CHƯA GÁN NHÓM,
+  // không phải do bán sai cơ cấu — không có số này thì cảnh báo bị đọc sai.
+  const coverage = overview.revenue > 0
+    ? (overview.revStrategic + overview.revBaseline) / overview.revenue
+    : null
 
   const todayRows = useMemo(() => todayQ.data ?? [], [todayQ.data])
   const today = useMemo(() => {
@@ -210,6 +235,90 @@ export default function StrategicProductsReportPage() {
   const totalProducts = productRows[0]?.total_count ?? 0
   const suggestionRows = suggestionsQ.data ?? []
   const totalSuggestions = suggestionRows[0]?.total_count ?? 0
+
+  // ── Dòng tổng ────────────────────────────────────────────────
+  // Bảng SP/Gợi ý phân trang SERVER: tổng phải lấy từ cột sum_* mà RPC tính
+  // trên toàn bộ tập lọc. Cộng 50 dòng của trang đang xem sẽ ra số vô nghĩa
+  // mà trông y hệt tổng thật — nguy hiểm hơn là không có tổng.
+  const agg = productRows[0]
+  const productTotals = useMemo<Record<string, ReactNode> | undefined>(() => {
+    if (!agg) return undefined
+    const isStrategic = productCls === 'strategic'
+    // Markup tổng = Σlợi nhuận ÷ Σgiá vốn, KHÔNG phải trung bình cộng markup
+    // (trung bình cộng cho SP 50 nghìn cùng trọng số với SP 500 triệu).
+    const markupAgg = agg.sum_cogs > 0 ? agg.sum_profit / agg.sum_cogs : null
+    const marginAgg = agg.sum_revenue > 0 ? agg.sum_profit / agg.sum_revenue : null
+    const gmroiAgg = agg.sum_stock_value > 0
+      ? (agg.sum_profit_90d * (365 / 90)) / agg.sum_stock_value
+      : null
+    return {
+      revenue: formatCurrency(agg.sum_revenue),
+      profit: <span className={agg.sum_profit < 0 ? 'text-red-600' : undefined}>{formatCurrency(agg.sum_profit)}</span>,
+      markup: (
+        <div className="text-right">
+          <span>{fmtPct(isStrategic ? markupAgg : marginAgg)}</span>
+          {agg.violation_count > 0 && (
+            <div className="text-tiny font-semibold text-red-500">{agg.violation_count} SP vi phạm</div>
+          )}
+          {agg.missing_cost_count > 0 && (
+            <div className="text-tiny font-semibold text-amber-600">{agg.missing_cost_count} SP thiếu giá vốn</div>
+          )}
+        </div>
+      ),
+      sold30: agg.unit_uniform ? fmtQty(agg.sum_sold_30d) : <MixedUnit />,
+      stock: (
+        <div className="text-right">
+          {agg.unit_uniform ? fmtQty(agg.sum_stock_qty) : <MixedUnit />}
+          <div className="text-tiny font-semibold text-gray-500">{formatCurrency(agg.sum_stock_value)} vốn</div>
+        </div>
+      ),
+      gmroi: fmtGmroi(gmroiAgg),
+    }
+  }, [agg, productCls, formatCurrency])
+
+  const sugAgg = suggestionRows[0]
+  const suggestionTotals = useMemo<Record<string, ReactNode> | undefined>(() => {
+    if (!sugAgg) return undefined
+    return {
+      rev: formatCurrency(sugAgg.sum_revenue_90d),
+      qty: <MixedUnit />,
+      markup: sugAgg.sum_revenue_90d > 0
+        ? fmtPct(sugAgg.sum_profit_90d / (sugAgg.sum_revenue_90d - sugAgg.sum_profit_90d))
+        : '—',
+    }
+  }, [sugAgg, formatCurrency])
+
+  const summaryTotals = useMemo<Record<string, ReactNode> | undefined>(() => {
+    if (summaryRows.length === 0) return undefined
+    const sum = (f: (r: StratSummaryRow) => number) => summaryRows.reduce((s, r) => s + f(r), 0)
+    const rev = sum(r => r.revenue_total)
+    const revS = sum(r => r.revenue_strategic)
+    const target = sum(r => r.revenue_target ?? 0)
+    return {
+      rev: formatCurrency(rev),
+      share: rev > 0 ? fmtPct(revS / rev) : '—',
+      profitS: formatCurrency(sum(r => r.profit_strategic)),
+      profitB: formatCurrency(sum(r => r.profit_baseline)),
+      cross: <span className={sum(r => r.cross_subsidy) < 0 ? 'text-red-600' : undefined}>{formatCurrency(sum(r => r.cross_subsidy))}</span>,
+      target: target > 0 ? formatCurrency(target) : null,
+    }
+  }, [summaryRows, formatCurrency])
+
+  const todayOrderRows = useMemo(() => todayOrdersQ.data ?? [], [todayOrdersQ.data])
+  const todayOrderTotals = useMemo<Record<string, ReactNode> | undefined>(() => {
+    if (todayOrderRows.length === 0) return undefined
+    const sum = (f: (r: StratTodayOrderRow) => number) => todayOrderRows.reduce((s, r) => s + f(r), 0)
+    return {
+      total: formatCurrency(sum(r => r.revenue_net_total)),
+      mix: (
+        <span className="text-tiny tabular-nums">
+          <span className="text-[#1E5A9C]">{formatCurrency(sum(r => r.revenue_strategic))}</span>
+          <span className="text-gray-300"> / </span>
+          <span className="text-emerald-700">{formatCurrency(sum(r => r.revenue_baseline))}</span>
+        </span>
+      ),
+    }
+  }, [todayOrderRows, formatCurrency])
 
   // ── Chart data ──
   const branchBarData = useMemo(() => summaryRows.map(r => ({
@@ -237,10 +346,46 @@ export default function StrategicProductsReportPage() {
     assignMutation.mutate({ productId: r.product_id, cls: cls ?? r.suggested_class, note: 'Gán từ gợi ý hệ thống' })
   }
 
+  // ── Thao tác hàng loạt ──
+  const toggleSel = (set: React.Dispatch<React.SetStateAction<Set<string>>>, id: string) =>
+    set(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+
+  const handleBulkProducts = (cls: StrategyClass | null) => {
+    const ids = [...selProducts]
+    if (ids.length === 0) return
+    if (cls === null && !window.confirm(`Gỡ ${ids.length} sản phẩm khỏi nhóm? Chúng trở về hàng thường.`)) return
+    bulkMutation.mutate({ productIds: ids, cls }, { onSuccess: () => setSelProducts(new Set()) })
+  }
+
+  /** Chấp nhận gợi ý: mỗi SP vào ĐÚNG nhóm hệ thống gợi ý → gọi 2 lượt bulk. */
+  const handleBulkAcceptSuggestions = (rows: StratSuggestionRow[]) => {
+    if (rows.length === 0) return
+    const byClass: Record<StrategyClass, string[]> = { strategic: [], baseline: [] }
+    for (const r of rows) byClass[r.suggested_class].push(r.product_id)
+    const jobs = (Object.keys(byClass) as StrategyClass[])
+      .filter(c => byClass[c].length > 0)
+      .map(c => bulkMutation.mutateAsync({ productIds: byClass[c], cls: c, note: 'Gán từ gợi ý hệ thống' }))
+    Promise.all(jobs).then(() => setSelSuggestions(new Set())).catch(() => {})
+  }
+
   // ── Cột bảng SP nhóm 1/2 ──
   const productColumns = useMemo<DataTableColumn<StratProductRow>[]>(() => {
     const isStrategic = productCls === 'strategic'
     const cols: DataTableColumn<StratProductRow>[] = [
+      {
+        key: 'sel', header: '', width: 40, noTruncate: true,
+        render: r => (
+          <button
+            onClick={e => { e.stopPropagation(); toggleSel(setSelProducts, r.product_id) }}
+            className="flex items-center text-gray-300 hover:text-[#1E5A9C]"
+            title="Chọn để thao tác hàng loạt"
+          >
+            {selProducts.has(r.product_id)
+              ? <CheckSquare size={15} className="text-[#1E5A9C]" />
+              : <Square size={15} />}
+          </button>
+        ),
+      },
       { key: 'sku', header: 'SKU', width: 105, render: r => <span className="text-gray-400 font-medium">{r.sku}</span> },
       {
         key: 'name', header: 'Sản phẩm', flex: true, minWidth: 210,
@@ -327,9 +472,23 @@ export default function StrategicProductsReportPage() {
     ]
     return cols
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productCls, formatCurrency, config.markup_min, config.baseline_loss_floor, config.oos_warn_days])
+  }, [productCls, formatCurrency, config.markup_min, config.baseline_loss_floor, config.oos_warn_days, selProducts])
 
   const suggestionColumns = useMemo<DataTableColumn<StratSuggestionRow>[]>(() => [
+    {
+      key: 'sel', header: '', width: 40, noTruncate: true,
+      render: r => (
+        <button
+          onClick={e => { e.stopPropagation(); toggleSel(setSelSuggestions, r.product_id) }}
+          className="flex items-center text-gray-300 hover:text-[#1E5A9C]"
+          title="Chọn để chấp nhận hàng loạt"
+        >
+          {selSuggestions.has(r.product_id)
+            ? <CheckSquare size={15} className="text-[#1E5A9C]" />
+            : <Square size={15} />}
+        </button>
+      ),
+    },
     { key: 'sku', header: 'SKU', width: 105, render: r => <span className="text-gray-400 font-medium">{r.sku}</span> },
     {
       key: 'name', header: 'Sản phẩm', flex: true, minWidth: 200,
@@ -366,7 +525,7 @@ export default function StrategicProductsReportPage() {
       ),
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [formatCurrency, config.markup_min])
+  ], [formatCurrency, config.markup_min, selSuggestions])
 
   const summaryColumns = useMemo<DataTableColumn<StratSummaryRow>[]>(() => [
     {
@@ -405,13 +564,20 @@ export default function StrategicProductsReportPage() {
     { key: 'customer', header: 'Khách hàng', flex: true, minWidth: 160, render: r => <span className="text-gray-700">{r.customer_name}</span> },
     { key: 'branch', header: 'CN', width: 120, hideOnMobile: true, render: r => <span className="text-gray-500">{r.branch_name.replace('Chi nhánh ', '')}</span> },
     {
-      key: 'total', header: 'Tổng', width: 115, align: 'right', mobileHeaderRight: true,
-      render: r => <span className="tabular-nums font-bold text-[#143C69]">{formatCurrency(r.grand_total)}</span>,
+      // Doanh thu THUẦN cấp dòng để N1 + N2 + Thường cộng lại đúng bằng cột này.
+      // grand_total (cấp đơn) đưa vào tooltip — trước đây để ở cột chính nên
+      // người xem cộng nhẩm cơ cấu không bao giờ ra tổng.
+      key: 'total', header: 'DT thuần', width: 115, align: 'right', mobileHeaderRight: true,
+      render: r => (
+        <span className="tabular-nums font-bold text-[#143C69]" title={`Tổng đơn: ${formatCurrency(r.grand_total)}`}>
+          {formatCurrency(r.revenue_net_total)}
+        </span>
+      ),
     },
     {
       key: 'mix', header: 'Cơ cấu N1/N2', width: 160, align: 'right', noTruncate: true,
       render: r => (
-        <span className="text-tiny tabular-nums">
+        <span className="text-tiny tabular-nums" title={`Chưa gán nhóm: ${formatCurrency(r.revenue_other)}`}>
           <span className="text-[#1E5A9C] font-semibold">{formatCurrency(r.revenue_strategic)}</span>
           <span className="text-gray-300"> / </span>
           <span className="text-emerald-700 font-semibold">{formatCurrency(r.revenue_baseline)}</span>
@@ -470,11 +636,28 @@ export default function StrategicProductsReportPage() {
   }
 
   // ── Xuất CSV theo tab ──
-  const handleExport = () => {
+  // Bảng SP/Gợi ý phân trang server: phải kéo TOÀN BỘ tập lọc, không chỉ 50
+  // dòng đang xem (người dùng tưởng đã xuất hết để lập kế hoạch).
+  const [exporting, setExporting] = useState(false)
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await runExport()
+    } finally {
+      setExporting(false)
+    }
+  }
+  const runExport = async () => {
     const todayStr = new Date().toISOString().slice(0, 10)
     let csvRows: Record<string, string | number>[] = []
     if (activeTab === 'strategic' || activeTab === 'baseline') {
-      csvRows = productRows.map(r => ({
+      const all = totalProducts > productRows.length
+        ? await fetchStrategicProducts({
+            ...period, cls: productCls, search: debouncedSearch || undefined,
+            sort, limit: totalProducts, offset: 0,
+          })
+        : productRows
+      csvRows = all.map(r => ({
         'SKU': r.sku, 'Sản phẩm': r.product_name, 'ĐVT': r.unit, 'Nhóm': r.class === 'strategic' ? 'Nhóm 1' : 'Nhóm 2',
         'SL bán': r.qty, 'Doanh thu': r.revenue, 'Giá vốn': r.cogs, 'Lợi nhuận': r.profit,
         'Markup (%)': r.markup_actual == null ? '' : Math.round(r.markup_actual * 1000) / 10,
@@ -535,7 +718,7 @@ export default function StrategicProductsReportPage() {
           <div>
             <h1 className="text-[28px] font-bold text-gray-800 leading-tight">Sản phẩm chiến lược & Tối ưu lợi nhuận</h1>
             <p className="text-gray-500 text-body-md mt-1">
-              Nhóm 1 (markup ≥{fmtPct(config.markup_min, 0)} giá vốn) phải đạt ≥{fmtPct(0.3, 0)} doanh số · nhóm 2 hàng nền quay nhanh, nhóm 1 bù nhóm 2.
+              Nhóm 1 (markup ≥{fmtPct(config.markup_min, 0)} giá vốn) phải đạt ≥{fmtPct(shareTarget, 0)} doanh số · nhóm 2 hàng nền quay nhanh, nhóm 1 bù nhóm 2. Số liệu là <b>doanh thu thuần</b> (đã trừ hàng trả), khớp Báo cáo lợi nhuận.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3 self-start">
@@ -559,10 +742,11 @@ export default function StrategicProductsReportPage() {
             )}
             <button
               onClick={handleExport}
-              className="h-10 px-4 bg-[#1E5A9C] text-white rounded-lg font-semibold text-tiny flex items-center gap-2 hover:bg-[#143C69] active:scale-95 transition-all shadow-sm"
+              disabled={exporting}
+              className="h-10 px-4 bg-[#1E5A9C] text-white rounded-lg font-semibold text-tiny flex items-center gap-2 hover:bg-[#143C69] active:scale-95 transition-all shadow-sm disabled:opacity-60"
             >
               <Download size={16} />
-              Xuất CSV
+              {exporting ? 'Đang xuất…' : 'Xuất CSV'}
             </button>
           </div>
         </div>
@@ -609,8 +793,8 @@ export default function StrategicProductsReportPage() {
                 sub={`${today.orders} đơn đã chốt${today.last ? ` · đơn gần nhất ${fmtTime(today.last)}` : ''}`} />
               <KpiCard icon={<Target size={20} />} label="Tỉ trọng nhóm 1 hôm nay"
                 value={todayQ.isLoading ? '…' : fmtPct(todayShare)}
-                sub={`Mục tiêu ≥ ${fmtPct(0.3, 0)} · DT nhóm 1: ${formatCurrency(today.revS)}`}
-                valueClass={todayShare != null && todayShare < 0.3 ? 'text-red-600' : 'text-emerald-700'} />
+                sub={`Mục tiêu ≥ ${fmtPct(shareTarget, 0)} · DT nhóm 1: ${formatCurrency(today.revS)}`}
+                valueClass={todayShare != null && todayShare < shareTarget ? 'text-red-600' : 'text-emerald-700'} />
               <KpiCard icon={<Scale size={20} />} label="LN nhóm 1 / nhóm 2 hôm nay"
                 value={todayQ.isLoading ? '…' : `${formatCurrency(today.profitS)} / ${formatCurrency(today.profitB)}`}
                 sub={`Bù chéo: ${formatCurrency(today.profitS + today.profitB)}`} />
@@ -620,13 +804,15 @@ export default function StrategicProductsReportPage() {
             </div>
             <DataTable<StratTodayOrderRow>
               columns={todayOrderColumns}
-              rows={todayOrdersQ.data ?? []}
+              rows={todayOrderRows}
               getRowKey={r => r.order_id}
               loading={todayOrdersQ.isLoading}
               emptyText="Hôm nay chưa có đơn hàng nào được chốt"
               emptyIcon={<ShoppingCart size={32} className="mx-auto text-gray-200" />}
               itemLabel="đơn hôm nay"
               pageSize={20}
+              totals={todayOrderTotals}
+              totalsLabel={`Tổng ${todayOrderRows.length} đơn gần nhất`}
             />
           </>
         )}
@@ -634,7 +820,7 @@ export default function StrategicProductsReportPage() {
         {/* ════════ TAB: TỔNG QUAN & CẢNH BÁO ════════ */}
         {activeTab === 'overview' && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
               <KpiCard icon={<Coins size={20} />} label={`Doanh thu tháng ${month}/${year}`} highlight
                 value={summaryQ.isLoading ? '…' : formatCurrency(overview.revenue)}
                 sub={pacePct != null
@@ -642,8 +828,8 @@ export default function StrategicProductsReportPage() {
                   : overview.hasTarget ? '' : 'Chưa đặt mục tiêu tháng — vào tab Mục tiêu'} />
               <KpiCard icon={<Target size={20} />} label="Tỉ trọng nhóm 1"
                 value={summaryQ.isLoading ? '…' : fmtPct(overviewShare)}
-                sub={`Mục tiêu ≥ 30% · DT nhóm 1: ${formatCurrency(overview.revStrategic)}`}
-                valueClass={overviewShare != null && overviewShare < 0.3 ? 'text-red-600' : 'text-emerald-700'} />
+                sub={`Mục tiêu ≥ ${fmtPct(shareTarget, 0)} · DT nhóm 1: ${formatCurrency(overview.revStrategic)}`}
+                valueClass={overviewShare != null && overviewShare < shareTarget ? 'text-red-600' : 'text-emerald-700'} />
               <KpiCard icon={<Scale size={20} />} label="LN nhóm 1 / nhóm 2"
                 value={summaryQ.isLoading ? '…' : `${formatCurrency(overview.profitS)} / ${formatCurrency(overview.profitB)}`}
                 sub={`${overview.violations} SP nhóm 1 dưới markup · ${overview.deepLoss} SP nền lỗ sâu`} />
@@ -651,6 +837,12 @@ export default function StrategicProductsReportPage() {
                 value={summaryQ.isLoading ? '…' : formatCurrency(overview.profitS + overview.profitB)}
                 sub="Dương = nhóm 1 gánh được hàng nền"
                 valueClass={overview.profitS + overview.profitB < 0 ? 'text-red-600' : 'text-emerald-700'} />
+              <KpiCard icon={<PieChart size={20} />} label="Độ phủ phân loại"
+                value={summaryQ.isLoading ? '…' : fmtPct(coverage)}
+                sub={coverage != null && coverage < 0.6
+                  ? `Còn ${formatCurrency(overview.revOther)} DT chưa gán nhóm — tỉ trọng N1 thấp giả tạo`
+                  : `${formatCurrency(overview.revOther)} DT chưa gán nhóm`}
+                valueClass={coverage != null && coverage < 0.6 ? 'text-amber-600' : 'text-emerald-700'} />
             </div>
 
             {/* Banner cảnh báo */}
@@ -732,6 +924,8 @@ export default function StrategicProductsReportPage() {
               emptyIcon={<Building2 size={32} className="mx-auto text-gray-200" />}
               itemLabel="chi nhánh"
               pageSize={0}
+              totals={summaryTotals}
+              totalsLabel="Tổng toàn công ty"
             />
           </>
         )}
@@ -761,6 +955,34 @@ export default function StrategicProductsReportPage() {
                 Gán SP vào nhóm {productCls === 'strategic' ? '1' : '2'}
               </button>
             </div>
+
+            {/* Thanh thao tác hàng loạt */}
+            {selProducts.size > 0 && (
+              <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-2.5 flex flex-wrap items-center gap-3">
+                <span className="text-tiny font-bold text-[#143C69]">Đã chọn {selProducts.size} SP</span>
+                <button
+                  onClick={() => handleBulkProducts(productCls === 'strategic' ? 'baseline' : 'strategic')}
+                  disabled={bulkMutation.isPending}
+                  className="h-8 px-3 rounded-md text-tiny font-semibold bg-white border border-gray-200 text-gray-700 hover:border-[#1E5A9C] hover:text-[#1E5A9C] disabled:opacity-50"
+                >
+                  → Chuyển sang nhóm {productCls === 'strategic' ? '2' : '1'}
+                </button>
+                <button
+                  onClick={() => handleBulkProducts(null)}
+                  disabled={bulkMutation.isPending}
+                  className="h-8 px-3 rounded-md text-tiny font-semibold bg-white border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Gỡ khỏi nhóm
+                </button>
+                <button
+                  onClick={() => setSelProducts(new Set())}
+                  className="text-tiny font-semibold text-gray-500 hover:underline ml-auto"
+                >
+                  Bỏ chọn
+                </button>
+              </div>
+            )}
+
             <DataTable<StratProductRow>
               columns={productColumns}
               rows={productRows}
@@ -774,6 +996,9 @@ export default function StrategicProductsReportPage() {
               onPageChange={setPage}
               pageSize={PAGE_SIZE}
               totalItems={totalProducts}
+              totals={productTotals}
+              totalsLabel="Tổng cộng (toàn bộ bộ lọc)"
+              totalsLabelKey="name"
             />
           </>
         )}
@@ -784,6 +1009,34 @@ export default function StrategicProductsReportPage() {
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-3.5 text-body-md text-blue-800">
               Hệ thống quét <b>90 ngày bán gần nhất</b> của các SP <b>chưa gán nhóm</b>: markup ≥ {fmtPct(config.markup_min, 0)} và doanh thu ≥ {formatCurrency(config.suggest_min_revenue_90d)} → gợi ý <b>Nhóm 1</b>; bán chạy (≥ {config.suggest_min_qty_90d} đơn vị) nhưng biên thấp → gợi ý <b>Nhóm 2</b>.
             </div>
+            {/* Chấp nhận gợi ý hàng loạt — nút thắt chính của module */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => handleBulkAcceptSuggestions(suggestionRows)}
+                disabled={bulkMutation.isPending || suggestionRows.length === 0}
+                className="h-9 px-4 bg-[#1E5A9C] text-white rounded-lg font-bold text-tiny hover:bg-[#143C69] active:scale-95 transition-all disabled:opacity-40"
+              >
+                {bulkMutation.isPending ? 'Đang gán…' : `Chấp nhận cả ${suggestionRows.length} gợi ý trang này`}
+              </button>
+              {selSuggestions.size > 0 && (
+                <>
+                  <button
+                    onClick={() => handleBulkAcceptSuggestions(suggestionRows.filter(r => selSuggestions.has(r.product_id)))}
+                    disabled={bulkMutation.isPending}
+                    className="h-9 px-4 border border-[#1E5A9C] text-[#1E5A9C] rounded-lg font-semibold text-tiny hover:bg-blue-50 disabled:opacity-50"
+                  >
+                    Chấp nhận {selSuggestions.size} gợi ý đã chọn
+                  </button>
+                  <button onClick={() => setSelSuggestions(new Set())} className="text-tiny font-semibold text-gray-500 hover:underline">
+                    Bỏ chọn
+                  </button>
+                </>
+              )}
+              <span className="text-tiny text-gray-400">
+                Gán theo đúng nhóm hệ thống gợi ý · còn {totalSuggestions} SP đủ điều kiện
+              </span>
+            </div>
+
             <DataTable<StratSuggestionRow>
               columns={suggestionColumns}
               rows={suggestionRows}
@@ -797,6 +1050,9 @@ export default function StrategicProductsReportPage() {
               onPageChange={setSuggestPage}
               pageSize={PAGE_SIZE}
               totalItems={totalSuggestions}
+              totals={suggestionTotals}
+              totalsLabel="Tổng cộng (toàn bộ gợi ý)"
+              totalsLabelKey="name"
             />
           </>
         )}
@@ -900,6 +1156,11 @@ export default function StrategicProductsReportPage() {
           {' '}<b>Hết sau ~N ngày</b> = tồn ÷ tốc độ bán bình quân 30 ngày.
           {' '}Phân loại nhóm áp <b>hồi tố</b>: đổi nhóm hôm nay sẽ áp cho toàn bộ số liệu lịch sử.
           {' '}SP <span className="text-amber-700 font-semibold">Thiếu giá vốn</span> không bị tính vi phạm — cập nhật giá vốn lô để số liệu chính xác.
+          {' '}<b>Doanh thu</b> là số <b>thuần</b>: đã trừ chiết khấu cấp hóa đơn và hàng khách trả (quy về ngày đơn gốc) — khớp tuyệt đối với Báo cáo lợi nhuận.
+          {' '}<b>Bán 30n</b> là bán <b>ròng</b> (đã trừ hàng trả), giống Báo cáo kho hàng.
+          {' '}<b>Dòng tổng</b> của bảng SP và Gợi ý là tổng của <b>toàn bộ bộ lọc</b>, không phải tổng {PAGE_SIZE} dòng đang xem;
+          {' '}markup tổng = Σlợi nhuận ÷ Σgiá vốn (không phải trung bình cộng markup từng SP).
+          {' '}Số lượng chỉ cộng khi các dòng <b>cùng ĐVT</b>.
         </p>
       </div>
 
