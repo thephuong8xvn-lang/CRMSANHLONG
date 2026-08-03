@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target, BarChart3, Activity
 } from 'lucide-react'
@@ -17,11 +17,6 @@ const REPORT_CARDS = [
     icon: TrendingUp,
     iconBg: 'bg-blue-50 text-blue-600',
     route: '/reports/profit',
-    features: [
-      'Lợi nhuận theo chi nhánh: xu hướng, top SP/KH/NV, so kỳ trước',
-      'Lợi nhuận theo khách hàng / sản phẩm / thương hiệu (lọc chi nhánh)',
-      'Doanh thu thuần: trừ chiết khấu hóa đơn & hàng trả lại',
-    ],
   },
   {
     id: 'customer-profile',
@@ -32,11 +27,6 @@ const REPORT_CARDS = [
     icon: Users,
     iconBg: 'bg-indigo-50 text-indigo-600',
     route: '/reports/customer-profile',
-    features: [
-      'Cơ cấu vòng đời & nhóm giá',
-      'Phân bố quy mô & loài vật nuôi',
-      'Bản đồ chi tiêu & nợ quá hạn',
-    ],
   },
   {
     id: 'inventory-valuation',
@@ -47,11 +37,6 @@ const REPORT_CARDS = [
     icon: Package,
     iconBg: 'bg-amber-50 text-amber-600',
     route: '/reports/inventory-valuation',
-    features: [
-      'Giá trị vốn tồn theo SP / thương hiệu / nhóm hàng / kho',
-      'Top 50 tồn nhiều · vòng quay · hàng tồn lâu',
-      'Cảnh báo thiếu giá vốn & hàng sắp hết hạn',
-    ],
   },
   {
     id: 'strategic-products',
@@ -62,11 +47,6 @@ const REPORT_CARDS = [
     icon: Target,
     iconBg: 'bg-purple-50 text-purple-600',
     route: '/reports/strategic-products',
-    features: [
-      'Nhóm 1 markup ≥50% (mục tiêu ≥30% doanh số) · nhóm 2 hàng nền',
-      'Theo dõi LIVE hôm nay · cảnh báo 7 loại · GMROI · bù chéo',
-      'Mục tiêu doanh số tháng theo chi nhánh + gợi ý phân loại',
-    ],
   },
   {
     id: 'bi',
@@ -77,11 +57,6 @@ const REPORT_CARDS = [
     icon: BarChart3,
     iconBg: 'bg-sky-50 text-sky-600',
     route: '/reports/bi',
-    features: [
-      'Pivot đa chiều (thời gian/SP/KH/CN/NV) + so sánh kỳ YoY/MoM',
-      'Phân loại ABC/XYZ sản phẩm (80/20 × ổn định cầu)',
-      'Cohort giữ chân khách hàng theo tháng',
-    ],
   },
   {
     id: 'demand-forecast',
@@ -92,16 +67,10 @@ const REPORT_CARDS = [
     icon: Activity,
     iconBg: 'bg-cyan-50 text-cyan-600',
     route: '/reports/demand-forecast',
-    features: [
-      'Dự báo cầu theo SKU (làm mượt SES / Croston cầu cách quãng)',
-      'Độ tin cậy theo lịch sử + dải bất định + MAPE',
-      'Gợi ý đặt theo dự báo kỳ tới (4/8/12 tuần)',
-    ],
   },
 ]
 
 export default function ReportsHubPage() {
-  const navigate = useNavigate()
   const { formatCurrency } = useDisplaySettings()
   const [period, setPeriod] = useState<'today' | 'month' | 'year'>('month')
   const [lastUpdated, setLastUpdated] = useState(new Date())
@@ -191,37 +160,28 @@ export default function ReportsHubPage() {
           ))}
         </div>
 
-        {/* Report cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {/* Report links — chỉ tiêu đề, cả dòng là hyperlink */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {REPORT_CARDS.map((card) => {
             const Icon = card.icon
             return (
-              <div key={card.id} className="bg-white border border-gray-150 rounded-xl p-6 flex flex-col h-full transition-all duration-200 hover:border-blue-400 hover:shadow-md">
-                <div className="flex justify-between items-start mb-5">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${card.iconBg}`}>
-                    <Icon size={24} />
-                  </div>
-                  <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${card.tagColor} border-current/20`}>
-                    <span className={`w-2 h-2 rounded-full ${card.dotColor}`} />
-                    {card.tag}
-                  </span>
-                </div>
-                <h3 className="text-[17px] font-bold text-gray-800 mb-4">{card.title}</h3>
-                <ul className="space-y-2.5 flex-1 mb-6">
-                  {card.features.map((f, i) => (
-                    <li key={i} className="flex items-center gap-2.5 text-body-md text-gray-500">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  onClick={() => navigate(card.route)}
-                  className="h-10 w-full bg-[#1E5A9C] text-white rounded-lg font-semibold text-body-md hover:bg-[#143C69] active:scale-95 transition-all shadow-sm"
-                >
-                  Xem báo cáo
-                </button>
-              </div>
+              <Link
+                key={card.id}
+                to={card.route}
+                className="group bg-white border border-gray-150 rounded-xl px-4 py-3.5 flex items-center gap-3 transition-all duration-200 hover:border-blue-400 hover:shadow-md"
+              >
+                <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${card.iconBg}`}>
+                  <Icon size={18} />
+                </span>
+                <span className="flex-1 min-w-0 text-body-lg font-semibold text-gray-800 group-hover:text-blue-700 truncate">
+                  {card.title}
+                </span>
+                <span className={`hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border shrink-0 ${card.tagColor} border-current/20`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${card.dotColor}`} />
+                  {card.tag}
+                </span>
+                <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-500 shrink-0" />
+              </Link>
             )
           })}
         </div>
