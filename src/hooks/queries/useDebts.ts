@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useQuery, keepPreviousData, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { logger } from '../../lib/logger'
@@ -174,6 +175,28 @@ export function useDebtLedger(params: DebtLedgerParams) {
   })
 }
 
+/**
+ * Lấy TOÀN BỘ dòng của bộ lọc hiện tại (không phân trang) để xuất Excel.
+ * Đi đòi nợ thì phải cầm cả danh sách, không phải mỗi trang đang xem.
+ * Chặn trên 5.000 dòng cho an toàn — thực tế chỉ ~100 khách còn nợ.
+ */
+export const DEBT_EXPORT_CAP = 5000
+
+export async function fetchDebtLedgerAll(
+  params: Omit<DebtLedgerParams, 'page' | 'pageSize'>,
+): Promise<DebtLedgerRow[]> {
+  const { data, error } = await supabase.rpc('fn_debt_ledger', {
+    p_search: params.search?.trim() || null,
+    p_bucket: params.bucket ?? 'all',
+    p_owner_id: params.ownerId || null,
+    p_sort: params.sort ?? 'du_no',
+    p_limit: DEBT_EXPORT_CAP,
+    p_offset: 0,
+  })
+  if (error) { logger.error('fn_debt_ledger(export)', error); throw error }
+  return (data ?? []) as DebtLedgerRow[]
+}
+
 // ── Bung dòng: từng khoản nợ + lịch sử thu ───────────────────
 export interface DebtLine {
   id: string
@@ -263,12 +286,17 @@ export function useSupplierDebts(enabled: boolean) {
   })
 }
 
-/** Làm mới toàn bộ module sau khi thu nợ (số liệu ở cả 3 tab đều đổi). */
+/**
+ * Làm mới toàn bộ module sau khi thu nợ (số liệu ở cả 3 tab đều đổi).
+ * ⚠️ Phải bọc useCallback: hàm này được dùng làm dependency của
+ * `useRealtimeTable`. Trả về arrow function mới mỗi render sẽ khiến kênh
+ * realtime bị hủy và đăng ký lại liên tục.
+ */
 export function useRefreshDebts() {
   const qc = useQueryClient()
-  return () => {
+  return useCallback(() => {
     qc.invalidateQueries({ queryKey: debtKeys.all })
     qc.invalidateQueries({ queryKey: ['customers'] })
     qc.invalidateQueries({ queryKey: ['dashboard'] })
-  }
+  }, [qc])
 }

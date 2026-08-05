@@ -1,16 +1,21 @@
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   ChevronRight, RefreshCw, Wallet, AlertTriangle, CalendarClock, HelpCircle,
   TrendingDown, Users, Phone, Search, Truck, Info, ArrowRight, CheckCircle2,
+  FileSpreadsheet, Loader2, XCircle,
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { useDisplaySettings } from '../../contexts/DisplaySettingsContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { useRealtimeTable } from '../../hooks/useRealtimeTable'
+import { generateDebtLedgerXlsx } from '../../lib/exporters/debtLedgerXlsx'
 import CollectDebtModal from '../customers/CollectDebtModal'
 import {
   useDebtOverview, useDebtLedger, useCustomerDebtDetail, useSupplierDebts, useRefreshDebts,
+  fetchDebtLedgerAll,
   type DebtBucket, type DebtSort, type DebtLedgerRow, type SupplierDebtRow, type DebtCallRow,
 } from '../../hooks/queries/useDebts'
 
@@ -51,20 +56,66 @@ export default function DebtManagementPage() {
   const { hasPermission } = useAuth()
   const refreshAll = useRefreshDebts()
 
-  const [tab, setTab] = useState<Tab>('overview')
-  const [bucket, setBucket] = useState<DebtBucket>('all')
-  const [search, setSearch] = useState('')
-  const [ownerId, setOwnerId] = useState<string | null>(null)
-  const [sort, setSort] = useState<DebtSort>('du_no')
-  const [page, setPage] = useState(1)
+  // ── Trạng thái nằm trên URL: F5 không mất bộ lọc, gửi link được ──
+  const [sp, setSp] = useSearchParams()
+  const tab     = (sp.get('tab') as Tab) || 'overview'
+  const bucket  = (sp.get('loc') as DebtBucket) || 'all'
+  const sort    = (sp.get('sx') as DebtSort) || 'du_no'
+  const ownerId = sp.get('nv')
+  const page    = Math.max(1, Number(sp.get('trang') || 1))
+
+  const patch = useCallback((next: Record<string, string | null>) => {
+    setSp(prev => {
+      const p = new URLSearchParams(prev)
+      Object.entries(next).forEach(([k, v]) => { if (v == null || v === '') p.delete(k); else p.set(k, v) })
+      return p
+    }, { replace: true })
+  }, [setSp])
+
+  const setTab     = (t: Tab)        => patch({ tab: t === 'overview' ? null : t })
+  const setSort    = (s: DebtSort)   => patch({ sx: s === 'du_no' ? null : s, trang: null })
+  const setPage    = (p: number)     => patch({ trang: p <= 1 ? null : String(p) })
+  const setOwnerId = (id: string | null) => patch({ nv: id, trang: null })
+
+  // Ô tìm kiếm gõ tới đâu hiện tới đó, nhưng chỉ gọi server khi ngừng gõ.
+  const [searchInput, setSearchInput] = useState(sp.get('tim') ?? '')
+  const search = useDebouncedValue(searchInput, 350)
+  useEffect(() => {
+    // Chỉ ghi khi thực sự khác URL — nếu không, mỗi lần ghi lại kích hoạt
+    // render → effect chạy lại → lặp vô hạn.
+    if ((sp.get('tim') ?? '') === search) return
+    patch({ tim: search || null, trang: null })
+  }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [collectFor, setCollectFor] = useState<{ id: string; name: string; code?: string; debt: number } | null>(null)
   const [toast, setToast] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState('')
 
   const canCollect = hasPermission('customers.collect_debt')
 
   const ov = useDebtOverview()
   const ledger = useDebtLedger({ search, bucket, ownerId, sort, page, pageSize: PAGE_SIZE })
   const sup = useSupplierDebts(tab === 'suppliers')
+
+  // Ai đó thu nợ / ghi nợ ở máy khác → số trên màn hình tự cập nhật.
+  // Gom sự kiện tối đa 1 lần/5 giây: mỗi đơn bán chịu đều sinh 1 dòng
+  // `customer_debts`, giờ POS cao điểm sẽ dội hàng chục sự kiện liên tiếp.
+  const lastRefresh = useRef(0)
+  const refreshOnChange = useCallback(() => {
+    const now = Date.now()
+    if (now - lastRefresh.current < 5000) return
+    lastRefresh.current = now
+    refreshAll()
+  }, [refreshAll])
+  useRealtimeTable({ table: 'debt_payments',  onData: refreshOnChange })
+  useRealtimeTable({ table: 'customer_debts', onData: refreshOnChange })
+
+  // Lọc xong còn ít dòng hơn → kéo về trang cuối hợp lệ, tránh kẹt ở trang trắng.
+  const totalPages = Math.max(1, Math.ceil((ledger.data?.total ?? 0) / PAGE_SIZE))
+  useEffect(() => {
+    if (!ledger.isFetching && page > totalPages) setPage(totalPages)
+  }, [page, totalPages, ledger.isFetching]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const kpi = ov.data?.kpi
   const agingMax = useMemo(
@@ -76,10 +127,36 @@ export default function DebtManagementPage() {
     [ov.data],
   )
 
-  const resetFilters = (b: DebtBucket) => { setBucket(b); setPage(1) }
+  const resetFilters = (b: DebtBucket) => patch({ loc: b === 'all' ? null : b, trang: null })
 
   const openCollect = (r: { customer_id: string; ten: string; code: string | null; du_no: number }) =>
     setCollectFor({ id: r.customer_id, name: r.ten, code: r.code ?? undefined, debt: Number(r.du_no) })
+
+  const ownerLabel = ownerId
+    ? ov.data?.by_staff.find(s => s.owner_id === ownerId)?.nhan_vien ?? 'NV đã chọn'
+    : ''
+
+  // Xuất TOÀN BỘ bộ lọc (không chỉ trang đang xem) — đi đòi nợ cần cả danh sách.
+  const handleExport = async () => {
+    setExporting(true); setExportErr('')
+    try {
+      const all = await fetchDebtLedgerAll({ search, bucket, ownerId, sort })
+      await generateDebtLedgerXlsx({
+        rows: all,
+        filterLabel: BUCKETS.find(b => b.key === bucket)?.label ?? 'Tất cả',
+        searchLabel: search || undefined,
+        ownerLabel: ownerLabel || undefined,
+        tongDuNo: all.length ? Number(all[0].tong_du_no) : 0,
+        tongQuaHan: all.length ? Number(all[0].tong_qua_han) : 0,
+        tongSoKh: all.length ? Number(all[0].tong_so_kh) : 0,
+      })
+      setToast(`Đã xuất ${all.length} khách hàng ra file Excel.`)
+    } catch (e: any) {
+      setExportErr('Xuất Excel thất bại: ' + (e?.message || 'lỗi không xác định'))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // ── Cột bảng chi tiết công nợ ──
   const ledgerCols: DataTableColumn<DebtLedgerRow>[] = [
@@ -247,6 +324,28 @@ export default function DebtManagementPage() {
             <span className="flex-1">{toast}</span>
             <button onClick={() => setToast('')} className="text-emerald-600 font-bold text-tiny hover:underline">Đóng</button>
           </div>
+        )}
+
+        {/* ── Báo lỗi. Số liệu tài chính mà hỏng thì PHẢI nói, tuyệt đối không
+            được hiện bảng rỗng cho người dùng tưởng là đã hết nợ. ── */}
+        {exportErr && <ErrorBanner text={exportErr} onRetry={handleExport} onClose={() => setExportErr('')} />}
+        {ov.isError && (
+          <ErrorBanner
+            text={`Không tải được số liệu tổng quan: ${(ov.error as any)?.message || 'lỗi không xác định'}`}
+            onRetry={() => ov.refetch()}
+          />
+        )}
+        {ledger.isError && tab === 'ledger' && (
+          <ErrorBanner
+            text={`Không tải được danh sách công nợ: ${(ledger.error as any)?.message || 'lỗi không xác định'}`}
+            onRetry={() => ledger.refetch()}
+          />
+        )}
+        {sup.isError && tab === 'suppliers' && (
+          <ErrorBanner
+            text={`Không tải được công nợ nhà cung cấp: ${(sup.error as any)?.message || 'lỗi không xác định'}`}
+            onRetry={() => sup.refetch()}
+          />
         )}
 
         {/* ── Tabs ── */}
@@ -492,15 +591,21 @@ export default function DebtManagementPage() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <input
-                    value={search}
-                    onChange={e => { setSearch(e.target.value); setPage(1) }}
+                    value={searchInput}
+                    onChange={e => setSearchInput(e.target.value)}
                     placeholder="Tìm theo tên khách, mã KH hoặc số điện thoại…"
-                    className="w-full h-10 pl-9 pr-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md placeholder-gray-400 focus:border-blue-500 focus:outline-none"
+                    className="w-full h-10 pl-9 pr-9 bg-gray-25 border border-gray-150 rounded-lg text-body-md placeholder-gray-400 focus:border-blue-500 focus:outline-none"
                   />
+                  {searchInput && (
+                    <button onClick={() => setSearchInput('')} aria-label="Xóa tìm kiếm"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                      <XCircle size={15} />
+                    </button>
+                  )}
                 </div>
                 <select
                   value={sort}
-                  onChange={e => { setSort(e.target.value as DebtSort); setPage(1) }}
+                  onChange={e => setSort(e.target.value as DebtSort)}
                   className="h-10 px-3 bg-gray-25 border border-gray-150 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none md:w-56"
                 >
                   <option value="du_no">Sắp xếp: Dư nợ lớn nhất</option>
@@ -509,13 +614,36 @@ export default function DebtManagementPage() {
                   <option value="ten">Sắp xếp: Tên khách A→Z</option>
                 </select>
                 {ownerId && (
-                  <button onClick={() => { setOwnerId(null); setPage(1) }}
+                  <button onClick={() => setOwnerId(null)}
                     className="h-10 px-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-tiny font-bold whitespace-nowrap">
-                    Đang lọc theo 1 NV · Bỏ lọc ✕
+                    NV: {ownerLabel} · Bỏ lọc ✕
                   </button>
                 )}
+                <button
+                  onClick={handleExport}
+                  disabled={exporting || (ledger.data?.total ?? 0) === 0}
+                  className="h-10 px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-tiny font-bold whitespace-nowrap flex items-center justify-center gap-1.5 hover:bg-emerald-100 transition-all disabled:opacity-50"
+                  title="Xuất toàn bộ danh sách đang lọc ra Excel (không chỉ trang đang xem)"
+                >
+                  {exporting
+                    ? <><Loader2 size={14} className="animate-spin" /> Đang xuất…</>
+                    : <><FileSpreadsheet size={14} /> Xuất Excel</>}
+                </button>
               </div>
             </div>
+
+            {/* Vì sao hai tab hiện hai con số tổng khác nhau — nói thẳng ra để
+                không ai phải ngồi đoán xem hệ thống có sai không. */}
+            {bucket === 'all' && kpi != null && (ledger.data?.total ?? 0) > 0 && (
+              <p className="text-tiny text-gray-400 px-1 -mt-1">
+                Bảng này cộng <b className="text-gray-500">{formatCurrency(ledger.data?.tongDuNo ?? 0)}</b> của{' '}
+                {ledger.data?.total} khách đang <b>dư nợ dương</b>. Thẻ &ldquo;Dư nợ ròng&rdquo; ở tab Tổng quan là{' '}
+                <b className="text-gray-500">{formatCurrency(kpi.du_no_rong)}</b> vì đã trừ{' '}
+                <button onClick={() => resetFilters('advance')} className="text-blue-600 font-semibold underline">
+                  {formatCurrency(Math.abs(kpi.tra_truoc))} khách trả trước
+                </button>. Hai số đều đúng, khác nhau ở cách tính.
+              </p>
+            )}
 
             {bucket === 'no_duedate' && (
               <NoteBanner tone="violet">
@@ -712,14 +840,52 @@ const TONES: Record<string, string> = {
 function KpiCard({ icon, tone, label, value, sub, hint }: {
   icon: React.ReactNode; tone: string; label: string; value: string; sub?: string; hint?: string
 }) {
+  // Gợi ý phải BẤM được, không chỉ hover: nhân viên đi thu nợ dùng điện thoại,
+  // mà điện thoại thì không có con trỏ để rê lên thuộc tính `title`.
+  const [showHint, setShowHint] = useState(false)
   return (
-    <div className="bg-white border border-gray-150 rounded-xl p-4 flex flex-col gap-1.5" title={hint}>
+    <div className="bg-white border border-gray-150 rounded-xl p-4 flex flex-col gap-1.5 relative">
       <div className="flex items-center gap-2">
         <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${TONES[tone]}`}>{icon}</span>
-        <span className="text-tiny text-gray-400 font-semibold leading-tight">{label}</span>
+        <span className="text-tiny text-gray-400 font-semibold leading-tight flex-1">{label}</span>
+        {hint && (
+          <button
+            onClick={() => setShowHint(v => !v)}
+            aria-label={showHint ? 'Ẩn giải thích' : 'Xem giải thích'}
+            aria-expanded={showHint}
+            className={`shrink-0 p-0.5 rounded transition-colors ${showHint ? 'text-blue-600' : 'text-gray-300 hover:text-gray-500'}`}
+          >
+            <Info size={13} />
+          </button>
+        )}
       </div>
       <p className="text-xl font-bold text-gray-800 tabular-nums leading-tight">{value}</p>
       {sub && <p className="text-tiny text-gray-400 leading-tight">{sub}</p>}
+      {hint && showHint && (
+        <p className="text-tiny text-gray-500 leading-snug bg-gray-25 border border-gray-100 rounded-lg p-2 mt-0.5">
+          {hint}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** Dải báo lỗi kèm nút thử lại. Dùng cho MỌI lỗi tải số liệu tài chính. */
+function ErrorBanner({ text, onRetry, onClose }: { text: string; onRetry?: () => void; onClose?: () => void }) {
+  return (
+    <div className="flex items-start gap-2.5 bg-red-50 border border-red-150 text-red-800 rounded-xl px-4 py-3 text-body-md">
+      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+      <span className="flex-1 leading-relaxed">{text}</span>
+      {onRetry && (
+        <button onClick={onRetry} className="shrink-0 font-bold text-tiny text-red-700 underline hover:no-underline">
+          Thử lại
+        </button>
+      )}
+      {onClose && (
+        <button onClick={onClose} aria-label="Đóng" className="shrink-0 text-red-500 hover:text-red-700">
+          <XCircle size={15} />
+        </button>
+      )}
     </div>
   )
 }
