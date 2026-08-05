@@ -48,6 +48,7 @@ const POSPage                    = lazy(() => import('./pages/orders/POSPage'))
 const MobileOrderPage            = lazy(() => import('./pages/orders/MobileOrderPage'))
 const PipelinePage               = lazy(() => import('./pages/pipeline/PipelinePage'))
 const CashbookPage               = lazy(() => import('./pages/cashbook/CashbookPage'))
+const DebtManagementPage         = lazy(() => import('./pages/debts/DebtManagementPage'))
 const ReportsHubPage             = lazy(() => import('./pages/reports/ReportsHubPage'))
 const ProfitReportPage           = lazy(() => import('./pages/reports/ProfitReportPage'))
 const CustomerProfileReportPage  = lazy(() => import('./pages/reports/CustomerProfileReportPage'))
@@ -207,6 +208,10 @@ function AppRoutes() {
       <Route path="/returns" element={<ProtectedRoute perms={['orders.view_own', 'orders.view_team', 'orders.view_all']}><ReturnListPage /></ProtectedRoute>} />
       <Route path="/pipeline" element={<ProtectedRoute perms={['opportunities.view_all', 'opportunities.create']}><PipelinePage /></ProtectedRoute>} />
       <Route path="/cashbook" element={<ProtectedRoute perms={['cashbook.view', 'cashbook.create', 'cashbook.approve']}><CashbookPage /></ProtectedRoute>} />
+      {/* Công nợ: user chốt 05/08/2026 — MỌI nhân viên đều xem được. Gate bằng
+          mã quyền `reports.debt` (đã cấp cho cả 9 vai trò) để còn thu hồi được
+          từ màn Cấu hình, thay vì để trống perms. */}
+      <Route path="/debts" element={<ProtectedRoute perms={['reports.debt']}><DebtManagementPage /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute adminOnly><ReportsHubPage /></ProtectedRoute>} />
       <Route path="/reports/profit" element={<ProtectedRoute adminOnly><ProfitReportPage /></ProtectedRoute>} />
       <Route path="/reports/customer-profile" element={<ProtectedRoute adminOnly><CustomerProfileReportPage /></ProtectedRoute>} />

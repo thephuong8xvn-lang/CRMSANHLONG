@@ -33,7 +33,8 @@ import {
   HeartHandshake,
   GitMerge,
   ShieldCheck,
-  CircleDollarSign
+  CircleDollarSign,
+  HandCoins
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -130,6 +131,14 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
       label: 'Sổ quỹ',
       items: [
         { label: 'Sổ quỹ', icon: Wallet, path: '/cashbook', perms: ['cashbook.view', 'cashbook.create', 'cashbook.approve'] }
+      ]
+    },
+    {
+      // Công nợ đứng độc lập cạnh Sổ quỹ: đây là phân hệ dùng hằng ngày và
+      // MỌI nhân viên đều xem được (user chốt 05/08/2026) — không phải Báo cáo.
+      label: 'Công nợ',
+      items: [
+        { label: 'Công nợ', icon: HandCoins, path: '/debts', perms: ['reports.debt'], primary: 10 }
       ]
     },
     {

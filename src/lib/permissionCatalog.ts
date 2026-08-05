@@ -166,7 +166,9 @@ export const PERMISSION_CATALOG: CatalogModule[] = [
       { action: 'sales', label: 'Doanh số', code: 'reports.sales' },
       { action: 'cashflow', label: 'Dòng tiền', code: 'reports.cashflow' },
       { action: 'inventory', label: 'Tồn kho/Giá vốn', code: 'reports.inventory' },
-      { action: 'debt', label: 'Công nợ', code: 'reports.debt' },
+      // Cổng vào module /debts (Quản lý công nợ) — chốt ở cả route FE lẫn
+      // 4 RPC fn_debt_* qua fn_can_view_debts(). Bỏ tick = mất truy cập thật.
+      { action: 'debt', label: 'Công nợ', code: 'reports.debt', enforced: true },
       { action: 'team_kpi', label: 'KPI đội nhóm', code: 'reports.team_kpi' },
       { action: 'strategic', label: 'SP chiến lược', code: 'reports.strategic' },
     ],
