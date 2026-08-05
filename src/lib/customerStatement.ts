@@ -46,11 +46,14 @@ export interface StatementRow {
 // Chi nhánh lấy theo NGUỒN ĐÁNG TIN NHẤT của từng loại chứng từ:
 //   • Bán hàng / Thanh toán theo đơn / Trả hàng → `orders.branch_id`
 //     (chi nhánh thực sự bán — dứt khoát, không suy diễn)
-//   • Thu nợ / Điều chỉnh nợ → chi nhánh của NGƯỜI LẬP
-//     (`debt_payments` và `customer_debts` không có cột chi nhánh nào)
+//   • Thu nợ → `debt_payments.branch_id` = NƠI THU tiền (thêm ở 20260754).
+//     Đây chính là chi nhánh quyết định quỹ/ca thu ngân nào ghi nhận khoản thu.
+//     Phiếu cũ chưa có cột → lùi về chi nhánh của NGƯỜI LẬP.
+//   • Điều chỉnh nợ → chi nhánh của NGƯỜI LẬP (`customer_debts` không có cột nào)
 //
-// Cố ý KHÔNG tra chi nhánh của phiếu thu nợ qua sổ quỹ: RLS sổ quỹ chặn theo
-// chi nhánh nên nhân viên chi nhánh khác sẽ đọc rỗng → cột lúc có lúc không.
+// Cố ý KHÔNG tra chi nhánh qua sổ quỹ: RLS sổ quỹ chặn theo chi nhánh nên nhân
+// viên chi nhánh khác sẽ đọc rỗng → cột lúc có lúc không. `debt_payments` thì
+// chốt theo permission (không theo chi nhánh) nên đọc được ổn định.
 // ─────────────────────────────────────────────────────────────
 export interface LedgerAttribution {
   userName: Map<string, string>    // profile id → họ tên
@@ -212,9 +215,11 @@ export function buildStatement(input: {
       kind: 'payment',
       refId: null,
       affectsBalance: true,
-      // debt_payments không có cột chi nhánh → lấy theo người ghi phiếu
+      // Nơi THU tiền lấy thẳng từ `debt_payments.branch_id` (thêm ở 20260754 —
+      // chính là chi nhánh quyết định quỹ/ca thu ngân nào ghi nhận khoản này).
+      // Lùi về chi nhánh người ghi cho các phiếu cũ chưa có cột.
       createdBy: who(dp.recorded_by),
-      branchName: branchOfUser(dp.recorded_by),
+      branchName: (dp.branch_id && attr.branchName.get(dp.branch_id)) || branchOfUser(dp.recorded_by),
     })
   })
 
@@ -365,7 +370,7 @@ export async function fetchCustomerStatement(
     orderIds.length
       ? supabase.from('sales_returns').select('order_id, total_amount, created_at, return_code, refund_method, reason, created_by, processed_by').in('order_id', orderIds)
       : Promise.resolve({ data: [] as any[] }),
-    supabase.from('debt_payments').select('amount, payment_date, created_at, payment_method, reference_no, notes, recorded_by').eq('customer_id', customerId),
+    supabase.from('debt_payments').select('amount, payment_date, created_at, payment_method, reference_no, notes, recorded_by, branch_id').eq('customer_id', customerId),
     supabase.from('customer_debts').select('id, amount, created_at, debt_type, order_id, notes, created_by').eq('customer_id', customerId),
   ])
 
