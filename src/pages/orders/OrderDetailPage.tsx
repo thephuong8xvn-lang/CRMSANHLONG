@@ -398,6 +398,15 @@ export default function OrderDetailPage() {
   }, [id, loadOrderDetails])
 
   // Handle add payment transaction
+  //
+  // Trước đây khối này tự làm 4 bước ở client: chèn `order_payments`, tự cộng
+  // `paid_amount`, rồi CHỈ tất toán công nợ khi trả ĐỦ. Trả TỪNG PHẦN thì đơn
+  // giảm nợ còn sổ cái `customer_debts` đứng yên → hai sổ lệch dần. Cùng với
+  // việc thu nợ không ghi ngược về đơn, sai số đã phình tới 491tr (05/08/2026).
+  //
+  // Nay gom về RPC `fn_record_order_payment` (migration 20260757): nguyên tử,
+  // trừ đúng công nợ của chính đơn này theo FIFO, rồi đồng bộ lại số còn nợ từ
+  // sổ cái. Server cũng tự chặn thu vượt số còn nợ.
   const handleAddPayment = async () => {
     if (!order || payAmount <= 0) return
     setSubmitting(true)
@@ -405,50 +414,14 @@ export default function OrderDetailPage() {
       const random = Math.floor(1000 + Math.random() * 9000)
       const ref = payReference || `PAY-REF-${random}`
 
-      // 1. Insert into order_payments
-      const { error: payErr } = await supabase
-        .from('order_payments')
-        .insert([{
-          order_id: order.id,
-          payment_method: payMethod,
-          amount: payAmount,
-          reference_no: ref,
-          notes: payNotes || null,
-          created_by: profile?.id
-        }])
-
-      if (payErr) throw payErr
-
-      // 2. Calculate new paid amount and payment status
-      const nextPaidAmount = Number(order.paid_amount) + payAmount
-      let nextPaymentStatus = 'unpaid'
-      if (nextPaidAmount >= Number(order.grand_total)) {
-        nextPaymentStatus = 'paid'
-      } else if (nextPaidAmount > 0) {
-        nextPaymentStatus = 'partially_paid'
-      }
-
-      // 3. Update orders table
-      const { error: orderErr } = await supabase
-        .from('orders')
-        .update({
-          paid_amount: nextPaidAmount,
-          payment_status: nextPaymentStatus
-        })
-        .eq('id', order.id)
-
-      if (orderErr) throw orderErr
-
-      // 4. Đánh dấu công nợ đơn hàng đã tất toán nếu đơn đã trả đủ.
-      //    Bảng customer_debts chỉ có amount/is_settled (không có paid_amount).
-      //    Khi tổng đã trả ≥ grand_total → settle các dòng nợ của đơn này.
-      if (nextPaidAmount >= Number(order.grand_total)) {
-        await supabase
-          .from('customer_debts')
-          .update({ is_settled: true, settled_at: new Date().toISOString() })
-          .eq('order_id', order.id)
-          .eq('is_settled', false)
-      }
+      const { error: rpcErr } = await supabase.rpc('fn_record_order_payment', {
+        p_order_id: order.id,
+        p_amount: payAmount,
+        p_method: payMethod,
+        p_reference: ref,
+        p_notes: payNotes || null,
+      })
+      if (rpcErr) throw rpcErr
 
       setAlertMsg({ type: 'success', text: `Ghi nhận giao dịch thanh toán ${formatCurrency(payAmount)} thành công.` })
       setShowPayModal(false)
