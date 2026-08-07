@@ -17,6 +17,14 @@ type ProductPromoRow = ProductPromotion & {
   gift_product?: { name: string } | null
 }
 
+/** Một khách trong danh sách nhận / bị loại của bản xem trước. */
+interface PromoRecipient {
+  id: string
+  ten: string
+  ma: string
+  ly_do?: string
+}
+
 /** Kết quả RPC fn_promo_broadcast — dùng chung cho cả 3 chế độ. */
 interface PromoPreview {
   ok?: boolean
@@ -26,8 +34,32 @@ interface PromoPreview {
   so_nhom_nhan?: number
   so_nhom_bo_qua?: number
   da_xep_hang?: number
+  danh_sach?: PromoRecipient[]
+  danh_sach_bo_qua?: PromoRecipient[]
+  ly_do_bo_qua?: { ly_do: string; so_khach: number }[]
   loi?: string
 }
+
+/** Phạm vi người nhận tin khuyến mãi. */
+type PromoScope = 'all' | 'filter' | 'pick'
+
+/** Khớp enum customer_lifecycle_stage trong DB. */
+const LIFECYCLE_STAGES: { value: string; label: string }[] = [
+  { value: 'new', label: 'Khách mới' },
+  { value: 'active', label: 'Đang mua' },
+  { value: 'at_risk', label: 'Nguy cơ rời bỏ' },
+  { value: 'churned', label: 'Đã rời bỏ' },
+]
+
+/** Khớp CUSTOMER_TYPE_LABELS ở hồ sơ khách hàng. */
+const CUSTOMER_TYPES: { value: string; label: string }[] = [
+  { value: 'farm_household', label: 'Hộ chăn nuôi' },
+  { value: 'farm_commercial', label: 'Trang trại lớn' },
+  { value: 'dealer', label: 'Đại lý' },
+  { value: 'enterprise', label: 'Doanh nghiệp' },
+  { value: 'vet_clinic', label: 'Phòng khám' },
+  { value: 'other', label: 'Khác' },
+]
 
 /** Một dòng báo cáo hiệu quả KM (RPC fn_promo_performance). */
 interface PromoPerfRow {
@@ -154,8 +186,40 @@ function formatDiscount(p: Promotion) {
   }
 }
 
+/** Ô chọn nhiều giá trị dạng thẻ bấm — dùng cho các chiều lọc người nhận. */
+function FilterChips({ label, options, selected, onChange }: {
+  label: string
+  options: { value: string; label: string }[]
+  selected: string[]
+  onChange: (v: string[]) => void
+}) {
+  if (options.length === 0) return null
+  return (
+    <div>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(o => {
+          const on = selected.includes(o.value)
+          return (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => onChange(on ? selected.filter(v => v !== o.value) : [...selected, o.value])}
+              className={`px-2.5 py-1 text-xs rounded-lg border ${on
+                ? 'bg-blue-500 text-gray-0 border-blue-500'
+                : 'bg-gray-0 text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+            >
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /**
- * Gửi chương trình khuyến mãi vào các nhóm Telegram của khách.
+ * Gửi chương trình khuyến mãi vào nhóm Telegram của khách.
  *
  * Ba bước cố ý tách rời, không gộp thành một nút "Gửi":
  *   1. Xem trước  — thấy đúng nội dung và danh sách nhóm sẽ nhận, chưa gửi gì
@@ -163,36 +227,113 @@ function formatDiscount(p: Promotion) {
  *   3. Gửi thật   — mới chạm tới khách
  * Tin nhắn ra ngoài không thu hồi được như sửa một dòng dữ liệu, nên bắt buộc
  * phải nhìn thấy trước khi bấm.
+ *
+ * Ba phạm vi người nhận:
+ *   • Tất cả     — mọi khách có nhóm Telegram
+ *   • Theo nhóm  — lọc theo giai đoạn / hạng / loại khách / chi nhánh
+ *   • Chọn tay   — tick từng khách, và chỉ ở đây mới được bỏ giới hạn 7 ngày
+ *
+ * Bản xem trước trả về CẢ danh sách bị loại kèm lý do. Đó là phần quan trọng
+ * nhất của màn này: hiện chỉ 3/1.945 khách có nhóm Telegram, nên "vì sao không
+ * nhận" là thông tin dùng được, còn con số "0 nhóm nhận" thì không.
  */
 function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: () => void }) {
+  const [branches, setBranches] = useState<BranchLite[]>([])
   const [preview, setPreview] = useState<PromoPreview | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [done, setDone] = useState('')
 
-  const call = useCallback(async (mode: 'preview' | 'test' | 'send') => {
+  const [scope, setScope] = useState<PromoScope>('all')
+  const [fStage, setFStage] = useState<string[]>([])
+  const [fTier, setFTier] = useState<string[]>([])
+  const [fType, setFType] = useState<string[]>([])
+  const [fBranch, setFBranch] = useState<string[]>([])
+  const [picked, setPicked] = useState<PromoRecipient[]>([])
+  const [pickQuery, setPickQuery] = useState('')
+  const [candidates, setCandidates] = useState<PromoRecipient[]>([])
+  const [note, setNote] = useState('')
+  const [bypass, setBypass] = useState(false)
+  const [showSkipped, setShowSkipped] = useState(false)
+
+  const pickedIds = useMemo(() => picked.map(c => c.id), [picked])
+
+  useEffect(() => {
+    supabase.from('branches').select('id, name').eq('is_active', true).order('name')
+      .then(({ data }: { data: BranchLite[] | null }) => { if (data) setBranches(data) })
+  }, [])
+
+  /** Tham số phạm vi gửi kèm mọi lời gọi RPC, để xem trước và gửi thật luôn khớp. */
+  const scopeArgs = useMemo(() => {
+    if (scope === 'pick') {
+      return { p_customer_ids: pickedIds, p_filter: {}, p_bypass_cooldown: bypass }
+    }
+    if (scope === 'filter') {
+      return {
+        p_customer_ids: null,
+        p_filter: {
+          ...(fStage.length ? { lifecycle_stage: fStage } : {}),
+          ...(fTier.length ? { value_tier: fTier } : {}),
+          ...(fType.length ? { customer_type: fType } : {}),
+          ...(fBranch.length ? { branch_ids: fBranch } : {}),
+        },
+        p_bypass_cooldown: false,
+      }
+    }
+    return { p_customer_ids: null, p_filter: {}, p_bypass_cooldown: false }
+  }, [scope, pickedIds, bypass, fStage, fTier, fType, fBranch])
+
+  const call = useCallback(async (
+    mode: 'preview' | 'test' | 'send',
+    args: Record<string, unknown>,
+  ) => {
     const { data, error: err } = await supabase.rpc('fn_promo_broadcast', {
-      p_promotion_id: promo.id, p_mode: mode,
+      p_promotion_id: promo.id, p_mode: mode, p_extra_note: note.trim() || null, ...args,
     })
     if (err) throw new Error(err.message)
     if (data && data.ok === false) throw new Error(data.loi || 'Không gửi được')
     return data as PromoPreview
-  }, [promo.id])
+  }, [promo.id, note])
 
+  // Xem trước chạy lại mỗi khi phạm vi hoặc ghi chú đổi. Hoãn 350ms vì gõ ghi
+  // chú sẽ bắn một lượt RPC cho mỗi ký tự.
   useEffect(() => {
     let alive = true
-    call('preview')
-      .then(d => { if (alive) setPreview(d) })
-      .catch(e => { if (alive) setError(e.message) })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [call])
+    const t = setTimeout(() => {
+      setLoading(true); setError('')
+      call('preview', scopeArgs)
+        .then(d => { if (alive) setPreview(d) })
+        .catch(e => { if (alive) setError(e instanceof Error ? e.message : String(e)) })
+        .finally(() => { if (alive) setLoading(false) })
+    }, 350)
+    return () => { alive = false; clearTimeout(t) }
+  }, [call, scopeArgs])
+
+  // Danh sách khách để tick — lấy qua chính RPC xem trước với bộ lọc tìm kiếm,
+  // nên không cần quyền đọc thẳng bảng khách hàng từ màn này.
+  useEffect(() => {
+    if (scope !== 'pick') return
+    const kw = pickQuery.trim()
+    if (kw.length < 2) { setCandidates([]); return }
+    let alive = true
+    const t = setTimeout(() => {
+      supabase.rpc('fn_promo_broadcast', {
+        p_promotion_id: promo.id, p_mode: 'preview',
+        p_customer_ids: null, p_filter: { search: kw },
+      }).then(({ data }: { data: PromoPreview | null }) => {
+        if (!alive || !data) return
+        const d = data
+        setCandidates([...(d.danh_sach ?? []), ...(d.danh_sach_bo_qua ?? [])].slice(0, 40))
+      })
+    }, 300)
+    return () => { alive = false; clearTimeout(t) }
+  }, [scope, pickQuery, promo.id])
 
   const run = async (mode: 'test' | 'send') => {
     setBusy(mode); setError(''); setDone('')
     try {
-      const d = await call(mode)
+      const d = await call(mode, scopeArgs)
       setDone(mode === 'test'
         ? 'Đã gửi bản xem thử vào nhóm nội bộ.'
         : `Đã xếp hàng gửi tới ${d.da_xep_hang ?? 0} nhóm. Tin đi trong khoảng 15 giây mỗi lượt.`)
@@ -203,9 +344,12 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
     }
   }
 
+  const nhan = preview?.so_nhom_nhan ?? 0
+  const boQua = preview?.so_nhom_bo_qua ?? 0
+
   return (
     <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-gray-0 w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="bg-gray-0 w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Gửi khuyến mãi vào nhóm Telegram</h3>
@@ -217,41 +361,185 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {loading && <p className="text-sm text-gray-500">Đang dựng nội dung…</p>}
+          {/* ── Gửi cho ai ─────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5">Gửi cho ai</p>
+            <div className="flex gap-1.5">
+              {([
+                { v: 'all', l: 'Tất cả khách' },
+                { v: 'filter', l: 'Theo nhóm khách' },
+                { v: 'pick', l: 'Chọn từng khách' },
+              ] as { v: PromoScope; l: string }[]).map(o => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => { setScope(o.v); if (o.v !== 'pick') setBypass(false) }}
+                  className={`px-3 py-1.5 text-sm rounded-lg border ${scope === o.v
+                    ? 'bg-blue-500 text-gray-0 border-blue-500'
+                    : 'bg-gray-0 text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {preview && (
-            <>
-              <div className="flex gap-3">
-                <div className="flex-1 rounded-lg bg-blue-50 border border-blue-100 p-3">
-                  <p className="text-xs text-gray-500">Nhóm sẽ nhận</p>
-                  <p className="text-xl font-semibold text-blue-700">{preview.so_nhom_nhan ?? 0}</p>
-                </div>
-                <div className="flex-1 rounded-lg bg-gray-50 border border-gray-100 p-3">
-                  <p className="text-xs text-gray-500">Bỏ qua</p>
-                  <p className="text-xl font-semibold text-gray-600">{preview.so_nhom_bo_qua ?? 0}</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">đã nhận trong 7 ngày, hoặc từ chối nhận KM</p>
-                </div>
-              </div>
-
-              {preview.so_nhom_nhan === 0 && (
-                <p className="text-sm text-warning-500 bg-warning-500/10 rounded-lg p-3">
-                  Chưa có nhóm nào đủ điều kiện nhận. Khách phải được gán id nhóm Telegram
-                  trong hồ sơ trước đã.
-                </p>
-              )}
-
-              <div>
-                <p className="text-xs text-gray-500 mb-1.5">Nội dung tin</p>
-                <pre className="text-sm bg-gray-50 border border-gray-100 rounded-lg p-3 whitespace-pre-wrap font-sans text-gray-700">
-                  {(preview.noi_dung ?? '').replace(/<\/?b>|<\/?i>/g, '')}
-                </pre>
-              </div>
-
-              {preview.anh && (
-                <p className="text-xs text-gray-400">Có kèm ảnh minh hoạ.</p>
-              )}
-            </>
+          {scope === 'filter' && (
+            <div className="space-y-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+              <FilterChips label="Giai đoạn" options={LIFECYCLE_STAGES} selected={fStage} onChange={setFStage} />
+              <FilterChips label="Hạng khách" options={CUSTOMER_TIERS} selected={fTier} onChange={setFTier} />
+              <FilterChips label="Loại khách" options={CUSTOMER_TYPES} selected={fType} onChange={setFType} />
+              <FilterChips
+                label="Chi nhánh"
+                options={branches.map(b => ({ value: b.id, label: b.name }))}
+                selected={fBranch}
+                onChange={setFBranch}
+              />
+              <p className="text-[11px] text-gray-400">
+                Không chọn gì ở một chiều nghĩa là không lọc theo chiều đó.
+              </p>
+            </div>
           )}
+
+          {scope === 'pick' && (
+            <div className="space-y-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
+              <div className="flex items-center gap-1.5 bg-gray-0 border border-gray-200 rounded-lg px-2 py-1.5">
+                <Search size={14} className="text-gray-400 shrink-0" />
+                <input
+                  className="w-full text-sm outline-none"
+                  placeholder="Gõ tên, mã hoặc số điện thoại khách…"
+                  value={pickQuery}
+                  onChange={e => setPickQuery(e.target.value)}
+                />
+              </div>
+
+              {candidates.length > 0 && (
+                <div className="max-h-40 overflow-y-auto bg-gray-0 border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {candidates.map(c => {
+                    const on = pickedIds.includes(c.id)
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setPicked(on ? picked.filter(x => x.id !== c.id) : [...picked, c])}
+                        className={`w-full text-left px-2.5 py-1.5 text-sm hover:bg-blue-50 ${on ? 'bg-blue-50' : ''}`}
+                      >
+                        <span className="text-gray-800">{c.ten}</span>
+                        <span className="text-xs text-gray-400 font-mono ml-1.5">{c.ma}</span>
+                        {c.ly_do && <span className="block text-[11px] text-warning-500">{c.ly_do}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {picked.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {picked.map(c => (
+                    <span key={c.id} className="inline-flex items-center gap-1 bg-blue-50 text-blue-800 text-xs px-2 py-1 rounded-lg">
+                      {c.ten}
+                      <button type="button" onClick={() => setPicked(picked.filter(x => x.id !== c.id))}
+                        className="text-blue-400 hover:text-danger-500">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <label className="flex items-start gap-2 text-xs text-gray-600">
+                <input type="checkbox" className="mt-0.5" checked={bypass}
+                  onChange={e => setBypass(e.target.checked)} />
+                <span>
+                  Bỏ qua giới hạn 1 tin khuyến mãi / khách / 7 ngày.
+                  <span className="block text-gray-400">
+                    Chỉ dùng được khi chọn tay như thế này — không áp cho cả một bộ lọc.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* ── Ghi chú riêng ──────────────────────────────────────── */}
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Ghi chú thêm vào cuối tin (tuỳ chọn)</p>
+            <textarea
+              rows={2}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              placeholder="Ví dụ: Gọi 0367383077 để đặt hàng trong hôm nay."
+              value={note}
+              onChange={e => setNote(e.target.value)}
+            />
+          </div>
+
+          {/* ── Kết quả xem trước ──────────────────────────────────── */}
+          <div className="flex gap-3">
+            <div className="flex-1 rounded-lg bg-blue-50 border border-blue-100 p-3">
+              <p className="text-xs text-gray-500">Nhóm sẽ nhận</p>
+              <p className="text-xl font-semibold text-blue-700">{loading ? '…' : nhan}</p>
+            </div>
+            <div className="flex-1 rounded-lg bg-gray-50 border border-gray-100 p-3">
+              <p className="text-xs text-gray-500">Bỏ qua</p>
+              <p className="text-xl font-semibold text-gray-600">{loading ? '…' : boQua}</p>
+              {(preview?.ly_do_bo_qua ?? []).length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {(preview?.ly_do_bo_qua ?? []).map(r => (
+                    <li key={r.ly_do} className="text-[11px] text-gray-400">
+                      {r.so_khach} — {r.ly_do}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          {!loading && nhan === 0 && (
+            <p className="text-sm text-warning-500 bg-warning-500/10 rounded-lg p-3">
+              Không có nhóm nào đủ điều kiện nhận. Khách chỉ nhận được tin khi hồ sơ
+              đã gán id nhóm Telegram và bật nhận tin.
+            </p>
+          )}
+
+          {(preview?.danh_sach ?? []).length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Sẽ nhận ({nhan})</p>
+              <div className="max-h-32 overflow-y-auto rounded-lg border border-gray-100 divide-y divide-gray-100">
+                {(preview?.danh_sach ?? []).map(c => (
+                  <p key={c.id} className="px-2.5 py-1 text-sm text-gray-700">
+                    {c.ten} <span className="text-xs text-gray-400 font-mono">{c.ma}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(preview?.danh_sach_bo_qua ?? []).length > 0 && (
+            <div>
+              <button type="button" onClick={() => setShowSkipped(v => !v)}
+                className="text-xs text-blue-600 hover:underline">
+                {showSkipped ? 'Ẩn' : 'Xem'} danh sách bị bỏ qua
+              </button>
+              {showSkipped && (
+                <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-100 divide-y divide-gray-100">
+                  {(preview?.danh_sach_bo_qua ?? []).map(c => (
+                    <p key={c.id} className="px-2.5 py-1 text-sm text-gray-600">
+                      {c.ten}
+                      <span className="text-[11px] text-gray-400 ml-1.5">{c.ly_do}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5">Nội dung tin</p>
+            <pre className="text-sm bg-gray-50 border border-gray-100 rounded-lg p-3 whitespace-pre-wrap font-sans text-gray-700">
+              {(preview?.noi_dung ?? '').replace(/<\/?b>|<\/?i>/g, '')}
+            </pre>
+          </div>
+
+          {preview?.anh && <p className="text-xs text-gray-400">Có kèm ảnh minh hoạ.</p>}
 
           {error && <p className="text-sm text-danger-500 bg-danger-500/10 rounded-lg p-3">{error}</p>}
           {done && <p className="text-sm text-success-500 bg-success-500/10 rounded-lg p-3">{done}</p>}
@@ -261,14 +549,14 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
             Đóng
           </button>
-          <button onClick={() => run('test')} disabled={!!busy || !preview}
+          <button onClick={() => run('test')} disabled={!!busy || loading}
             className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
             {busy === 'test' ? 'Đang gửi…' : 'Gửi thử vào nhóm nội bộ'}
           </button>
           <button onClick={() => run('send')}
-            disabled={!!busy || !preview || (preview?.so_nhom_nhan ?? 0) === 0}
+            disabled={!!busy || loading || nhan === 0}
             className="px-4 py-2 text-sm bg-blue-500 text-gray-0 rounded-lg hover:bg-blue-600 disabled:opacity-50">
-            {busy === 'send' ? 'Đang gửi…' : `Gửi cho ${preview?.so_nhom_nhan ?? 0} nhóm`}
+            {busy === 'send' ? 'Đang gửi…' : `Gửi cho ${nhan} nhóm`}
           </button>
         </div>
       </div>
