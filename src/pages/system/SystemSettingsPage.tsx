@@ -36,6 +36,7 @@ interface Branch {
   manager_id: string | null
   is_active: boolean
   default_price_list_id: string | null
+  telegram_chat_id: string | null
   manager?: {
     id: string
     full_name: string
@@ -224,6 +225,7 @@ export default function SystemSettingsPage() {
   const [brName, setBrName] = useState('')
   const [brAddress, setBrAddress] = useState('')
   const [brPhone, setBrPhone] = useState('')
+  const [brTgChatId, setBrTgChatId] = useState('')
   const [brManagerId, setBrManagerId] = useState('')
   const [brDefaultPriceListId, setBrDefaultPriceListId] = useState('')
 
@@ -680,6 +682,7 @@ export default function SystemSettingsPage() {
     setBrName('')
     setBrAddress('')
     setBrPhone('')
+    setBrTgChatId('')
     setBrManagerId('')
     setBrDefaultPriceListId('')
     setShowBranchModal(true)
@@ -691,6 +694,7 @@ export default function SystemSettingsPage() {
     setBrName(br.name)
     setBrAddress(br.address || '')
     setBrPhone(br.phone || '')
+    setBrTgChatId(br.telegram_chat_id || '')
     setBrManagerId(br.manager_id || '')
     setBrDefaultPriceListId(br.default_price_list_id || '')
     setShowBranchModal(true)
@@ -711,7 +715,8 @@ export default function SystemSettingsPage() {
         address: brAddress.trim() || null,
         phone: brPhone.trim() || null,
         manager_id: brManagerId || null,
-        default_price_list_id: brDefaultPriceListId || null
+        default_price_list_id: brDefaultPriceListId || null,
+        telegram_chat_id: brTgChatId.trim() || null
       }
 
       if (!selectedBranch) {
@@ -2125,6 +2130,28 @@ export default function SystemSettingsPage() {
                     onChange={(e) => setBrAddress(e.target.value)}
                     className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-body-md font-semibold text-gray-700">ID nhóm Telegram của chi nhánh</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="VD: -5426496767 — để trống thì dùng nhóm chung"
+                    value={brTgChatId}
+                    onChange={(e) => setBrTgChatId(e.target.value)}
+                    className="w-full h-10 px-3 border border-gray-100 rounded-lg text-body-md focus:outline-none focus:border-blue-500"
+                  />
+                  <p className="text-tiny text-gray-500">
+                    Tạo nhóm Telegram cho chi nhánh, thêm bot <b>@crmsanhlongbot</b> vào rồi dán id vào đây.
+                    Mọi hoạt động của chi nhánh sẽ báo về nhóm này thay vì nhóm chung.
+                  </p>
+                  {/* Id nhóm luôn âm; dán nhầm số dương là tin không bao giờ tới mà không báo lỗi. */}
+                  {brTgChatId.trim() !== '' && !/^-\d{6,}$/.test(brTgChatId.trim()) && (
+                    <p className="text-tiny text-danger-500">
+                      Id nhóm phải là số âm, ví dụ <b>-5426496767</b>.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">

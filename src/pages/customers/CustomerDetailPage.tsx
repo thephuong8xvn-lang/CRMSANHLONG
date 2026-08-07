@@ -194,6 +194,9 @@ interface Customer {
   owner_user_id: string
   is_active: boolean
   created_at: string
+  telegram_chat_id: string | null
+  telegram_enabled: boolean
+  telegram_promo_optout: boolean
   owner?: Profile | null
   price_list?: PriceList | null
   customer_business_info?: CustomerBusinessInfo | null
@@ -409,7 +412,11 @@ export default function CustomerDetailPage() {
   const [editIsActive, setEditIsActive] = useState(true)
   const [editGpsLat, setEditGpsLat] = useState('')
   const [editGpsLng, setEditGpsLng] = useState('')
-  
+  // Nhóm Telegram riêng của khách — user tạo nhóm tay rồi dán id vào đây
+  const [editTgChatId, setEditTgChatId] = useState('')
+  const [editTgEnabled, setEditTgEnabled] = useState(true)
+  const [editTgPromoOptout, setEditTgPromoOptout] = useState(false)
+
   const [editTaxCode, setEditTaxCode] = useState('')
   const [editLegalName, setEditLegalName] = useState('')
   const [editBankName, setEditBankName] = useState('')
@@ -476,6 +483,9 @@ export default function CustomerDetailPage() {
         setEditIsActive(custData.is_active)
         setEditGpsLat(custData.gps_lat ? String(custData.gps_lat) : '')
         setEditGpsLng(custData.gps_lng ? String(custData.gps_lng) : '')
+        setEditTgChatId(custData.telegram_chat_id || '')
+        setEditTgEnabled(custData.telegram_enabled !== false)
+        setEditTgPromoOptout(custData.telegram_promo_optout === true)
 
         if (custData.customer_business_info) {
           setEditTaxCode(custData.customer_business_info.tax_code || '')
@@ -1442,6 +1452,9 @@ export default function CustomerDetailPage() {
           address: editAddress.trim() || null,
           gps_lat: editGpsLat ? Number(editGpsLat) : null,
           gps_lng: editGpsLng ? Number(editGpsLng) : null,
+          telegram_chat_id: editTgChatId.trim() || null,
+          telegram_enabled: editTgEnabled,
+          telegram_promo_optout: editTgPromoOptout,
           is_active: editIsActive
           // updated_at: bỏ — để Supabase trigger tự cập nhật
         })
@@ -3225,6 +3238,62 @@ export default function CustomerDetailPage() {
                       value={editGpsLng}
                       onChange={(e) => setEditGpsLng(e.target.value)}
                     />
+                  </div>
+                </div>
+
+                {/* Nhóm Telegram riêng của khách */}
+                <div className="border-t border-gray-100 pt-6 space-y-4">
+                  <div>
+                    <h4 className="font-bold text-body-md text-gray-700">Nhóm Telegram của khách</h4>
+                    <p className="text-tiny text-gray-500 mt-0.5">
+                      Tạo nhóm trên Telegram, thêm bot <b>@crmsanhlongbot</b> vào nhóm, rồi dán id nhóm
+                      vào đây. Khách sẽ nhận hoá đơn, thông báo giao hàng và lịch vaccine của riêng mình.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-body-md font-semibold text-gray-600">ID nhóm Telegram</label>
+                    <input
+                      className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md focus:border-blue-500 focus:outline-none"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Ví dụ: -5426496767"
+                      value={editTgChatId}
+                      onChange={(e) => setEditTgChatId(e.target.value)}
+                    />
+                    {/* Id nhóm luôn là số ÂM. Dán nhầm id cá nhân (số dương) thì tin sẽ
+                        không bao giờ tới, mà cũng chẳng có gì báo lỗi ra màn hình. */}
+                    {editTgChatId.trim() !== '' && !/^-\d{6,}$/.test(editTgChatId.trim()) && (
+                      <p className="text-tiny text-danger-500">
+                        Id nhóm phải là số âm, ví dụ <b>-5426496767</b>. Số dương là id cá nhân, bot không gửi được.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="edit-tg-enabled"
+                      type="checkbox"
+                      checked={editTgEnabled}
+                      onChange={(e) => setEditTgEnabled(e.target.checked)}
+                      className="w-4 h-4 text-blue-500 border-gray-100 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <label htmlFor="edit-tg-enabled" className="text-body-md font-semibold text-gray-600 select-none">
+                      Gửi thông báo Telegram cho khách này
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="edit-tg-promo-optout"
+                      type="checkbox"
+                      checked={editTgPromoOptout}
+                      onChange={(e) => setEditTgPromoOptout(e.target.checked)}
+                      className="w-4 h-4 text-blue-500 border-gray-100 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <label htmlFor="edit-tg-promo-optout" className="text-body-md font-semibold text-gray-600 select-none">
+                      Không nhận tin khuyến mãi <span className="font-normal text-gray-500">(vẫn nhận hoá đơn và lịch vaccine)</span>
+                    </label>
                   </div>
                 </div>
 
