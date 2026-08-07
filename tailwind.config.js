@@ -1,3 +1,62 @@
+// Đuôi `.js` là BẮT BUỘC: tailwindcss 3.4 không có trường `exports` trong
+// package.json, nên Node ở chế độ ESM không tự suy ra được `…/colors`.
+import defaultColors from 'tailwindcss/colors.js'
+
+// ──────────────────────────────────────────────────────────────────────
+// NỬA BẬC MÀU (150 / 250 / 650 / 750 …)
+//
+// Cùng một căn bệnh với thang chữ và thang z-index bên dưới: khắp app
+// dùng `border-gray-150`, `text-gray-650`, `bg-gray-750/50`… nhưng thang
+// màu của Tailwind chỉ có bậc tròn trăm (50/100/200/…/900/950). Class
+// không tồn tại thì Tailwind BỎ QUA IM LẶNG — không sinh CSS, không báo
+// lỗi, không cảnh báo. Đếm được 473 lượt dùng như vậy.
+//
+// Hậu quả nặng nhất: `bg-gray-750/50` là lớp phủ tối của hộp thoại ở
+// HerdProjectDetailPage (5 chỗ) → hộp thoại hiện ra KHÔNG có nền mờ,
+// nội dung trang phía sau đâm xuyên qua.
+//
+// Cách vá: sinh nửa bậc bằng cách TRỘN hai bậc liền kề đã có. Giá trị
+// các bậc gốc giữ nguyên tuyệt đối — `gray-800/900/950` đang dùng 328
+// lượt ở 58 file nên không được phép đổi.
+//
+// Tailwind 3 chạy JIT nên nửa bậc nào không ai dùng thì không sinh CSS,
+// định nghĩa thừa không tốn gì.
+// ──────────────────────────────────────────────────────────────────────
+const toRgb = (h) => {
+  const s = h.replace('#', '')
+  const full = s.length === 3 ? s.split('').map((c) => c + c).join('') : s
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16))
+}
+const toHex = (arr) =>
+  '#' + arr.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('').toUpperCase()
+const mix = (a, b) => toHex(toRgb(a).map((v, i) => (v + toRgb(b)[i]) / 2))
+
+/**
+ * Trả về bảng màu có đủ nửa bậc.
+ * @param base    bảng màu mặc định của Tailwind
+ * @param override các bậc do hệ thống thiết kế định nghĩa lại (thắng base)
+ */
+function withHalfSteps(base, override = {}) {
+  const out = { ...base, ...override }
+  // Chỉ giữ khoá là số; `DEFAULT` hay tên khác bỏ qua.
+  const steps = Object.keys(out)
+    .filter((k) => /^\d+$/.test(k))
+    .map(Number)
+    .sort((a, b) => a - b)
+
+  for (let i = 0; i < steps.length - 1; i++) {
+    const lo = steps[i]
+    const hi = steps[i + 1]
+    if (hi - lo !== 100) continue // chỉ chèn vào giữa hai bậc liền kề chuẩn
+    const mid = lo + 50
+    if (out[mid] === undefined) out[mid] = mix(out[lo], out[hi])
+  }
+  // Bậc 25: nhạt hơn 50, trộn với trắng. (`gray-25` vốn đã có sẵn.)
+  if (out[50] !== undefined && out[25] === undefined) out[25] = mix('#FFFFFF', out[50])
+
+  return out
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -7,15 +66,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        'blue': {
+        'blue': withHalfSteps(defaultColors.blue, {
           50: '#EEF4FB',
           100: '#D6E4F4',
           200: '#AEC9E9',
           500: '#1E5A9C',
           600: '#194B82',
           700: '#143C69',
-        },
-        'gray': {
+        }),
+        'gray': withHalfSteps(defaultColors.gray, {
           0: '#FFFFFF',
           25: '#FAFBFC',
           50: '#F4F6F8',
@@ -26,7 +85,20 @@ export default {
           500: '#4A5663',
           600: '#2F3947',
           700: '#1F2731',
-        },
+        }),
+        // Các bảng màu tiêu chuẩn — chỉ thêm nửa bậc, không đổi giá trị gốc.
+        'red': withHalfSteps(defaultColors.red),
+        'amber': withHalfSteps(defaultColors.amber),
+        'emerald': withHalfSteps(defaultColors.emerald),
+        'green': withHalfSteps(defaultColors.green),
+        'orange': withHalfSteps(defaultColors.orange),
+        'rose': withHalfSteps(defaultColors.rose),
+        'purple': withHalfSteps(defaultColors.purple),
+        'indigo': withHalfSteps(defaultColors.indigo),
+        'teal': withHalfSteps(defaultColors.teal),
+        'sky': withHalfSteps(defaultColors.sky),
+        'slate': withHalfSteps(defaultColors.slate),
+        'yellow': withHalfSteps(defaultColors.yellow),
         'success': {
           500: '#2E7D5B',
         },

@@ -2742,7 +2742,7 @@ export default function InventoryPage() {
               {/* Items Table */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <h4 className="text-body-md font-bold text-gray-755">Sản phẩm luân chuyển</h4>
+                  <h4 className="text-body-md font-bold text-gray-750">Sản phẩm luân chuyển</h4>
                   {canEditTransferLines(selectedTransfer) && (
                     editingLines ? (
                       <div className="flex gap-2">
@@ -2889,7 +2889,7 @@ export default function InventoryPage() {
                   cho chi nhánh nhận. Đây là mục đích chính của bước duyệt. */}
               {selectedTransfer.status === 'received' && isAdmin && costPreview.length > 0 && (
                 <div className="space-y-2">
-                  <h4 className="text-body-md font-bold text-gray-755">
+                  <h4 className="text-body-md font-bold text-gray-750">
                     Giá vốn tại {selectedTransfer.to_wh?.name} sau khi duyệt
                   </h4>
                   <div className="border border-emerald-100 bg-emerald-50/30 rounded-lg overflow-x-auto tbl-x">
@@ -3574,7 +3574,7 @@ export default function InventoryPage() {
 
               {/* Items Table */}
               <div className="space-y-2">
-                <h4 className="text-body-md font-bold text-gray-755">Danh sách sản phẩm nhập</h4>
+                <h4 className="text-body-md font-bold text-gray-750">Danh sách sản phẩm nhập</h4>
                 <div className="border border-gray-150 rounded-lg overflow-x-auto tbl-x">
                   <table className="w-full min-w-[680px] text-left border-collapse">
                     <thead>
