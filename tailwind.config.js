@@ -68,7 +68,19 @@ export default {
         lg: '10px',
         xl: '14px',
         '2xl': '20px',
-      }
+      },
+      // Thang z-index. Thang MẶC ĐỊNH của Tailwind chỉ có 0/10/20/30/40/50 —
+      // `z-45`, `z-46`, `z-55` KHÔNG tồn tại nên trước đây là class RỖNG.
+      // Hậu quả: 17 hộp thoại đang dùng `z-55` thực chất nhận `z-index: auto`
+      // và bị thanh điều hướng `z-40` (sticky) ĐÈ LÊN — hộp thoại sửa hồ sơ
+      // khách hàng hiện ra nhưng bị thanh menu phủ mất phần trên.
+      // Cùng loại lỗi với thang chữ ở trên: class được dùng khắp nơi mà chưa
+      // bao giờ được định nghĩa.
+      zIndex: {
+        '45': '45',   // thanh điều hướng đáy trên mobile
+        '46': '46',   // nút tròn nổi giữa thanh đáy
+        '55': '55',   // HỘP THOẠI — phải cao hơn z-50 của lớp phủ menu bên
+      },
     },
   },
   plugins: [],
