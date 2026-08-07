@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 import { fetchAllRows } from '../../lib/fetchAllRows'
-import { Plus, Tag, Pencil, Trash2, ToggleLeft, ToggleRight, Ticket, Building2, Search, X } from 'lucide-react'
+import { Plus, Tag, Pencil, Trash2, ToggleLeft, ToggleRight, Ticket, Building2, Search, X, Send } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import type { Promotion, Voucher } from '../../hooks/usePromotionEngine'
 import { promoShortLabel, type ProductPromotion } from '../../hooks/useProductPromotions'
@@ -15,6 +15,18 @@ interface ProductLite { id: string; name: string; sku: string }
 type ProductPromoRow = ProductPromotion & {
   product?: { name: string; sku: string } | null
   gift_product?: { name: string } | null
+}
+
+/** Kết quả RPC fn_promo_broadcast — dùng chung cho cả 3 chế độ. */
+interface PromoPreview {
+  ok?: boolean
+  che_do?: string
+  noi_dung?: string
+  anh?: string | null
+  so_nhom_nhan?: number
+  so_nhom_bo_qua?: number
+  da_xep_hang?: number
+  loi?: string
 }
 
 /** Một dòng báo cáo hiệu quả KM (RPC fn_promo_performance). */
@@ -140,6 +152,128 @@ function formatDiscount(p: Promotion) {
     case 'customer_tier_discount': return `${p.discount_value}% cho ${(p.customer_tiers ?? []).join(', ')}`
     default: return `${p.discount_value}`
   }
+}
+
+/**
+ * Gửi chương trình khuyến mãi vào các nhóm Telegram của khách.
+ *
+ * Ba bước cố ý tách rời, không gộp thành một nút "Gửi":
+ *   1. Xem trước  — thấy đúng nội dung và danh sách nhóm sẽ nhận, chưa gửi gì
+ *   2. Gửi thử    — một bản vào nhóm nội bộ để đọc bằng mắt
+ *   3. Gửi thật   — mới chạm tới khách
+ * Tin nhắn ra ngoài không thu hồi được như sửa một dòng dữ liệu, nên bắt buộc
+ * phải nhìn thấy trước khi bấm.
+ */
+function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: () => void }) {
+  const [preview, setPreview] = useState<PromoPreview | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [done, setDone] = useState('')
+
+  const call = useCallback(async (mode: 'preview' | 'test' | 'send') => {
+    const { data, error: err } = await supabase.rpc('fn_promo_broadcast', {
+      p_promotion_id: promo.id, p_mode: mode,
+    })
+    if (err) throw new Error(err.message)
+    if (data && data.ok === false) throw new Error(data.loi || 'Không gửi được')
+    return data as PromoPreview
+  }, [promo.id])
+
+  useEffect(() => {
+    let alive = true
+    call('preview')
+      .then(d => { if (alive) setPreview(d) })
+      .catch(e => { if (alive) setError(e.message) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [call])
+
+  const run = async (mode: 'test' | 'send') => {
+    setBusy(mode); setError(''); setDone('')
+    try {
+      const d = await call(mode)
+      setDone(mode === 'test'
+        ? 'Đã gửi bản xem thử vào nhóm nội bộ.'
+        : `Đã xếp hàng gửi tới ${d.da_xep_hang ?? 0} nhóm. Tin đi trong khoảng 15 giây mỗi lượt.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-55 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-gray-0 w-full sm:max-w-xl rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Gửi khuyến mãi vào nhóm Telegram</h3>
+            <p className="text-xs text-gray-400">{promo.name}</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full text-gray-400">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {loading && <p className="text-sm text-gray-500">Đang dựng nội dung…</p>}
+
+          {preview && (
+            <>
+              <div className="flex gap-3">
+                <div className="flex-1 rounded-lg bg-blue-50 border border-blue-100 p-3">
+                  <p className="text-xs text-gray-500">Nhóm sẽ nhận</p>
+                  <p className="text-xl font-semibold text-blue-700">{preview.so_nhom_nhan ?? 0}</p>
+                </div>
+                <div className="flex-1 rounded-lg bg-gray-50 border border-gray-100 p-3">
+                  <p className="text-xs text-gray-500">Bỏ qua</p>
+                  <p className="text-xl font-semibold text-gray-600">{preview.so_nhom_bo_qua ?? 0}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">đã nhận trong 7 ngày, hoặc từ chối nhận KM</p>
+                </div>
+              </div>
+
+              {preview.so_nhom_nhan === 0 && (
+                <p className="text-sm text-warning-500 bg-warning-500/10 rounded-lg p-3">
+                  Chưa có nhóm nào đủ điều kiện nhận. Khách phải được gán id nhóm Telegram
+                  trong hồ sơ trước đã.
+                </p>
+              )}
+
+              <div>
+                <p className="text-xs text-gray-500 mb-1.5">Nội dung tin</p>
+                <pre className="text-sm bg-gray-50 border border-gray-100 rounded-lg p-3 whitespace-pre-wrap font-sans text-gray-700">
+                  {(preview.noi_dung ?? '').replace(/<\/?b>|<\/?i>/g, '')}
+                </pre>
+              </div>
+
+              {preview.anh && (
+                <p className="text-xs text-gray-400">Có kèm ảnh minh hoạ.</p>
+              )}
+            </>
+          )}
+
+          {error && <p className="text-sm text-danger-500 bg-danger-500/10 rounded-lg p-3">{error}</p>}
+          {done && <p className="text-sm text-success-500 bg-success-500/10 rounded-lg p-3">{done}</p>}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
+            Đóng
+          </button>
+          <button onClick={() => run('test')} disabled={!!busy || !preview}
+            className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+            {busy === 'test' ? 'Đang gửi…' : 'Gửi thử vào nhóm nội bộ'}
+          </button>
+          <button onClick={() => run('send')}
+            disabled={!!busy || !preview || (preview?.so_nhom_nhan ?? 0) === 0}
+            className="px-4 py-2 text-sm bg-blue-500 text-gray-0 rounded-lg hover:bg-blue-600 disabled:opacity-50">
+            {busy === 'send' ? 'Đang gửi…' : `Gửi cho ${preview?.so_nhom_nhan ?? 0} nhóm`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function VoucherGenerateModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -523,6 +657,7 @@ export default function PromotionsPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'promotions' | 'product_promos' | 'vouchers' | 'perf'>('promotions')
   const [showPromoModal, setShowPromoModal] = useState(false)
+  const [broadcastPromo, setBroadcastPromo] = useState<Promotion | null>(null)
   const [editingPromo, setEditingPromo] = useState<Partial<Promotion> | undefined>()
   const [showVoucherModal, setShowVoucherModal] = useState(false)
   const [showProductPromoModal, setShowProductPromoModal] = useState(false)
@@ -684,6 +819,11 @@ export default function PromotionsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setBroadcastPromo(p)}
+                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                    title="Gửi vào nhóm Telegram của khách">
+                    <Send size={16} />
+                  </button>
                   <button onClick={() => togglePromo(p.id, p.is_active)}
                     className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
                     title={p.is_active ? 'Tắt KM' : 'Bật KM'}>
@@ -865,6 +1005,12 @@ export default function PromotionsPage() {
           promo={editingPromo}
           onClose={() => setShowPromoModal(false)}
           onSaved={loadData}
+        />
+      )}
+      {broadcastPromo && (
+        <PromoBroadcastModal
+          promo={broadcastPromo}
+          onClose={() => setBroadcastPromo(null)}
         />
       )}
       {showVoucherModal && (
