@@ -273,14 +273,47 @@ Hai chốt an toàn cấp hệ thống:
 | Đợt | Nội dung | Sản phẩm | Ước lượng |
 |---|---|---|---|
 | **0** | **Việc của user**: tạo nhóm forum + topic, thêm bot làm admin, lấy `chat_id` + `thread_id` | — | ~20 phút |
-| **1** | ✍️ **ĐÃ VIẾT CODE — chưa apply**: `20260758000000_notification_center_core.sql`. 4 bảng (`telegram_channels`, `notification_events`, `notification_rules`, `notification_log`), `fn_tg_send` / `fn_notify_emit` / `fn_notify_drain` (advisory lock + thu kết quả pg_net + trần retry) / `fn_notify_prune` / `fn_notify_test`, cron 1 phút + cron dọn 30 ngày, kill-switch, seed 22 luật cho 7 luồng | 1 migration | ~½ ngày |
+| **1** | ✅ **LIVE** `20260758000000_notification_center_core.sql`. 4 bảng (`telegram_channels`, `notification_events`, `notification_rules`, `notification_log`), `fn_tg_send` / `fn_notify_emit` / `fn_notify_drain` (advisory lock + thu kết quả pg_net + trần retry) / `fn_notify_prune` / `fn_notify_test`, cron 1 phút + cron dọn 30 ngày, kill-switch, seed 22 luật cho 7 luồng | 1 migration | ~½ ngày |
 | **2** | ✅ **LIVE** `20260760000000_notify_triggers_low_volume.sql`: 5 trigger (nhập hàng, xuất hàng, chuyển kho, hóa đơn, thu nợ) + dò **giá nhập bất thường**. Đo thật: 17 việc/ngày, cảnh báo giá 0,4 tin/ngày | 1 migration | ~½ ngày |
 | **3** | ✅ **LIVE** `20260761` + `20260762`: báo **từng hành động, độ trễ ~15 giây** (cron xuống `15 seconds`). Thêm trigger `orders`, `cashbook_transactions`, `sales_returns`; bỏ nhịp gom; nới `daily_cap`; nhãn tiếng Việt; ngưỡng đơn lớn 5tr | 2 migration | ~½ ngày |
+| **A** | ✅ **LIVE** `20260768`: nền **kênh khách hàng** — `customers.telegram_chat_id` / `branches.telegram_chat_id` ("idtlg"), `notification_rules.audience` (`internal`\|`customer`) là ranh giới chống lộ giá vốn, `fn_notify_target()` là cửa duy nhất giải đích đến, lưu `tg_message_id`, tự tắt nhóm chết khi 403 | 1 migration | ~½ ngày |
+| **B** | ✅ **LIVE** `20260769` + `20260770`: 4 lớp chống tin sai — hoãn `delay_sec` · `subject_key` đè bản chưa gửi · **`fn_tg_edit()` sửa lại tin đã gửi** · chế độ khô. Kèm quy tắc **nhóm thử phải là nhóm nội bộ** + `fn_notify_config_audit()` | 2 migration | ~1 ngày |
+| **C** | ✅ **LIVE** `20260771` + `20260772`: **phiếu giao hàng gửi khách** (`sales.order_customer`, hoãn 10 phút) — hàng hoá, tiền thu, công nợ hiện tại; không giá vốn/lợi nhuận. Kèm vá **số lượng thập phân bị làm tròn** | 2 migration | ~½ ngày |
+| **E** | ✅ **LIVE** `20260773`→`20260776` + FE: **nút ✈️ gửi khuyến mãi vào nhóm Telegram**. Modal 3 bước xem trước / gửi thử nội bộ / gửi thật. Trần 1 tin/khách/7 ngày, có opt-out, tách trần tốc độ theo từng nhóm vs toàn bot, thêm `sendPhoto` | 4 migration + FE | ~1 ngày |
+| **F** | ⏳ **VIỆC CỦA USER**: xây phác đồ vaccine cho gà thịt và heo thịt | — | — |
+| **G** | Cron nhắc lịch vaccine gửi nhóm khách + nhóm chi nhánh | 1 migration | ~1 ngày |
 | **4** | Chốt ngày 17:30 theo chi nhánh + 17:45 tổng công ty | 1 migration | ~¼ ngày |
 | **5** | Trang `/system-settings` → tab **Thông báo**: bật/tắt từng loại, chỉnh ngưỡng, chọn kênh, xem log gửi, nút **Gửi thử** | FE | ~½ ngày |
 | **6** | Edge Function `telegram-bot` (2 chiều: `/doanhthu`, `/quy`, `/ton`, `/donhang` + **nút duyệt phiếu chuyển kho**) | Edge Function + migration | ~1 ngày |
 
-Đợt 1–4 đã giải quyết trọn vẹn yêu cầu. Đợt 5–6 là tiện nghi, có thể lùi.
+**Đã xong:** 1, 2, 3 (nội bộ) và A, B, C, E (kênh khách + khuyến mãi).
+**Đường găng còn lại là F** — không có phác đồ vaccine thì G không có gì để nhắc.
+Đợt 4, 5, 6 là tiện nghi, có thể lùi.
+
+---
+
+## 9. Kênh khách hàng — mô hình đã chốt
+
+Mỗi khách và mỗi chi nhánh có **một nhóm Telegram riêng do user tạo tay**, trong nhóm
+có khách + chủ + kế toán. Bot gửi được vào nhóm mà khách **không cần bấm Start** — đây
+là cách hợp lệ vượt hạn chế "bot không nhắn trước".
+
+> 🔴 **Bot KHÔNG tạo được nhóm** — Bot API không có hàm này, chỉ tài khoản người thật mới
+> tạo được. Tự động hoá bằng userbot MTProto sẽ bị Telegram khoá tài khoản. Đừng đề xuất.
+
+**Ba loại tin gửi khách (user chốt):**
+1. Phiếu giao hàng — hàng hoá, tiền thu, công nợ hiện tại ✅
+2. Nhắc lịch vaccine — chờ đợt F
+3. Khuyến mãi broadcast ✅
+
+> 🔴 **KHÔNG gửi tin "nhắc công nợ đến hạn"** — user nói nhạy cảm. Hiện số dư trong
+> phiếu giao thì được (nó là một phần của biên nhận), tin đòi nợ độc lập thì không.
+
+**Vì sao không dùng Zalo:** ZNS là kênh duy nhất khả thi cho khách đại trà ở Việt Nam
+(~200–600đ/tin, ~320k/tháng cho 1.069 đơn) nhưng cần OA xác thực bằng giấy phép kinh
+doanh, template duyệt trước, và refresh token mỗi giờ. Telegram thắng ở: miễn phí, nội
+dung tự do, **hai chiều**, và **sửa/xoá được tin đã gửi** — SMS/ZNS bắn đi là vĩnh viễn.
+Tạm gác, chưa loại bỏ.
 
 ---
 
