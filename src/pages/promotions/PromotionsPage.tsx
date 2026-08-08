@@ -43,6 +43,22 @@ interface PromoPreview {
 /** Phạm vi người nhận tin khuyến mãi. */
 type PromoScope = 'all' | 'filter' | 'pick'
 
+/** Nhóm khách hàng (quan hệ nhiều-nhiều) — nguồn từ fn_customer_groups_overview. */
+interface CustomerGroupLite {
+  id: string
+  name: string
+  kind: string
+  so_thanh_vien: number
+  so_co_nhom_tg: number
+}
+
+const GROUP_KIND_LABELS: Record<string, string> = {
+  khu_vuc: 'Khu vực',
+  hang_khach: 'Hạng khách',
+  chan_nuoi: 'Chăn nuôi',
+  khac: 'Khác',
+}
+
 /** Khớp enum customer_lifecycle_stage trong DB. */
 const LIFECYCLE_STAGES: { value: string; label: string }[] = [
   { value: 'new', label: 'Khách mới' },
@@ -246,6 +262,8 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
   const [done, setDone] = useState('')
 
   const [scope, setScope] = useState<PromoScope>('all')
+  const [groups, setGroups] = useState<CustomerGroupLite[]>([])
+  const [fGroup, setFGroup] = useState<string[]>([])
   const [fStage, setFStage] = useState<string[]>([])
   const [fTier, setFTier] = useState<string[]>([])
   const [fType, setFType] = useState<string[]>([])
@@ -262,6 +280,10 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
   useEffect(() => {
     supabase.from('branches').select('id, name').eq('is_active', true).order('name')
       .then(({ data }: { data: BranchLite[] | null }) => { if (data) setBranches(data) })
+    supabase.rpc('fn_customer_groups_overview')
+      .then(({ data }: { data: CustomerGroupLite[] | null }) => {
+        if (data) setGroups(data.filter(g => g.so_thanh_vien > 0))
+      })
   }, [])
 
   /** Tham số phạm vi gửi kèm mọi lời gọi RPC, để xem trước và gửi thật luôn khớp. */
@@ -273,6 +295,8 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
       return {
         p_customer_ids: null,
         p_filter: {
+          // Chọn nhiều nhóm = phép HỢP. Khách thuộc cả ba nhóm vẫn chỉ nhận MỘT tin.
+          ...(fGroup.length ? { group_ids: fGroup } : {}),
           ...(fStage.length ? { lifecycle_stage: fStage } : {}),
           ...(fTier.length ? { value_tier: fTier } : {}),
           ...(fType.length ? { customer_type: fType } : {}),
@@ -282,7 +306,7 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
       }
     }
     return { p_customer_ids: null, p_filter: {}, p_bypass_cooldown: false }
-  }, [scope, pickedIds, bypass, fStage, fTier, fType, fBranch])
+  }, [scope, pickedIds, bypass, fGroup, fStage, fTier, fType, fBranch])
 
   const call = useCallback(async (
     mode: 'preview' | 'test' | 'send',
@@ -386,6 +410,25 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
 
           {scope === 'filter' && (
             <div className="space-y-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+              {groups.length > 0 ? (
+                <FilterChips
+                  label="Nhóm khách hàng — chọn nhiều nhóm là phép HỢP"
+                  options={groups.map(g => ({
+                    value: g.id,
+                    label: `${g.name} · ${GROUP_KIND_LABELS[g.kind] ?? 'Khác'} · ${g.so_co_nhom_tg}/${g.so_thanh_vien}`,
+                  }))}
+                  selected={fGroup}
+                  onChange={setFGroup}
+                />
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Chưa có nhóm khách hàng nào có thành viên.{' '}
+                  <a href="/customers/groups" className="text-blue-600 hover:underline">
+                    Tạo nhóm theo khu vực / hạng khách / chăn nuôi
+                  </a>{' '}
+                  rồi quay lại đây.
+                </p>
+              )}
               <FilterChips label="Giai đoạn" options={LIFECYCLE_STAGES} selected={fStage} onChange={setFStage} />
               <FilterChips label="Hạng khách" options={CUSTOMER_TIERS} selected={fTier} onChange={setFTier} />
               <FilterChips label="Loại khách" options={CUSTOMER_TYPES} selected={fType} onChange={setFType} />
@@ -396,7 +439,9 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
                 onChange={setFBranch}
               />
               <p className="text-[11px] text-gray-400">
-                Không chọn gì ở một chiều nghĩa là không lọc theo chiều đó.
+                Không chọn gì ở một chiều nghĩa là không lọc theo chiều đó. Các chiều
+                khác nhau thì GIAO nhau: chọn nhóm “Ân Hảo” và hạng “VIP” nghĩa là
+                khách vừa thuộc Ân Hảo vừa là VIP.
               </p>
             </div>
           )}
