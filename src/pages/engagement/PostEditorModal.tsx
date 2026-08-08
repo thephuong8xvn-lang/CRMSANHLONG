@@ -3,6 +3,7 @@ import { X, Upload, Trash2, Image as ImageIcon, Loader2, Link as LinkIcon } from
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { POST_KINDS, type Post, type PostImage } from './postTypes'
+import { compressImage } from './compressImage'
 
 /**
  * Soạn bài viết gửi khách.
@@ -41,6 +42,7 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
   const [images, setImages] = useState<PostImage[]>([])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [nenInfo, setNenInfo] = useState('')
 
   /**
    * 🪤 Bài MỚI cũng phải thêm ảnh được ngay.
@@ -109,14 +111,23 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
 
   const upload = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    const file = files[0]
+    const goc = files[0]
     if (images.length >= MAX_ANH) { setError(`Tối đa ${MAX_ANH} ảnh mỗi bài.`); return }
-    if (file.size > MAX_MB * 1024 * 1024) { setError(`Ảnh tối đa ${MAX_MB} MB.`); return }
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    if (goc.size > MAX_MB * 1024 * 1024) { setError(`Ảnh tối đa ${MAX_MB} MB.`); return }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(goc.type)) {
       setError('Chỉ nhận ảnh JPG, PNG hoặc WEBP.'); return
     }
 
-    setBusy('upload'); setError('')
+    setBusy('upload'); setError(''); setNenInfo('')
+
+    // Nén TRƯỚC khi tải lên: Telegram vốn tự nén lại ở phía họ, nên giữ nguyên
+    // ảnh 3 MB chỉ tốn kho của mình chứ khách không thấy đẹp hơn.
+    const { file, gocKB, moiKB, daNen } = await compressImage(goc)
+    if (daNen) {
+      setNenInfo(`Đã nén ${gocKB.toLocaleString('vi-VN')} KB → ${moiKB.toLocaleString('vi-VN')} KB `
+        + `(giảm ${Math.round(100 - moiKB * 100 / gocKB)}%)`)
+    }
+
     const id = await ensurePost()
     if (!id) { setBusy(''); return }
 
@@ -306,12 +317,19 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
                       : <><LinkIcon size={16} /> Thêm bằng đường dẫn</>}
                   </button>
                 </div>
+                {nenInfo && (
+                  <p className="mt-1 text-tiny text-success-500 bg-success-500/10 rounded-lg p-2">
+                    {nenInfo}
+                  </p>
+                )}
                 <p className="mt-1 text-tiny text-gray-400">
-                  JPG, PNG hoặc WEBP, tối đa {MAX_MB} MB. Telegram tải ảnh đúng một
-                  lần rồi giữ bản sao, nên gửi cho bao nhiêu nhóm cũng không tốn thêm
-                  dữ liệu. Ảnh lấy từ Google Ảnh hay web ngoài thì <b>chỉ cần sống
-                  tới lần gửi đầu</b> — nhưng link hết hạn trước đó là hỏng cả tin,
-                  nên tải lên vẫn chắc ăn hơn.
+                  JPG, PNG hoặc WEBP, tối đa {MAX_MB} MB. Ảnh <b>tự động nén</b> về
+                  cỡ Telegram hiển thị (thường nhỏ hơn 90%) trước khi tải lên, nên
+                  không phải lo đầy kho. Telegram cũng chỉ tải ảnh <b>đúng một lần</b>
+                  {' '}rồi giữ bản sao, gửi cho bao nhiêu nhóm cũng không tốn thêm dữ
+                  liệu. Ảnh lấy từ Google Ảnh hay web ngoài thì chỉ cần sống tới lần
+                  gửi đầu — nhưng link hết hạn trước đó là hỏng cả tin, nên tải lên
+                  vẫn chắc ăn hơn.
                 </p>
               </div>
             )}
