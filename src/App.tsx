@@ -52,6 +52,7 @@ const CashbookPage               = lazy(() => import('./pages/cashbook/CashbookP
 const DebtManagementPage         = lazy(() => import('./pages/debts/DebtManagementPage'))
 const ReportsHubPage             = lazy(() => import('./pages/reports/ReportsHubPage'))
 const ProfitReportPage           = lazy(() => import('./pages/reports/ProfitReportPage'))
+const BranchTransferReportPage   = lazy(() => import('./pages/reports/BranchTransferReportPage'))
 const CustomerProfileReportPage  = lazy(() => import('./pages/reports/CustomerProfileReportPage'))
 const InventoryValuationReportPage = lazy(() => import('./pages/reports/InventoryValuationReportPage'))
 const StrategicProductsReportPage = lazy(() => import('./pages/reports/StrategicProductsReportPage'))
@@ -216,6 +217,7 @@ function AppRoutes() {
       <Route path="/debts" element={<ProtectedRoute perms={['reports.debt']}><DebtManagementPage /></ProtectedRoute>} />
       <Route path="/reports" element={<ProtectedRoute adminOnly><ReportsHubPage /></ProtectedRoute>} />
       <Route path="/reports/profit" element={<ProtectedRoute adminOnly><ProfitReportPage /></ProtectedRoute>} />
+      <Route path="/reports/branch-transfers" element={<ProtectedRoute adminOnly><BranchTransferReportPage /></ProtectedRoute>} />
       <Route path="/reports/customer-profile" element={<ProtectedRoute adminOnly><CustomerProfileReportPage /></ProtectedRoute>} />
       <Route path="/reports/inventory-valuation" element={<ProtectedRoute adminOnly><InventoryValuationReportPage /></ProtectedRoute>} />
       <Route path="/reports/strategic-products" element={<ProtectedRoute adminOnly><StrategicProductsReportPage /></ProtectedRoute>} />

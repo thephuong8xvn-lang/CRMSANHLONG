@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target, BarChart3, Activity
+  TrendingUp, Users, ChevronRight, Info, RefreshCw, BarChart2, Package, Target, BarChart3, Activity,
+  ArrowRightLeft,
 } from 'lucide-react'
 import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
@@ -17,6 +18,16 @@ const REPORT_CARDS = [
     icon: TrendingUp,
     iconBg: 'bg-blue-50 text-blue-600',
     route: '/reports/profit',
+  },
+  {
+    id: 'branch-transfers',
+    title: 'Báo cáo chuyển kho nội bộ (doanh số chi nhánh)',
+    tag: 'Chi nhánh',
+    tagColor: 'bg-teal-100 text-teal-700',
+    dotColor: 'bg-teal-500',
+    icon: ArrowRightLeft,
+    iconBg: 'bg-teal-50 text-teal-600',
+    route: '/reports/branch-transfers',
   },
   {
     id: 'customer-profile',
