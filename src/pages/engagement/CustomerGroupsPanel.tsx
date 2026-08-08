@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Plus, Users, Search, X, Trash2, Send, RefreshCw,
+  Plus, Users, Search, X, Trash2, Send, RefreshCw,
   AlertTriangle, CheckCircle2, Layers, Pencil,
 } from 'lucide-react'
-import Layout from '../../components/Layout'
 import { supabase } from '../../lib/supabase'
 
 /**
@@ -18,9 +16,13 @@ import { supabase } from '../../lib/supabase'
  * address NULL cả 1.945 khách), nên nhóm khu vực không thể tự sinh. Đường
  * nhanh nhất là "Thêm hàng loạt" với ô tìm kiếm theo tên — tên trại ở đây
  * thường đã chứa địa danh ("Ân Hảo", "Hoài Ân"...).
+ *
+ * Trước đây đây là một trang riêng ở /customers/groups. Nay là một tab của
+ * module Tương tác khách hàng, vì tạo nhóm và gửi tin cho nhóm là cùng một
+ * việc — tách ra hai chỗ chỉ làm người dùng phải nhớ đường đi.
  */
 
-interface CustomerGroup {
+export interface CustomerGroup {
   id: string
   code: string
   name: string
@@ -55,7 +57,7 @@ const KINDS: { value: string; label: string; hint: string }[] = [
   { value: 'khu_vuc', label: 'Khu vực', hint: 'Ân Hảo, Hoài Ân, Phù Mỹ…' },
   { value: 'hang_khach', label: 'Hạng khách', hint: 'VIP, thân thiết, mới…' },
   { value: 'chan_nuoi', label: 'Chăn nuôi', hint: 'Gà thịt, gà đẻ, heo…' },
-  { value: 'khac', label: 'Khác', hint: '' },
+  { value: 'khac', label: 'Khác', hint: 'Thử nghiệm, khách theo chiến dịch…' },
 ]
 
 const kindLabel = (k: string) => KINDS.find(x => x.value === k)?.label ?? 'Khác'
@@ -74,9 +76,7 @@ function slugify(s: string) {
     .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
 }
 
-export default function CustomerGroupsPage() {
-  const navigate = useNavigate()
-
+export default function CustomerGroupsPanel() {
   const [groups, setGroups] = useState<CustomerGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [alertMsg, setAlertMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -137,112 +137,103 @@ export default function CustomerGroupsPage() {
   }
 
   return (
-    <Layout activeMenu="Khách hàng">
-      <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
-        {alertMsg && (
-          <div className={`fixed top-4 right-4 z-55 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg border text-body-md font-medium ${
-            alertMsg.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-              : 'bg-red-50 text-red-800 border-red-200'
-          }`}>
-            {alertMsg.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-            {alertMsg.text}
-          </div>
-        )}
-
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/customers')}
-              className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
-              <ArrowLeft size={18} />
-            </button>
-            <div>
-              <h1 className="text-heading-md font-semibold text-gray-900">Nhóm khách hàng</h1>
-              <p className="text-tiny text-gray-500">
-                Một khách có thể thuộc nhiều nhóm — dùng để nhắm tin khuyến mãi.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={load} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            </button>
-            <button onClick={() => setEditing({ kind: 'khu_vuc' })}
-              className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-gray-0 rounded-lg text-body-md hover:bg-blue-600">
-              <Plus size={16} /> Tạo nhóm
-            </button>
-          </div>
+    <div className="space-y-5">
+      {alertMsg && (
+        <div className={`fixed top-4 right-4 z-55 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg border text-body-md font-medium ${
+          alertMsg.type === 'success'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : 'bg-red-50 text-red-800 border-red-200'
+        }`}>
+          {alertMsg.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+          {alertMsg.text}
         </div>
+      )}
 
-        {!loading && groups.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center space-y-2">
-            <Layers className="mx-auto text-gray-300" size={32} />
-            <p className="text-body-md text-gray-600">Chưa có nhóm nào.</p>
-            <p className="text-tiny text-gray-500 max-w-md mx-auto">
-              Tạo nhóm theo khu vực, hạng khách hoặc loại chăn nuôi. Sau đó vào
-              Khuyến mãi → nút ✈️ → “Theo nhóm khách” để gửi đúng nhóm cần gửi.
-            </p>
-          </div>
-        )}
-
-        {KINDS.map(k => {
-          const list = byKind.get(k.value) ?? []
-          if (list.length === 0) return null
-          return (
-            <div key={k.value} className="space-y-2">
-              <h2 className="text-body-md font-semibold text-gray-700">{k.label}</h2>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {list.map(g => (
-                  <div key={g.id} className="rounded-lg border border-gray-200 bg-gray-0 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-body-md font-medium text-gray-900 truncate">{g.name}</p>
-                        {g.description && (
-                          <p className="text-tiny text-gray-500 truncate">{g.description}</p>
-                        )}
-                      </div>
-                      <span className={`shrink-0 text-tiny px-2 py-0.5 rounded-lg border ${KIND_COLORS[g.kind] ?? KIND_COLORS.khac}`}>
-                        {kindLabel(g.kind)}
-                      </span>
-                    </div>
-
-                    <div className="mt-2 flex items-center gap-3 text-tiny">
-                      <span className="text-gray-600">
-                        <Users size={12} className="inline mb-0.5" /> {g.so_thanh_vien} khách
-                      </span>
-                      <span className={g.so_co_nhom_tg > 0 ? 'text-emerald-600' : 'text-gray-400'}>
-                        <Send size={12} className="inline mb-0.5" /> {g.so_co_nhom_tg} nhắn được
-                      </span>
-                    </div>
-
-                    <div className="mt-2 flex gap-1.5">
-                      <button onClick={() => setOpenGroup(g)}
-                        className="px-2.5 py-1 text-tiny border border-gray-200 rounded-lg hover:bg-gray-50">
-                        Thành viên
-                      </button>
-                      <button onClick={() => setEditing(g)}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
-                        <Pencil size={14} />
-                      </button>
-                      <button onClick={() => deleteGroup(g)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-
-        {groups.length > 0 && (
-          <p className="text-tiny text-gray-400">
-            “Nhắn được” = khách trong nhóm đã có id nhóm Telegram và đang bật nhận tin.
-            Số này mới là số thật sẽ nhận khuyến mãi.
-          </p>
-        )}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-tiny text-gray-500">
+          Một khách có thể thuộc nhiều nhóm. Chọn nhiều nhóm khi gửi là phép HỢP —
+          khách thuộc cả ba nhóm vẫn chỉ nhận một tin.
+        </p>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={load} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500"
+            title="Tải lại">
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button onClick={() => setEditing({ kind: 'khac' })}
+            className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-gray-0 rounded-lg text-body-md hover:bg-blue-600">
+            <Plus size={16} /> Tạo nhóm
+          </button>
+        </div>
       </div>
+
+      {!loading && groups.length === 0 && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center space-y-2">
+          <Layers className="mx-auto text-gray-300" size={32} />
+          <p className="text-body-md text-gray-600">Chưa có nhóm nào.</p>
+          <p className="text-tiny text-gray-500 max-w-md mx-auto">
+            Tạo một nhóm — ví dụ “Nhóm thử nghiệm” — rồi thêm vài khách vào đó.
+            Sang tab Bài viết là gửi được ngay cho đúng nhóm này.
+          </p>
+        </div>
+      )}
+
+      {KINDS.map(k => {
+        const list = byKind.get(k.value) ?? []
+        if (list.length === 0) return null
+        return (
+          <div key={k.value} className="space-y-2">
+            <h2 className="text-body-md font-semibold text-gray-700">{k.label}</h2>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {list.map(g => (
+                <div key={g.id} className="rounded-lg border border-gray-200 bg-gray-0 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-body-md font-medium text-gray-900 truncate">{g.name}</p>
+                      {g.description && (
+                        <p className="text-tiny text-gray-500 truncate">{g.description}</p>
+                      )}
+                    </div>
+                    <span className={`shrink-0 text-tiny px-2 py-0.5 rounded-lg border ${KIND_COLORS[g.kind] ?? KIND_COLORS.khac}`}>
+                      {kindLabel(g.kind)}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-3 text-tiny">
+                    <span className="text-gray-600">
+                      <Users size={12} className="inline mb-0.5" /> {g.so_thanh_vien} khách
+                    </span>
+                    <span className={g.so_co_nhom_tg > 0 ? 'text-emerald-600' : 'text-gray-400'}>
+                      <Send size={12} className="inline mb-0.5" /> {g.so_co_nhom_tg} nhắn được
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex gap-1.5">
+                    <button onClick={() => setOpenGroup(g)}
+                      className="px-2.5 py-1 text-tiny border border-gray-200 rounded-lg hover:bg-gray-50">
+                      Thành viên
+                    </button>
+                    <button onClick={() => setEditing(g)}
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => deleteGroup(g)}
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {groups.length > 0 && (
+        <p className="text-tiny text-gray-400">
+          “Nhắn được” = khách trong nhóm đã có id nhóm Telegram và đang bật nhận tin.
+          Số này mới là số thật sẽ nhận bài viết.
+        </p>
+      )}
 
       {editing && (
         <GroupFormModal
@@ -260,7 +251,7 @@ export default function CustomerGroupsPage() {
           onAlert={setAlertMsg}
         />
       )}
-    </Layout>
+    </div>
   )
 }
 
@@ -290,7 +281,7 @@ function GroupFormModal({ value, onChange, onSave, onClose }: {
             <input
               autoFocus
               className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-body-md"
-              placeholder="Ví dụ: Khu vực Ân Hảo"
+              placeholder="Ví dụ: Nhóm thử nghiệm"
               value={value.name ?? ''}
               onChange={e => onChange({ ...value, name: e.target.value })}
             />

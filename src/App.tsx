@@ -23,7 +23,7 @@ const CustomerDetailPage         = lazy(() => import('./pages/customers/Customer
 const CustomerSettingsPage       = lazy(() => import('./pages/customers/CustomerSettingsPage'))
 const CustomerDuplicatesPage     = lazy(() => import('./pages/customers/CustomerDuplicatesPage'))
 const CustomerCarePage           = lazy(() => import('./pages/customers/CustomerCarePage'))
-const CustomerGroupsPage         = lazy(() => import('./pages/customers/CustomerGroupsPage'))
+const EngagementPage             = lazy(() => import('./pages/engagement/EngagementPage'))
 const CreditLimitsPage           = lazy(() => import('./pages/customers/CreditLimitsPage'))
 const CustomerMapPage            = lazy(() => import('./pages/customers/CustomerMapPage'))
 const ProductListPage            = lazy(() => import('./pages/products/ProductListPage'))
@@ -181,7 +181,9 @@ function AppRoutes() {
       <Route path="/customers/duplicates" element={<ProtectedRoute adminOnly><CustomerDuplicatesPage /></ProtectedRoute>} />
       <Route path="/customers/credit-limits" element={<ProtectedRoute adminOnly><CreditLimitsPage /></ProtectedRoute>} />
       <Route path="/customers/map" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerMapPage /></ProtectedRoute>} />
-      <Route path="/customers/groups" element={<ProtectedRoute perms={['customers.edit']}><CustomerGroupsPage /></ProtectedRoute>} />
+      {/* Nhóm khách hàng đã dọn vào module Tương tác khách hàng. Giữ đường cũ
+          chuyển hướng sang tab tương ứng để link đã phát ra không chết. */}
+      <Route path="/customers/groups" element={<Navigate to="/engagement?tab=groups" replace />} />
       <Route path="/customers/care" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerCarePage /></ProtectedRoute>} />
       <Route path="/customers/:id" element={<ProtectedRoute perms={['customers.view_own', 'customers.view_team', 'customers.view_all']}><CustomerDetailPage /></ProtectedRoute>} />
       <Route path="/products" element={<ProtectedRoute perms={['products.view', 'products.manage', 'pricing.manage', 'promotions.manage']}><ProductListPage /></ProtectedRoute>} />
@@ -232,6 +234,10 @@ function AppRoutes() {
       <Route path="/diseases" element={<ProtectedRoute perms={['herd_projects.view_all', 'herd_projects.create']}><DiseasesPage /></ProtectedRoute>} />
       {/* Cấu hình Hệ thống & Tổ chức: CHỈ Admin (quyền cao nhất), loại cả CEO. */}
       <Route path="/system-settings" element={<ProtectedRoute adminOnly><SystemSettingsPage /></ProtectedRoute>} />
+      {/* Tương tác khách hàng: soạn bài + gửi vào nhóm Telegram của khách, và
+          quản lý nhóm khách hàng. Gác `adminOnly` cho khớp nhóm menu Cấu hình
+          và khớp `fn_is_admin()` bên trong `fn_post_broadcast`. */}
+      <Route path="/engagement" element={<ProtectedRoute adminOnly><EngagementPage /></ProtectedRoute>} />
       <Route path="/promotions" element={<ProtectedRoute perms={['promotions.manage']}><PromotionsPage /></ProtectedRoute>} />
       <Route path="/print-preview" element={<ProtectedRoute><PrintPreviewPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

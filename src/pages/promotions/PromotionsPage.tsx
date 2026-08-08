@@ -302,10 +302,13 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
           ...(fType.length ? { customer_type: fType } : {}),
           ...(fBranch.length ? { branch_ids: fBranch } : {}),
         },
-        p_bypass_cooldown: false,
+        // Trần tần suất đã bỏ hẳn (`20260791`), nên cờ này chỉ còn ý nghĩa lịch
+        // sử. Truyền theo lựa chọn của người dùng thay vì ép cứng false — trước
+        // đây ép cứng làm gửi theo nhóm bị chặn ngay ở lần thứ hai trong tuần.
+        p_bypass_cooldown: bypass,
       }
     }
-    return { p_customer_ids: null, p_filter: {}, p_bypass_cooldown: false }
+    return { p_customer_ids: null, p_filter: {}, p_bypass_cooldown: bypass }
   }, [scope, pickedIds, bypass, fGroup, fStage, fTier, fType, fBranch])
 
   const call = useCallback(async (
@@ -397,7 +400,7 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
                 <button
                   key={o.v}
                   type="button"
-                  onClick={() => { setScope(o.v); if (o.v !== 'pick') setBypass(false) }}
+                  onClick={() => setScope(o.v)}
                   className={`px-3 py-1.5 text-sm rounded-lg border ${scope === o.v
                     ? 'bg-blue-500 text-gray-0 border-blue-500'
                     : 'bg-gray-0 text-gray-600 border-gray-200 hover:bg-gray-50'}`}
@@ -423,7 +426,7 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
               ) : (
                 <p className="text-xs text-gray-500">
                   Chưa có nhóm khách hàng nào có thành viên.{' '}
-                  <a href="/customers/groups" className="text-blue-600 hover:underline">
+                  <a href="/engagement?tab=groups" className="text-blue-600 hover:underline">
                     Tạo nhóm theo khu vực / hạng khách / chăn nuôi
                   </a>{' '}
                   rồi quay lại đây.
@@ -492,18 +495,21 @@ function PromoBroadcastModal({ promo, onClose }: { promo: Promotion; onClose: ()
                 </div>
               )}
 
-              <label className="flex items-start gap-2 text-xs text-gray-600">
-                <input type="checkbox" className="mt-0.5" checked={bypass}
-                  onChange={e => setBypass(e.target.checked)} />
-                <span>
-                  Bỏ qua giới hạn 1 tin khuyến mãi / khách / 7 ngày.
-                  <span className="block text-gray-400">
-                    Chỉ dùng được khi chọn tay như thế này — không áp cho cả một bộ lọc.
-                  </span>
-                </span>
-              </label>
             </div>
           )}
+
+          {/* Trần "1 tin / khách / 7 ngày" đã bỏ hẳn từ 08/08/2026. Ô này giữ lại
+              để còn dùng được nếu sau này bật trần trở lại trong Cấu hình. */}
+          <label className="flex items-start gap-2 text-xs text-gray-600">
+            <input type="checkbox" className="mt-0.5" checked={bypass}
+              onChange={e => setBypass(e.target.checked)} />
+            <span>
+              Bỏ qua giới hạn tần suất (nếu có bật trong Cấu hình).
+              <span className="block text-gray-400">
+                Hiện hệ thống không đặt trần nào, nên ô này không đổi gì.
+              </span>
+            </span>
+          </label>
 
           {/* ── Ghi chú riêng ──────────────────────────────────────── */}
           <div>

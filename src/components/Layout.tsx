@@ -101,7 +101,9 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
         { label: 'Khách hàng', icon: Users, path: '/customers', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'], primary: 1 },
         { label: 'Bản đồ KH', icon: MapPin, path: '/customers/map', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
         { label: 'Chăm sóc KH', icon: HeartHandshake, path: '/customers/care', perms: ['customers.view_own', 'customers.view_team', 'customers.view_all'] },
-        { label: 'Nhóm khách hàng', icon: Layers, path: '/customers/groups', perms: ['customers.edit'] },
+        // 'Nhóm khách hàng' đã dọn sang module Tương tác khách hàng (nhóm Cấu hình):
+        // gom nhóm và gửi tin cho nhóm là cùng một việc, tách hai chỗ chỉ bắt
+        // người dùng nhớ thêm một đường đi.
         { label: 'Cấu hình KH', icon: Settings, path: '/customers/settings', perms: ['users.manage'] },
         { label: 'Khách trùng SĐT', icon: GitMerge, path: '/customers/duplicates', perms: [], adminOnly: true },
         { label: 'Hạn mức tín dụng', icon: ShieldCheck, path: '/customers/credit-limits', perms: [], adminOnly: true },
@@ -148,6 +150,7 @@ export default function Layout({ children, activeMenu, onSearch, searchElement, 
       // chi nhánh cả nhóm rỗng → biến mất khỏi thanh menu.
       label: 'Cấu hình',
       items: [
+        { label: 'Tương tác khách hàng', icon: Layers, path: '/engagement', perms: [], adminOnly: true },
         { label: 'Cấu hình hệ thống', icon: Settings, path: '/system-settings', perms: [], adminOnly: true },
         { label: 'Báo cáo', icon: BarChart2, path: '/reports', perms: [], adminOnly: true }
       ]
