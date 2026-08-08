@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { X, Upload, Trash2, Image as ImageIcon, Loader2 } from 'lucide-react'
+import { X, Upload, Trash2, Image as ImageIcon, Loader2, Link as LinkIcon } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
 import { POST_KINDS, type Post, type PostImage } from './postTypes'
@@ -42,7 +42,15 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
 
-  const postId = post?.id
+  /**
+   * 🪤 Bài MỚI cũng phải thêm ảnh được ngay.
+   *
+   * Bản đầu bắt "lưu bài trước rồi quay lại thêm ảnh". Hệ quả thật ngoài đời:
+   * người soạn không muốn quay lại nên dán thẳng đường dẫn ảnh vào ô "Đường dẫn
+   * kèm theo" — và tin gửi đi ra một dòng link chữ thay vì tấm ảnh. Nay hễ thêm
+   * ảnh là bài tự lưu trước, người dùng không phải biết tới thứ tự đó.
+   */
+  const [postId, setPostId] = useState<string | undefined>(post?.id)
 
   const loadImages = useCallback(async () => {
     if (!postId) { setImages([]); return }
@@ -58,9 +66,13 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
   const tran = images.length > 0 ? 1000 : 4000
   const conLai = tran - uocTinh
 
-  const save = async () => {
-    if (!title.trim()) { setError('Chưa nhập tiêu đề'); return }
-    setBusy('save'); setError('')
+  /** Nhận ra kiểu dán nhầm hay gặp nhất: bỏ link ảnh vào ô "đường dẫn kèm theo",
+   *  rồi tin gửi đi ra một dòng chữ thay vì tấm ảnh. */
+  const trongNhuLinkAnh = /\.(jpe?g|png|webp|gif)(\?|$)/i.test(linkUrl) ||
+    /(googleusercontent|photos\.fife|ggpht|imgur|cloudinary)/i.test(linkUrl)
+
+  /** Lưu bài và trả về id. Dùng cho cả nút Lưu lẫn lúc thêm ảnh vào bài mới. */
+  const persist = useCallback(async (): Promise<string | null> => {
     const payload = {
       title: title.trim(),
       body: body.trim(),
@@ -71,24 +83,32 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
       ? await supabase.from('posts').update(payload).eq('id', postId).select('id').single()
       : await supabase.from('posts')
           .insert({ ...payload, created_by: user?.id ?? null }).select('id').single()
-    setBusy('')
-    if (err) { setError(err.message); return }
+    if (err) { setError(err.message); return null }
+    if (data?.id && !postId) setPostId(data.id)
     onSaved()
-    if (!postId && data?.id) {
-      // Bài mới: giữ cửa sổ mở để tải ảnh lên, vì ảnh cần post_id.
-      setError('')
-      onClose()
-    } else {
-      onClose()
+    return data?.id ?? postId ?? null
+  }, [title, body, kind, linkUrl, postId, user?.id, onSaved])
+
+  const save = async () => {
+    if (!title.trim()) { setError('Chưa nhập tiêu đề'); return }
+    setBusy('save'); setError('')
+    const id = await persist()
+    setBusy('')
+    if (id) onClose()
+  }
+
+  /** Ảnh phải gắn vào một bài đã có id ⇒ lưu ngầm trước khi thêm ảnh. */
+  const ensurePost = async (): Promise<string | null> => {
+    if (postId) return postId
+    if (!title.trim()) {
+      setError('Nhập tiêu đề trước đã — ảnh cần gắn vào một bài có tên.')
+      return null
     }
+    return persist()
   }
 
   const upload = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    if (!postId) {
-      setError('Lưu bài trước rồi mới thêm ảnh được — ảnh cần gắn vào bài.')
-      return
-    }
     const file = files[0]
     if (images.length >= MAX_ANH) { setError(`Tối đa ${MAX_ANH} ảnh mỗi bài.`); return }
     if (file.size > MAX_MB * 1024 * 1024) { setError(`Ảnh tối đa ${MAX_MB} MB.`); return }
@@ -97,15 +117,18 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
     }
 
     setBusy('upload'); setError('')
+    const id = await ensurePost()
+    if (!id) { setBusy(''); return }
+
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
-    const path = `${postId}/${Date.now()}.${ext}`
+    const path = `${id}/${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage.from(BUCKET)
       .upload(path, file, { cacheControl: '31536000', upsert: false })
     if (upErr) { setBusy(''); setError('Tải ảnh lỗi: ' + upErr.message); return }
 
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
     const { error: insErr } = await supabase.from('post_images').insert({
-      post_id: postId,
+      post_id: id,
       url: pub.publicUrl,
       sort_order: (images[images.length - 1]?.sort_order ?? 0) + 1,
     })
@@ -113,6 +136,33 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
     if (insErr) { setError(insErr.message); return }
     loadImages()
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  /**
+   * Thêm ảnh bằng ĐƯỜNG DẪN có sẵn (Google Ảnh, website, kho ảnh khác).
+   *
+   * ⚠️ Telegram chỉ tải ảnh từ đường dẫn này ĐÚNG MỘT LẦN — lần gửi đầu tiên —
+   * rồi giữ bản sao trên máy chủ của họ. Nên link chỉ cần sống tới lúc đó. Nhưng
+   * nếu link chết TRƯỚC lần gửi đầu thì cả tin bị từ chối, mà link Google Ảnh
+   * thì hay hết hạn. Tải file lên kho của mình vẫn là đường chắc ăn hơn.
+   */
+  const addByUrl = async () => {
+    const raw = prompt('Dán đường dẫn ảnh (phải là link tới chính file ảnh, kết thúc bằng .jpg/.png/.webp hoặc link ảnh trực tiếp):')
+    if (!raw) return
+    const url = raw.trim()
+    if (!/^https?:\/\//i.test(url)) { setError('Đường dẫn phải bắt đầu bằng http:// hoặc https://'); return }
+    if (images.length >= MAX_ANH) { setError(`Tối đa ${MAX_ANH} ảnh mỗi bài.`); return }
+
+    setBusy('url'); setError('')
+    const id = await ensurePost()
+    if (!id) { setBusy(''); return }
+    const { error: insErr } = await supabase.from('post_images').insert({
+      post_id: id, url,
+      sort_order: (images[images.length - 1]?.sort_order ?? 0) + 1,
+    })
+    setBusy('')
+    if (insErr) { setError(insErr.message); return }
+    loadImages()
   }
 
   const removeImage = async (img: PostImage) => {
@@ -199,17 +249,23 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
               value={linkUrl}
               onChange={e => setLinkUrl(e.target.value)}
             />
+            {trongNhuLinkAnh ? (
+              <p className="mt-1 text-tiny text-warning-500 bg-warning-500/10 rounded-lg p-2">
+                Đây trông như đường dẫn tới một tấm ảnh. Ô này chỉ gửi ra <b>một
+                dòng chữ xanh</b> để khách bấm vào, không hiện thành ảnh. Muốn khách
+                thấy ảnh thì bấm <b>“Thêm bằng đường dẫn”</b> ở mục Ảnh bên dưới.
+              </p>
+            ) : (
+              <p className="mt-1 text-tiny text-gray-400">
+                Hiện ra như một dòng chữ ở cuối tin để khách bấm vào. Không phải chỗ
+                để thêm ảnh.
+              </p>
+            )}
           </div>
 
           {/* ── Ảnh ─────────────────────────────────────────────────── */}
           <div>
             <label className="text-tiny text-gray-500">Ảnh ({images.length}/{MAX_ANH})</label>
-
-            {!postId && (
-              <p className="mt-1 text-tiny text-warning-500 bg-warning-500/10 rounded-lg p-2">
-                Lưu bài trước rồi quay lại thêm ảnh — ảnh phải gắn vào một bài đã có.
-              </p>
-            )}
 
             {images.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
@@ -232,24 +288,35 @@ export default function PostEditorModal({ post, onClose, onSaved }: {
               </div>
             )}
 
-            {postId && images.length < MAX_ANH && (
+            {images.length < MAX_ANH && (
               <div className="mt-2">
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp"
                   className="hidden" onChange={e => upload(e.target.files)} />
-                <button type="button" onClick={() => fileRef.current?.click()} disabled={!!busy}
-                  className="flex items-center gap-1.5 px-3 py-2 text-body-md border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
-                  {busy === 'upload'
-                    ? <><Loader2 size={16} className="animate-spin" /> Đang tải…</>
-                    : <><Upload size={16} /> Thêm ảnh</>}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => fileRef.current?.click()} disabled={!!busy}
+                    className="flex items-center gap-1.5 px-3 py-2 text-body-md border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                    {busy === 'upload'
+                      ? <><Loader2 size={16} className="animate-spin" /> Đang tải…</>
+                      : <><Upload size={16} /> Tải ảnh lên</>}
+                  </button>
+                  <button type="button" onClick={addByUrl} disabled={!!busy}
+                    className="flex items-center gap-1.5 px-3 py-2 text-body-md border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
+                    {busy === 'url'
+                      ? <><Loader2 size={16} className="animate-spin" /> Đang thêm…</>
+                      : <><LinkIcon size={16} /> Thêm bằng đường dẫn</>}
+                  </button>
+                </div>
                 <p className="mt-1 text-tiny text-gray-400">
-                  JPG, PNG hoặc WEBP, tối đa {MAX_MB} MB. Ảnh chỉ tải lên máy chủ
-                  Telegram một lần cho toàn bộ chiến dịch.
+                  JPG, PNG hoặc WEBP, tối đa {MAX_MB} MB. Telegram tải ảnh đúng một
+                  lần rồi giữ bản sao, nên gửi cho bao nhiêu nhóm cũng không tốn thêm
+                  dữ liệu. Ảnh lấy từ Google Ảnh hay web ngoài thì <b>chỉ cần sống
+                  tới lần gửi đầu</b> — nhưng link hết hạn trước đó là hỏng cả tin,
+                  nên tải lên vẫn chắc ăn hơn.
                 </p>
               </div>
             )}
 
-            {postId && images.length === 0 && (
+            {images.length === 0 && (
               <p className="mt-2 text-tiny text-gray-400 flex items-center gap-1.5">
                 <ImageIcon size={13} /> Chưa có ảnh. Bài không ảnh vẫn gửi được bình thường.
               </p>
