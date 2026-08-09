@@ -313,7 +313,12 @@ là cách hợp lệ vượt hạn chế "bot không nhắn trước".
 (~200–600đ/tin, ~320k/tháng cho 1.069 đơn) nhưng cần OA xác thực bằng giấy phép kinh
 doanh, template duyệt trước, và refresh token mỗi giờ. Telegram thắng ở: miễn phí, nội
 dung tự do, **hai chiều**, và **sửa/xoá được tin đã gửi** — SMS/ZNS bắn đi là vĩnh viễn.
-Tạm gác, chưa loại bỏ.
+
+> ⛔ **CHỐT 2026-08-09: LOẠI BỎ HẲN Zalo.** User quyết không phát triển nhắn tin Zalo vì
+> lý do kỹ thuật; **Telegram là kênh gửi tin duy nhất**. Thêm hai điểm phát hiện sau này:
+> **ZNS không gửi được vào nhóm** (gửi theo SĐT, cấm nội dung quảng cáo) và gửi nhóm phải
+> dùng **GMF** — chỉ có ở gói OA trả phí, nhóm tự giải tán sau 45 ngày nếu không gia hạn,
+> lại là nhóm chung nên không thể đưa phiếu giao hàng/công nợ vào. Không đề xuất lại.
 
 ---
 

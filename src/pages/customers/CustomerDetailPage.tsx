@@ -197,6 +197,11 @@ interface Customer {
   telegram_chat_id: string | null
   telegram_enabled: boolean
   telegram_promo_optout: boolean
+  // Vì sao lần gửi gần nhất hỏng. Hệ thống KHÔNG còn tự tắt kênh nữa (user
+  // chốt 09/08) — nó chỉ ghi lý do vào đây để hồ sơ nói ra thay vì im lặng.
+  telegram_last_error: string | null
+  telegram_last_error_at: string | null
+  telegram_auto_disabled_at: string | null
   owner?: Profile | null
   price_list?: PriceList | null
   customer_business_info?: CustomerBusinessInfo | null
@@ -416,6 +421,10 @@ export default function CustomerDetailPage() {
   const [editTgChatId, setEditTgChatId] = useState('')
   const [editTgEnabled, setEditTgEnabled] = useState(true)
   const [editTgPromoOptout, setEditTgPromoOptout] = useState(false)
+  // Kiểm tra kênh Telegram của khách (getChatMember qua 2 RPC — pg_net chỉ
+  // bắn request sau khi RPC thứ nhất commit nên phải hỏi kết quả ở lượt sau)
+  const [tgChecking, setTgChecking] = useState(false)
+  const [tgCheckMsg, setTgCheckMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const [editTaxCode, setEditTaxCode] = useState('')
   const [editLegalName, setEditLegalName] = useState('')
@@ -1120,6 +1129,49 @@ export default function CustomerDetailPage() {
   // khớp guard server fn_collect_customer_debt (customers.collect_debt).
   const canCollectDebt = () => hasPermission('customers.collect_debt')
 
+  // Kiểm tra bot còn trong nhóm Telegram của khách không.
+  // Dùng getChatMember ở phía server — getChat trả HTTP 200 ngay cả khi bot đã
+  // bị đuổi khỏi nhóm thường, từng khiến chẩn đoán sai một ngày trời.
+  const handleCheckTelegram = async () => {
+    if (!id || tgChecking) return
+    setTgChecking(true)
+    setTgCheckMsg(null)
+    try {
+      const { data: start, error: startErr } = await supabase
+        .rpc('fn_tg_check_customer_start', { p_customer_id: id })
+      if (startErr) throw startErr
+
+      const s = start as { xong?: boolean; ok?: boolean; thong_diep?: string; req_id?: number }
+      if (s?.xong) {
+        setTgCheckMsg({ ok: !!s.ok, text: s.thong_diep || 'Không kiểm tra được.' })
+        return
+      }
+
+      // Telegram thường trả lời trong 1–2 giây; hỏi lại tối đa ~12 giây.
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 600))
+        const { data: res, error: resErr } = await supabase
+          .rpc('fn_tg_check_customer_result', { p_customer_id: id, p_req_id: s.req_id })
+        if (resErr) throw resErr
+        const r = res as { xong?: boolean; ok?: boolean; thong_diep?: string }
+        if (r?.xong) {
+          setTgCheckMsg({ ok: !!r.ok, text: r.thong_diep || '' })
+          await loadCustomerData()
+          return
+        }
+      }
+      setTgCheckMsg({ ok: false, text: 'Telegram chưa trả lời sau 12 giây. Bấm kiểm tra lại lần nữa.' })
+    } catch (err) {
+      logger.error('Kiểm tra Telegram thất bại', err)
+      setTgCheckMsg({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Không kiểm tra được kênh Telegram.'
+      })
+    } finally {
+      setTgChecking(false)
+    }
+  }
+
   const handleAdjustDebt = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!id || !canAdjustDebt()) {
@@ -1658,6 +1710,88 @@ export default function CustomerDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* ── Sức khoẻ kênh Telegram của khách ──────────────────────────────
+            Trước đây tin không tới nơi là chuyện thầm lặng: hệ thống tự tắt
+            `telegram_enabled` khi Telegram trả 403 mà không nói lý do, nhân
+            viên bật lại rồi lại bị tắt. Nay lý do hiện thẳng ở đây, và hệ
+            thống KHÔNG còn tự tắt nữa (mặc định). */}
+        {customer.telegram_chat_id && (customer.telegram_last_error || !customer.telegram_enabled) && (
+          <div className={`rounded-xl border p-4 md:p-5 shadow-sm ${
+            customer.telegram_last_error ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
+          }`}>
+            <div className="flex items-start gap-3">
+              <ShieldAlert
+                size={20}
+                className={`flex-shrink-0 mt-0.5 ${
+                  customer.telegram_last_error ? 'text-danger-500' : 'text-amber-600'
+                }`}
+              />
+              <div className="flex-1 min-w-0">
+                <p className={`font-bold text-body-md ${
+                  customer.telegram_last_error ? 'text-red-700' : 'text-amber-700'
+                }`}>
+                  {customer.telegram_last_error
+                    ? 'Không gửi được tin Telegram cho khách này'
+                    : 'Đang TẮT gửi tin Telegram cho khách này'}
+                </p>
+
+                {customer.telegram_last_error ? (
+                  <p className="text-body-md text-gray-600 mt-1">{customer.telegram_last_error}</p>
+                ) : (
+                  <p className="text-body-md text-gray-600 mt-1">
+                    Khách đã có id nhóm nhưng ô “Gửi thông báo Telegram” đang tắt — hoá đơn,
+                    phiếu giao hàng và lịch vaccine đều không gửi đi.
+                  </p>
+                )}
+
+                <p className="text-tiny text-gray-500 mt-1.5">
+                  {customer.telegram_last_error_at && (
+                    <>Ghi nhận lúc {new Date(customer.telegram_last_error_at).toLocaleString('vi-VN')}. </>
+                  )}
+                  {customer.telegram_auto_disabled_at && !customer.telegram_enabled && (
+                    <>Kênh bị tắt tự động lúc {new Date(customer.telegram_auto_disabled_at).toLocaleString('vi-VN')}. </>
+                  )}
+                  Nhóm: <span className="font-semibold tabular-nums">{customer.telegram_chat_id}</span>
+                </p>
+
+                {canEditCustomer() && (
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={handleCheckTelegram}
+                      disabled={tgChecking}
+                      className="h-8 px-3 bg-gray-0 border border-gray-200 hover:bg-gray-25 active:scale-95 disabled:opacity-60 text-gray-700 font-semibold text-body-sm rounded-lg transition-all flex items-center gap-1.5"
+                    >
+                      <Zap size={13} />
+                      {tgChecking ? 'Đang kiểm tra…' : 'Kiểm tra lại kết nối'}
+                    </button>
+                    <span className="text-tiny text-gray-500">
+                      Thêm bot <b>@crmsanhlongbot</b> vào nhóm TRƯỚC, rồi mới bấm kiểm tra.
+                    </span>
+                  </div>
+                )}
+
+                {tgCheckMsg && (
+                  <p className={`mt-2 text-body-sm font-semibold ${
+                    tgCheckMsg.ok ? 'text-emerald-700' : 'text-danger-500'
+                  }`}>
+                    {tgCheckMsg.ok ? '✓ ' : '✕ '}{tgCheckMsg.text}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Kênh đang lành mà vừa bấm kiểm tra → xác nhận cho yên tâm */}
+        {customer.telegram_chat_id && customer.telegram_enabled && !customer.telegram_last_error && tgCheckMsg && (
+          <div className={`rounded-xl border p-4 text-body-md ${
+            tgCheckMsg.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                          : 'bg-red-50 border-red-200 text-danger-500'
+          }`}>
+            {tgCheckMsg.ok ? '✓ ' : '✕ '}{tgCheckMsg.text}
+          </div>
+        )}
 
         {/* Tabs Control */}
         <div className="bg-gray-0 border border-gray-100 rounded-xl overflow-hidden shadow-sm">
@@ -3282,6 +3416,37 @@ export default function CustomerDetailPage() {
                       Gửi thông báo Telegram cho khách này
                     </label>
                   </div>
+
+                  {/* Kiểm tra bot có thật sự ở trong nhóm không. Gán id nhóm
+                      KHÔNG có nghĩa là bot đã được thêm vào nhóm — đây là
+                      nguyên nhân số một của "sao khách không nhận được tin". */}
+                  {customer?.telegram_chat_id && (
+                    <div className="bg-gray-25 border border-gray-100 rounded-lg p-3 space-y-2">
+                      {customer.telegram_last_error && (
+                        <p className="text-body-sm text-danger-500">
+                          <b>Lần gửi gần nhất hỏng:</b> {customer.telegram_last_error}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={handleCheckTelegram}
+                          disabled={tgChecking}
+                          className="h-8 px-3 bg-gray-0 border border-gray-200 hover:bg-gray-50 active:scale-95 disabled:opacity-60 text-gray-700 font-semibold text-body-sm rounded-lg transition-all flex items-center gap-1.5"
+                        >
+                          <Zap size={13} />
+                          {tgChecking ? 'Đang kiểm tra…' : 'Kiểm tra kết nối nhóm'}
+                        </button>
+                        {tgCheckMsg && (
+                          <span className={`text-body-sm font-semibold ${
+                            tgCheckMsg.ok ? 'text-emerald-700' : 'text-danger-500'
+                          }`}>
+                            {tgCheckMsg.ok ? '✓ ' : '✕ '}{tgCheckMsg.text}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-2">
                     <input
