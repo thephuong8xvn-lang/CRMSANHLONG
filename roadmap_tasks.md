@@ -2197,3 +2197,92 @@ chiều nào → muốn lập phiếu đặt cho 1 nhà cung cấp phải tự d
 - **`suppliers` có 2 bản ghi cùng là Vemedim**: "CÔNG TY TNHH MTV THUỐC THÚ Y VÀ CHẾ PHẨM
   SINH HỌC VEMEDIM" (20 mặt hàng) và "Cty TNHH MTV Thuốc Thú Y & Chế phẩm sinh học Vemedim
   (VMD" (13 mặt hàng) → gom nhóm sẽ tách làm 2. Cần user gộp thủ công.
+
+---
+
+## 📡 2026-08-09 — Kênh Telegram: hết tắt im lặng · vá báo động giả · cảnh báo đơn chưa thu tiền `[DB LIVE]`
+
+⛔ **Quyết định: DỪNG HẲN Zalo.** User chốt *"vì lý do kỹ thuật nên chúng ta sẽ không phát
+triển tính năng nhắn tin zalo nữa, hiện tại dùng 1 telegram là được"*. Chưa viết dòng code
+nào cho Zalo nên không phải gỡ gì; `docs/15` đã ghi loại bỏ. Hai điểm giữ lại để không
+phải tra lại: **ZNS gửi theo SĐT chứ không vào nhóm được và cấm nội dung quảng cáo**;
+gửi nhóm phải dùng **GMF** — chỉ có ở gói OA trả phí, nhóm tự giải tán sau 45 ngày,
+lại là nhóm CHUNG nên không thể đưa phiếu giao hàng/công nợ vào.
+
+### 1. `20260794` — Hồ sơ khách NÓI RA lý do, và hệ thống KHÔNG tự tắt kênh nữa
+
+Bệnh cũ: Telegram trả 403 (bot bị đuổi / chưa được thêm) thì drain
+`UPDATE customers SET telegram_enabled=false` mà **không ghi lý do ở đâu cả**. Nhân viên
+bật lại, hệ thống tắt tiếp — vụ khách "Đặng Thế Phương" tối 07/08 lặp đúng 2 vòng và mất
+gần một ngày mới hiểu chuyện gì.
+
+- [x] **Mặc định KHÔNG BAO GIỜ tự tắt** (user chốt: *"về mặc định thì tính năng này không
+  tự tắt được"*). Muốn hành vi cũ thì bật `auto_disable_dead_chat` trong
+  `system_settings.notification_config` — mặc định `false`.
+- [x] 3 cột mới `customers.telegram_last_error` / `_at` / `telegram_auto_disabled_at`;
+  `telegram_channels.last_error(_at)`. Lý do viết bằng tiếng Việt kèm việc cần làm.
+- [x] **Tin gửi thành công thì tự xoá lý do** ⇒ cảnh báo tự lành, không báo động giả.
+- [x] **`fn_tg_check_customer_start` → `fn_tg_check_customer_result`** cho nút *"Kiểm tra
+  lại kết nối"*. Hai RPC vì **pg_net chỉ bắn request sau khi transaction COMMIT**.
+  Dùng **getChatMember**, KHÔNG dùng `getChat` (nó trả 200 cả khi bot đã bị đuổi).
+  **user_id của bot = phần trước dấu `:` của token** ⇒ không cần `getMe`, không hard-code.
+  Bot OK **và** cờ do MÁY tắt thì tự bật lại; user tự tắt tay thì tôn trọng, không đụng.
+- [x] FE `CustomerDetailPage.tsx`: dải đỏ dưới 4 thẻ số + nút kiểm tra (cả trong form Sửa).
+- [x] Quyền: 2 RPC chỉ cho `authenticated` (`customers.edit`), **không mở cho `anon`**.
+
+**Quét thật toàn bộ prod 09/08: 18 nhóm khách — 17 `member`, 1 hỏng.**
+`Trại Hồng Lãm Gò Thị` `KH-2026-01264` chat `-5506646654` → `chat not found`.
+
+### 2. `20260795` — Câu chữ `chat not found` cho đúng nguyên nhân
+
+User xác nhận **id nhóm ĐÚNG**, và `notification_log` cho thấy **chưa từng gửi tin nào**
+vào chat đó ⇒ nguyên nhân là **bot chưa được thêm vào nhóm**, không phải id sai.
+🔑 Phân biệt: **`chat not found` = bot CHƯA BAO GIỜ vào nhóm** (Telegram không cho bot
+thấy nhóm nó không thuộc về) · **`left`/`kicked` = từng ở trong rồi bị đuổi**.
+
+### 3. `20260796` — Vá BÁO ĐỘNG GIẢ `order_debt_vs_ar_mismatch`
+
+Tin cảnh báo 09/08 08:00 báo 2 vi phạm critical. **Dữ liệu không sai** — cả hai là khách
+**trả dư**: `DH-2026-02698` (404.320₫ / đưa 500.000₫) và `DH-2026-02788` (1.285.000₫ /
+đưa 1.380.000₫), sổ cái có dòng ghi có `-95.680₫` và `-95.000₫` đúng chuẩn.
+Lỗi ở phép kiểm: `con_no` lọc `amount > 0` (bỏ dòng ghi có) rồi so với
+`grand_total − paid_amount` vốn ÂM.
+
+- [x] Sửa thành **`greatest(grand_total − paid_amount, 0)`** — số dư âm nghĩa là đơn hết
+  nợ. Đo lại toàn bộ: **0 vi phạm**.
+- 🪤 **ĐỪNG sửa bằng cách bỏ điều kiện `amount > 0`** — đã thử, vi phạm nhảy **2 → 62**.
+  Có 64 đơn mang dòng ghi có mà **0/64 còn nợ**: tiền ghi có thuộc số dư CHUNG của khách,
+  không phải nợ của cái đơn đã trả xong.
+- 🔑 Cách vá đáng tái dụng: đọc `pg_get_functiondef` của bản ĐANG CHẠY → `replace()` đúng
+  một biểu thức → `EXECUTE`, kèm `RAISE` nếu không tìm thấy đoạn cần thay. Khỏi chép lại
+  hàm 115 dòng và khỏi rủi ro ghi đè thay đổi chỉ có trên prod.
+
+### 4. `20260797` — Cảnh báo **đơn chưa thu tiền & chưa hoàn tất**, 07:30 mỗi sáng
+
+Dòng công nợ chỉ sinh khi đơn HOÀN TẤT ⇒ đơn ở `confirmed`/`shipping`/`delivered` mà chưa
+thu tiền thì **vô hình với module Công nợ, nhắc nợ, tuổi nợ, hạn mức tín dụng**.
+Phép kiểm `order_debt_without_ar_row` có thấy, nhưng **`fn_monitor_tick` chỉ gửi Telegram
+khi có vi phạm `critical`** ⇒ 26 đơn này chưa bao giờ được báo ra.
+
+- [x] `fn_notify_unpaid_open(mode, min_days)` + `fn_notify_unpaid_open_text(branch, days)`,
+  luật `order.unpaid_open` (`@branch`, internal, `full`, warn), cron **`notify-unpaid-open`
+  `30 0 * * *`** = 07:30 VN.
+- [x] **Bỏ qua đơn lập trong ngày** (`threshold.min_days = 1`) — đơn vừa bán chưa giao xong
+  là bình thường, réo lên chỉ tập cho người ta thói quen bỏ qua cảnh báo.
+  Tách riêng dòng **🔴 Quá 7 ngày**. Chi nhánh sạch thì **không gửi gì**.
+- [x] Nghiệm thu prod 09/08: 2 tin `sent` HTTP 200 (`tg_message_id` 302, 303).
+  **Hoài Ân 21 đơn / 55.586.705₫** (11 đơn quá 7 ngày / 39.931.260₫) ·
+  **Phù Mỹ 5 đơn / 6.530.000₫** — cộng lại **26 đơn / 62.116.705₫**, khớp phép kiểm.
+- 🪤 Hàm dựng tin khai `STABLE` ⇒ **không được INSERT bảng tạm** ("not allowed in a
+  non-volatile function"); phải gom vào MỘT câu lệnh dùng CTE tham chiếu 2 lần.
+- 🪤 Tin ĐỊNH KỲ phải có NGÀY ở 2 đoạn đầu fingerprint, ghép id chi nhánh bằng `_` —
+  nếu không drain sẽ `editMessageText` đè lên tin hôm trước (bài học `20260782`).
+- 🔒 Hai hàm **không cấp cho `authenticated`/`anon`** — tin chứa số nợ mọi khách của chi nhánh.
+
+### ⚠️ Việc của USER (không tự làm — đụng số phải thu thật / cần thao tác Telegram)
+- 🔴 **15 đơn / 45.141.260 ₫ dở dang từ tháng 6–7** (11 đơn từ 04–15/06; to nhất
+  `DH-2026-00199` Thiện Thương **15,2tr** đứng ở `confirmed` từ 15/06): thu tiền rồi hoàn
+  tất, hoặc huỷ nếu đơn không còn hiệu lực. Cảnh báo 07:30 sẽ nhắc mỗi sáng tới khi xử lý.
+- **Thêm bot `@crmsanhlongbot` vào nhóm Telegram của `Trại Hồng Lãm Gò Thị`** rồi bấm
+  "Kiểm tra lại kết nối" trên hồ sơ khách.
+- **Deploy Vercel** — dải cảnh báo + nút kiểm tra chỉ hiện sau khi deploy.
