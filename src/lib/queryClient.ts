@@ -33,6 +33,8 @@ export const qk = {
     reorderReminders: (ownerId: string | null) => ['customers', 'reorder-reminders', ownerId] as const,
     creditLimits: ['customers', 'credit-limits'] as const,
     creditConfig: ['customers', 'credit-config'] as const,
+    careHistory: (id: string) => ['customers', 'care-history', id] as const,
+    careConfig: ['customers', 'care-config'] as const,
   },
   bi: {
     pivot: (params: object) => ['bi', 'pivot', params] as const,

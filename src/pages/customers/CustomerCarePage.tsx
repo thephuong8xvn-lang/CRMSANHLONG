@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { HeartHandshake, PhoneCall, RefreshCw, AlertCircle, X, ExternalLink, Check, Repeat } from 'lucide-react'
+import {
+  HeartHandshake, PhoneCall, RefreshCw, AlertCircle, X, ExternalLink, Check, Repeat,
+  Settings2, Clock,
+} from 'lucide-react'
 import Layout from '../../components/Layout'
 import DataTable, { type DataTableColumn } from '../../components/DataTable'
 import { supabase } from '../../lib/supabase'
@@ -8,24 +11,29 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useDisplaySettings, primaryPhone } from '../../contexts/DisplaySettingsContext'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { removeVietnameseTones } from '../../components/SmartSearchSelect'
+import CareConfigModal from './CareConfigModal'
 import {
   useChurnWorklist, useRecomputeLifecycle, useLogCareCall, useReorderReminders,
+  useCareCallHistory, CARE_OUTCOMES, careOutcomeLabel,
   type ChurnWorklistRow, type ReorderReminderRow,
 } from '../../hooks/queries/useCustomerCare'
 
 interface ProfileLite { id: string; full_name: string }
-interface CallTarget { customer_id: string; farm_name: string; phone: string | null; note?: string }
+interface CallTarget {
+  customer_id: string
+  farm_name: string
+  phone: string | null
+  note?: string
+  kind: 'churn' | 'reorder'
+  call_count?: number
+}
 type CareTab = 'care' | 'reorder'
+/** Lọc theo tiến độ gọi — thứ quyết định hôm nay còn phải làm gì. */
+type CallFilter = 'all' | 'chua_goi' | 'den_han' | 'dang_cho'
 
 const LIFECYCLE_BADGE: Record<string, { label: string; cls: string }> = {
   at_risk: { label: 'Có nguy cơ', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   churned: { label: 'Đã rời bỏ', cls: 'bg-rose-50 text-rose-600 border-rose-200' },
-}
-
-function suggestAction(r: ChurnWorklistRow): string {
-  const hasDebt = r.total_debt > 0
-  if (r.lifecycle === 'churned') return hasDebt ? 'Gọi tái kết nối + nhắc công nợ' : 'Gọi tái kết nối / ưu đãi quay lại'
-  return hasDebt ? 'Gọi hỏi thăm + nhắc công nợ' : 'Gọi hỏi thăm / chào đơn mới'
 }
 
 export default function CustomerCarePage() {
@@ -45,11 +53,15 @@ export default function CustomerCarePage() {
   const isAdmin = userRole.code === 'admin' || userRole.code === 'ceo'
   const isManager = isAdmin || userRole.code === 'branch_manager' || userRole.code === 'team_lead'
   const canManageUsers = hasPermission('users.manage') || isAdmin
+  // Cấu hình nhắc việc đi qua fn_is_sysadmin() — CHỈ vai trò `admin`, không gồm ceo.
+  const isSysAdmin = userRole.code === 'admin'
 
   const [tab, setTab] = useState<CareTab>('care')
   const [ownerId, setOwnerId] = useState<string | null>(null)
   const [lifecycleFilter, setLifecycleFilter] = useState<'all' | 'at_risk' | 'churned'>('all')
+  const [callFilter, setCallFilter] = useState<CallFilter>('all')
   const [search, setSearch] = useState('')
+  const [showConfig, setShowConfig] = useState(false)
   const debounced = useDebouncedValue(search, 300)
 
   const query = useChurnWorklist(ownerId, !!profile?.id && tab === 'care')
@@ -74,39 +86,58 @@ export default function CustomerCarePage() {
     }
   }
 
-  // Modal ghi nhận gọi
+  // ── Hộp thoại ghi nhận gọi ──
   const [callRow, setCallRow] = useState<CallTarget | null>(null)
   const [callContent, setCallContent] = useState('')
+  const [callOutcome, setCallOutcome] = useState('hen_mua')
+  const [callNext, setCallNext] = useState('')
   const [callErr, setCallErr] = useState('')
-  const openCall = (t: CallTarget) => { setCallRow(t); setCallContent(t.note ?? ''); setCallErr('') }
+  const history = useCareCallHistory(callRow?.customer_id ?? null)
+
+  const openCall = (t: CallTarget) => {
+    setCallRow(t); setCallContent(t.note ?? ''); setCallOutcome('hen_mua')
+    setCallNext(''); setCallErr('')
+  }
   const submitCall = async () => {
     if (!callRow || !profile?.id) return
     setCallErr('')
     try {
-      await logCall.mutateAsync({
+      const res = await logCall.mutateAsync({
         customerId: callRow.customer_id,
-        ownerUserId: profile.id,
-        farmName: callRow.farm_name,
         content: callContent.trim(),
+        outcome: callOutcome,
+        nextFollowup: callNext || null,
+        kind: callRow.kind,
       })
-      setNotice(`Đã ghi nhận cuộc gọi cho ${callRow.farm_name}.`)
+      setNotice(`Đã ghi nhận cuộc gọi cho ${callRow.farm_name} — tổng ${res.call_count} lần gọi.`)
       setCallRow(null)
     } catch (e) {
       setCallErr((e as Error).message || 'Không ghi được hoạt động.')
     }
   }
 
-  const all = query.data ?? []
+  const all = useMemo(() => query.data ?? [], [query.data])
+  // Mốc "bây giờ" cố định theo mỗi lần tải dữ liệu — để Date.now() trần thì
+  // useMemo lọc lại ở mọi lần render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `all` là mốc làm mới có chủ đích
+  const now = useMemo(() => Date.now(), [all])
   const rows = useMemo(() => {
     const q = removeVietnameseTones(debounced.trim().toLowerCase())
     return all.filter(r => {
       if (lifecycleFilter !== 'all' && r.lifecycle !== lifecycleFilter) return false
+      if (callFilter !== 'all') {
+        const waiting = !!r.snooze_until && new Date(r.snooze_until).getTime() > now
+        if (callFilter === 'chua_goi' && (r.call_count > 0 || waiting)) return false
+        if (callFilter === 'dang_cho' && !waiting) return false
+        if (callFilter === 'den_han' && (waiting || r.call_count === 0)) return false
+      }
       if (q && !removeVietnameseTones(`${r.farm_name} ${r.code ?? ''}`.toLowerCase()).includes(q)) return false
       return true
     })
-  }, [all, debounced, lifecycleFilter])
+  }, [all, debounced, lifecycleFilter, callFilter, now])
 
   const fmtDate = (s: string | null) => s ? new Date(s).toLocaleDateString('vi-VN') : '—'
+  const fmtShort = (s: string | null) => s ? new Date(s).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : '—'
 
   const columns: DataTableColumn<ChurnWorklistRow>[] = [
     {
@@ -122,33 +153,59 @@ export default function CustomerCarePage() {
         </div>
       ),
     },
-    { key: 'owner', header: 'NV phụ trách', width: 130, render: (r) => <span className="text-gray-600">{r.owner_name || '—'}</span> },
-    { key: 'last', header: 'Mua cuối', width: 96, render: (r) => <span className="tabular-nums text-gray-600">{fmtDate(r.last_order_at)}</span> },
     {
-      key: 'days', header: 'Trễ', width: 86, align: 'right', noTruncate: true,
+      key: 'risk', header: 'Ưu tiên', width: 118, align: 'center', noTruncate: true, mobileHeaderRight: true,
+      render: (r) => {
+        const b = LIFECYCLE_BADGE[r.lifecycle] ?? { label: r.lifecycle, cls: 'bg-gray-100 text-gray-600 border-gray-200' }
+        return (
+          <div className="flex flex-col items-center gap-0.5">
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${b.cls}`}>{b.label}</span>
+            <span className="text-[10px] text-gray-400 tabular-nums">điểm {r.priority}</span>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'days', header: 'Im lặng', width: 84, align: 'right', noTruncate: true,
       render: (r) => {
         const c = r.lifecycle === 'churned' ? 'text-rose-600' : 'text-amber-600'
         return <span className={`tabular-nums font-bold ${c}`}>{r.days_since != null ? `${Math.round(r.days_since)}n` : '—'}</span>
       },
     },
-    { key: 'interval', header: 'Nhịp mua', width: 90, align: 'right', render: (r) => <span className="tabular-nums text-gray-500">{r.avg_interval_days != null ? `~${r.avg_interval_days}n` : '—'}</span> },
+    { key: 'last', header: 'Mua cuối', width: 92, render: (r) => <span className="tabular-nums text-gray-600">{fmtDate(r.last_order_at)}</span> },
     {
-      key: 'risk', header: 'Rủi ro', width: 120, align: 'center', noTruncate: true,
+      key: 'revenue', header: 'DT 90 ngày', width: 104, align: 'right',
+      render: (r) => <span className="tabular-nums text-gray-600 font-semibold">{formatCurrency(r.revenue_90d)}</span>,
+    },
+    {
+      key: 'calls', header: 'Đã gọi', width: 138, noTruncate: true,
       render: (r) => {
-        const b = LIFECYCLE_BADGE[r.lifecycle]
+        if (r.call_count === 0) return <span className="text-[11px] text-gray-300">Chưa gọi</span>
+        const waiting = !!r.snooze_until && new Date(r.snooze_until).getTime() > now
         return (
-          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${b.cls}`}>
-            {b.label} · {r.churn_score}
-          </span>
+          <div className="min-w-0">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+              <PhoneCall size={10} /> {r.call_count} lần
+            </span>
+            <div className="text-[10px] text-gray-400 truncate">
+              {fmtShort(r.last_call_at)}
+              {r.last_outcome && ` · ${careOutcomeLabel(r.last_outcome)}`}
+            </div>
+            {waiting && (
+              <div className="text-[10px] text-emerald-600 flex items-center gap-0.5">
+                <Clock size={9} /> chờ tới {fmtShort(r.snooze_until)}
+              </div>
+            )}
+          </div>
         )
       },
     },
-    { key: 'suggest', header: 'Gợi ý', width: 180, render: (r) => <span className="text-tiny text-gray-500">{suggestAction(r)}</span> },
+    { key: 'owner', header: 'NV phụ trách', width: 108, hideOnMobile: true, render: (r) => <span className="text-gray-600">{r.owner_name || '—'}</span> },
     {
-      key: 'action', header: 'Hành động', width: 150, align: 'center', noTruncate: true,
+      key: 'action', header: 'Hành động', width: 146, align: 'center', noTruncate: true,
       render: (r) => (
         <div className="flex items-center justify-center gap-1.5">
-          <button onClick={(e) => { e.stopPropagation(); openCall({ customer_id: r.customer_id, farm_name: r.farm_name, phone: r.phone }) }}
+          <button onClick={(e) => { e.stopPropagation(); openCall({ customer_id: r.customer_id, farm_name: r.farm_name, phone: r.phone, kind: 'churn', call_count: r.call_count }) }}
             className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 whitespace-nowrap">
             <PhoneCall size={11} /> Ghi nhận gọi
           </button>
@@ -162,7 +219,7 @@ export default function CustomerCarePage() {
   ]
 
   // ── Tab Nhắc mua lại ──
-  const allReorder = reorderQuery.data ?? []
+  const allReorder = useMemo(() => reorderQuery.data ?? [], [reorderQuery.data])
   const reorderRows = useMemo(() => {
     const q = removeVietnameseTones(debounced.trim().toLowerCase())
     return allReorder.filter(r => {
@@ -215,7 +272,7 @@ export default function CustomerCarePage() {
       key: 'action', header: 'Hành động', width: 150, align: 'center', noTruncate: true,
       render: (r) => (
         <div className="flex items-center justify-center gap-1.5">
-          <button onClick={(e) => { e.stopPropagation(); openCall({ customer_id: r.customer_id, farm_name: r.farm_name, phone: r.phone, note: `Nhắc mua lại: ${r.product_name}. ` }) }}
+          <button onClick={(e) => { e.stopPropagation(); openCall({ customer_id: r.customer_id, farm_name: r.farm_name, phone: r.phone, kind: 'reorder', note: `Nhắc mua lại: ${r.product_name}. ` }) }}
             className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 whitespace-nowrap">
             <PhoneCall size={11} /> Ghi nhận gọi
           </button>
@@ -229,6 +286,16 @@ export default function CustomerCarePage() {
   ]
 
   const inputCls = 'h-9 px-2.5 bg-gray-25 border border-gray-150 rounded-lg text-tiny focus:border-blue-500 focus:outline-none'
+
+  // Đếm nhanh để nhân viên biết hôm nay còn bao nhiêu việc.
+  const stat = useMemo(() => {
+    const waiting = all.filter(r => r.snooze_until && new Date(r.snooze_until).getTime() > now).length
+    return {
+      chua_goi: all.filter(r => r.call_count === 0 && !(r.snooze_until && new Date(r.snooze_until).getTime() > now)).length,
+      dang_cho: waiting,
+      churned: all.filter(r => r.lifecycle === 'churned').length,
+    }
+  }, [all, now])
 
   return (
     <Layout activeMenu="Chăm sóc KH">
@@ -245,13 +312,21 @@ export default function CustomerCarePage() {
                 : 'Khách tới kỳ mua lại sản phẩm quen — chào đơn đúng lúc.'}
             </p>
           </div>
-          {tab === 'care' && canManageUsers && (
-            <button onClick={handleRecompute} disabled={recompute.isPending}
-              className="bg-white border border-gray-200 text-gray-600 px-3.5 h-10 rounded-lg font-semibold text-tiny hover:bg-gray-50 flex items-center gap-1.5 self-start disabled:opacity-50">
-              <RefreshCw size={16} className={`text-blue-500 ${recompute.isPending ? 'animate-spin' : ''}`} />
-              {recompute.isPending ? 'Đang tính...' : 'Tính lại phân loại'}
-            </button>
-          )}
+          <div className="flex flex-wrap gap-2 self-start">
+            {tab === 'care' && isSysAdmin && (
+              <button onClick={() => setShowConfig(true)}
+                className="bg-white border border-gray-200 text-gray-600 px-3.5 h-10 rounded-lg font-semibold text-tiny hover:bg-gray-50 flex items-center gap-1.5">
+                <Settings2 size={16} className="text-blue-500" /> Cấu hình nhắc việc
+              </button>
+            )}
+            {tab === 'care' && canManageUsers && (
+              <button onClick={handleRecompute} disabled={recompute.isPending}
+                className="bg-white border border-gray-200 text-gray-600 px-3.5 h-10 rounded-lg font-semibold text-tiny hover:bg-gray-50 flex items-center gap-1.5 disabled:opacity-50">
+                <RefreshCw size={16} className={`text-blue-500 ${recompute.isPending ? 'animate-spin' : ''}`} />
+                {recompute.isPending ? 'Đang tính...' : 'Tính lại phân loại'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -287,14 +362,25 @@ export default function CustomerCarePage() {
               placeholder={tab === 'care' ? 'Tên / mã khách hàng...' : 'Tên khách / sản phẩm...'} className={`${inputCls} w-full`} />
           </div>
           {tab === 'care' && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase block">Mức độ</label>
-              <select value={lifecycleFilter} onChange={e => setLifecycleFilter(e.target.value as any)} className={`${inputCls} w-32`}>
-                <option value="all">Tất cả</option>
-                <option value="at_risk">Có nguy cơ</option>
-                <option value="churned">Đã rời bỏ</option>
-              </select>
-            </div>
+            <>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase block">Mức độ</label>
+                <select value={lifecycleFilter} onChange={e => setLifecycleFilter(e.target.value as typeof lifecycleFilter)} className={`${inputCls} w-32`}>
+                  <option value="all">Tất cả</option>
+                  <option value="at_risk">Có nguy cơ</option>
+                  <option value="churned">Đã rời bỏ</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-gray-400 uppercase block">Tiến độ gọi</label>
+                <select value={callFilter} onChange={e => setCallFilter(e.target.value as CallFilter)} className={`${inputCls} w-40`}>
+                  <option value="all">Tất cả</option>
+                  <option value="chua_goi">Chưa gọi lần nào</option>
+                  <option value="den_han">Đã gọi, tới lúc gọi lại</option>
+                  <option value="dang_cho">Đang chờ khách</option>
+                </select>
+              </div>
+            </>
           )}
           {isManager && (
             <div className="space-y-1">
@@ -306,7 +392,9 @@ export default function CustomerCarePage() {
             </div>
           )}
           <span className="text-tiny text-gray-400 lg:ml-auto self-center">
-            {tab === 'care' ? `${rows.length} khách` : `${reorderRows.length} lượt`}
+            {tab === 'care'
+              ? `${rows.length} khách · chưa gọi ${stat.chua_goi} · đang chờ ${stat.dang_cho}`
+              : `${reorderRows.length} lượt`}
           </span>
         </div>
 
@@ -317,7 +405,7 @@ export default function CustomerCarePage() {
             rows={rows}
             getRowKey={(r) => r.customer_id}
             loading={query.isLoading}
-            resetSignal={`${debounced}|${lifecycleFilter}|${ownerId}`}
+            resetSignal={`${debounced}|${lifecycleFilter}|${callFilter}|${ownerId}`}
             itemLabel="khách"
             emptyIcon={<HeartHandshake className="mx-auto text-gray-300 mb-2" size={44} />}
             emptyText="Không có khách nào cần chăm sóc trong phạm vi này"
@@ -337,7 +425,7 @@ export default function CustomerCarePage() {
 
         <p className="text-[11px] text-gray-400 px-1">
           {tab === 'care'
-            ? 'Phân loại theo nhịp mua riêng mỗi khách (trễ > nhịp = nguy cơ, > 2× nhịp = rời bỏ). Tự cập nhật hằng đêm; quản trị có thể bấm "Tính lại".'
+            ? 'Phân loại theo nhịp mua riêng mỗi khách, kèm sàn số ngày im lặng tối thiểu (mặc định 21 ngày = nguy cơ, 45 ngày = rời bỏ) để khách mua dày không bị báo oan. Điểm ưu tiên = giá trị khách × độ trễ − số lần đã gọi. Nhóm Telegram nhận danh sách 2 lần/ngày.'
             : 'Gợi ý theo nhịp mua từng sản phẩm của mỗi khách (mua ≥3 lần, chu kỳ 7–120 ngày). "Trễ" = số ngày kể từ lần mua cuối, kèm bội số so với nhịp mua.'}
         </p>
       </div>
@@ -345,23 +433,69 @@ export default function CustomerCarePage() {
       {/* Modal ghi nhận gọi */}
       {callRow && (
         <div className="fixed inset-0 bg-gray-700/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="font-bold text-body-lg text-gray-800 flex items-center gap-2"><PhoneCall size={18} className="text-blue-500" /> Ghi nhận cuộc gọi</h3>
               <button onClick={() => setCallRow(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-full"><X size={20} /></button>
             </div>
-            <div className="p-5 space-y-3">
+            <div className="p-5 space-y-3 overflow-y-auto">
               <div className="text-body-md">
                 <span className="text-gray-500">Khách: </span><span className="font-bold text-gray-800">{callRow.farm_name}</span>
                 {renderPhone(callRow.phone, 'ml-2 text-blue-600 text-tiny hover:underline')}
+                {!!callRow.call_count && (
+                  <span className="ml-2 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-md px-1.5 py-0.5">
+                    đã gọi {callRow.call_count} lần
+                  </span>
+                )}
               </div>
+
               {callErr && <p className="text-rose-600 text-tiny">{callErr}</p>}
+
+              <div>
+                <span className="block text-tiny font-semibold text-gray-600 mb-1.5">Kết quả cuộc gọi</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {CARE_OUTCOMES.map(o => (
+                    <button key={o.code} type="button" onClick={() => setCallOutcome(o.code)}
+                      className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${
+                        callOutcome === o.code ? o.cls : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  Sau khi lưu, khách tạm ẩn khỏi tin nhắc việc{' '}
+                  {CARE_OUTCOMES.find(o => o.code === callOutcome)?.days} ngày (trừ khi bạn đặt ngày hẹn riêng bên dưới).
+                </p>
+              </div>
+
               <label className="block text-tiny font-semibold text-gray-600">
-                Nội dung / kết quả gọi
-                <textarea rows={4} value={callContent} onChange={e => setCallContent(e.target.value)}
+                Ngày hẹn gọi lại <span className="font-normal text-gray-400">(tùy chọn)</span>
+                <input type="date" value={callNext} onChange={e => setCallNext(e.target.value)}
+                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </label>
+
+              <label className="block text-tiny font-semibold text-gray-600">
+                Nội dung / ghi chú
+                <textarea rows={3} value={callContent} onChange={e => setCallContent(e.target.value)}
                   placeholder="VD: Đã gọi, khách hẹn đặt hàng lại tuần sau / khách phản hồi giá cao..."
                   className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
               </label>
+
+              {!!history.data?.length && (
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="text-tiny font-bold text-gray-600 mb-1.5">Lịch sử gọi ({history.data.length})</p>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {history.data.map(h => (
+                      <div key={h.id} className="text-[11px] text-gray-500 border-l-2 border-gray-150 pl-2">
+                        <span className="font-semibold text-gray-600">{fmtShort(h.called_at)}</span>
+                        {h.by_name && <span className="text-gray-400"> · {h.by_name}</span>}
+                        {h.outcome && <span className="text-blue-600"> · {careOutcomeLabel(h.outcome)}</span>}
+                        {h.content && <div className="text-gray-400 truncate">{h.content}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
               <button onClick={() => setCallRow(null)} className="h-10 px-4 border border-gray-200 rounded-lg text-tiny font-semibold text-gray-600 hover:bg-gray-50">Hủy</button>
@@ -373,6 +507,8 @@ export default function CustomerCarePage() {
           </div>
         </div>
       )}
+
+      {showConfig && <CareConfigModal onClose={() => setShowConfig(false)} />}
     </Layout>
   )
 }
