@@ -109,6 +109,8 @@ interface Order {
   grand_total: number
   status: string
   payment_status: string
+  /** Nơi khách THỰC SỰ mua — dùng để gợi ý lại chi nhánh phụ trách khi hồ sơ gắn sai. */
+  branch_id?: string | null
 }
 
 interface Farm {
@@ -181,6 +183,7 @@ interface Customer {
   id: string
   code: string
   customer_type: string
+  branch_id: string | null
   farm_name: string
   lifecycle_stage: string
   value_tier: string
@@ -346,6 +349,7 @@ export default function CustomerDetailPage() {
   // Lookup Lists for Editing
   const [priceLists, setPriceLists] = useState<{ id: string; name: string }[]>([])
   const [salesReps, setSalesReps] = useState<{ id: string; full_name: string }[]>([])
+  const [branches, setBranches] = useState<{ id: string; name: string; is_active: boolean }[]>([])
   const [classifications, setClassifications] = useState<{ code: string; name: string; is_active: boolean }[]>([])
   const [tiers, setTiers] = useState<{ code: string; name: string; is_active: boolean }[]>([])
 
@@ -411,6 +415,7 @@ export default function CustomerDetailPage() {
   const [editCreditLimit, setEditCreditLimit] = useState(0)
   const [editPriceListId, setEditPriceListId] = useState('')
   const [editOwnerId, setEditOwnerId] = useState('')
+  const [editBranchId, setEditBranchId] = useState('')
   const [editProvince, setEditProvince] = useState('')
   const [editDistrict, setEditDistrict] = useState('')
   const [editAddress, setEditAddress] = useState('')
@@ -486,6 +491,7 @@ export default function CustomerDetailPage() {
         setEditCreditLimit(Number(custData.credit_limit || 0))
         setEditPriceListId(custData.price_list_id || '')
         setEditOwnerId(custData.owner_user_id)
+        setEditBranchId(custData.branch_id || '')
          setEditProvince(custData.province || '')
         setEditDistrict(custData.district || '')
         setEditAddress(custData.address || '')
@@ -920,6 +926,15 @@ export default function CustomerDetailPage() {
       )
       if (reps) setSalesReps(reps)
 
+      // Chi nhánh phụ trách: chỉ nơi còn hoạt động, nhưng phải kèm chi nhánh
+      // hiện tại của khách kể cả đã ngừng — nếu không, mở form ra là ô rỗng và
+      // lưu lại sẽ âm thầm xoá mất chi nhánh cũ.
+      const { data: brList } = await supabase
+        .from('branches')
+        .select('id, name, is_active')
+        .order('code')
+      if (brList) setBranches(brList)
+
       const { data: classList } = await supabase
         .from('customer_classifications')
         .select('code, name, is_active')
@@ -1119,6 +1134,27 @@ export default function CustomerDetailPage() {
     const isOwner = customer.owner_user_id === currentUserId
     return isAdmin || isBranchManager || isTeamLead || isOwner
   }
+
+  // Đổi chi nhánh phụ trách là đổi cả doanh số/kho quy về đâu ⇒ không để nhân
+  // viên sở hữu khách tự đổi, dù họ vẫn sửa được các thông tin khác.
+  const canChangeBranch = userRoles.includes('admin') || userRoles.includes('ceo')
+    || userRoles.includes('branch_manager')
+
+  // Gợi ý chi nhánh từ nơi khách THỰC SỰ đặt hàng. Dữ liệu ban đầu gắn hàng
+  // loạt vào một chi nhánh nên hồ sơ và thực tế lệch nhau ở rất nhiều khách.
+  const branchHint = useMemo(() => {
+    const counts = new Map<string, number>()
+    let total = 0
+    for (const o of customer?.orders ?? []) {
+      if (!o.branch_id) continue
+      counts.set(o.branch_id, (counts.get(o.branch_id) ?? 0) + 1)
+      total++
+    }
+    if (total === 0) return null
+    const [topId, n] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+    const name = branches.find(b => b.id === topId)?.name
+    return name ? { id: topId, n, total, name } : null
+  }, [customer, branches])
 
   const canAdjustDebt = () => {
     if (!currentUserId) return false
@@ -1499,6 +1535,9 @@ export default function CustomerDetailPage() {
           credit_limit: Number(editCreditLimit),
           price_list_id: editPriceListId || null,
           owner_user_id: editOwnerId,
+          // Chi nhánh phụ trách. Chỉ ghi khi có giá trị — để rỗng ghi đè NULL
+          // là khách rơi khỏi mọi báo cáo theo chi nhánh.
+          ...(editBranchId ? { branch_id: editBranchId } : {}),
           province: editProvince || null,
           district: editDistrict || null,
           address: editAddress.trim() || null,
@@ -1932,6 +1971,17 @@ export default function CustomerDetailPage() {
                         <span className="text-gray-400">Nhân viên phụ trách:</span>
                         <span className="col-span-2 font-semibold text-gray-700">
                           {customer.owner?.full_name || 'Hệ thống'} ({customer.owner?.email || 'N/A'})
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <span className="text-gray-400">Chi nhánh phụ trách:</span>
+                        <span className="col-span-2 font-semibold text-gray-700">
+                          {branches.find(b => b.id === customer.branch_id)?.name || 'Chưa gán'}
+                          {branchHint && branchHint.id !== customer.branch_id && (
+                            <span className="ml-2 text-tiny font-normal text-amber-600">
+                              ⚠ đơn hàng chủ yếu ở {branchHint.name} ({branchHint.n}/{branchHint.total})
+                            </span>
+                          )}
                         </span>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
@@ -3309,6 +3359,51 @@ export default function CustomerDetailPage() {
                         <option key={r.id} value={r.id}>{r.full_name}</option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                {/* Chi nhánh phụ trách — chỉ quản trị / quản lý chi nhánh được đổi.
+                    Kèm gợi ý suy ra từ nơi khách THỰC SỰ mua: dữ liệu ban đầu gắn
+                    hàng loạt vào một chi nhánh nên nhiều hồ sơ đang sai. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-body-md font-semibold text-gray-600">Chi nhánh phụ trách</label>
+                    {canChangeBranch ? (
+                      <select
+                        className="w-full h-10 px-3 bg-gray-25 border border-gray-100 rounded-lg text-body-md text-gray-600 focus:border-blue-500 focus:outline-none"
+                        value={editBranchId}
+                        onChange={(e) => setEditBranchId(e.target.value)}
+                      >
+                        <option value="">— Chưa gán —</option>
+                        {branches
+                          .filter(b => b.is_active || b.id === editBranchId)
+                          .map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}{b.is_active ? '' : ' (ngừng hoạt động)'}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <p className="h-10 flex items-center text-body-md text-gray-500">
+                        {branches.find(b => b.id === editBranchId)?.name || '— Chưa gán —'}
+                        <span className="ml-2 text-tiny text-gray-400">(chỉ quản trị được đổi)</span>
+                      </p>
+                    )}
+                    {branchHint && (
+                      <p className="text-tiny text-gray-400">
+                        Lịch sử mua: <span className="font-semibold text-gray-600">{branchHint.name}</span>
+                        {' '}({branchHint.n}/{branchHint.total} đơn)
+                        {canChangeBranch && branchHint.id !== editBranchId && (
+                          <button
+                            type="button"
+                            onClick={() => setEditBranchId(branchHint.id)}
+                            className="ml-2 font-bold text-blue-600 hover:underline"
+                          >
+                            Dùng chi nhánh này
+                          </button>
+                        )}
+                      </p>
+                    )}
                   </div>
                 </div>
 

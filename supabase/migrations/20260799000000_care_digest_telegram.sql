@@ -44,7 +44,7 @@ INSERT INTO public.notification_rules
 VALUES
   ('care.churn_digest', 'Khách cần gọi lại', 'info', 'cham_soc',
    'internal', 'full', 0, 0, 0, 10, false,
-   '{"limit": 15, "am_time": "07:30", "pm_time": "13:30"}')
+   '{"limit": 20, "am_time": "07:30", "pm_time": "13:30"}')
 ON CONFLICT (event_type) DO UPDATE
   SET label='Khách cần gọi lại', severity='info', channel_code='cham_soc',
       audience='internal', compose='full', quiet_hours=false, enabled=true,
@@ -69,7 +69,7 @@ DECLARE
 BEGIN
   v_lim  := COALESCE(p_limit,
               (SELECT (threshold->>'limit')::int FROM public.notification_rules
-                WHERE event_type = 'care.churn_digest'), 15);
+                WHERE event_type = 'care.churn_digest'), 20);
   v_hnay := (timezone('Asia/Ho_Chi_Minh', now()))::date;
   -- Ranh giới ngày phải quay VỀ timestamptz theo giờ VN; cron chạy UTC, so
   -- thẳng là lệch 7 tiếng (đúng loại lỗi từng làm mất doanh thu ngày cuối tháng).
@@ -215,7 +215,7 @@ BEGIN
   RETURN jsonb_build_object(
     'chat_id',           COALESCE(v_ch.chat_id, ''),
     'enabled',           COALESCE(v_ch.enabled, false) AND COALESCE(v_ru.enabled, false),
-    'limit',             COALESCE((v_ru.threshold->>'limit')::int, 15),
+    'limit',             COALESCE((v_ru.threshold->>'limit')::int, 20),
     'am_time',           COALESCE(v_ru.threshold->>'am_time', '07:30'),
     'pm_time',           COALESCE(v_ru.threshold->>'pm_time', '13:30'),
     'at_risk_min_days',  COALESCE((v_cfg->>'at_risk_min_days')::int, 21),
@@ -232,7 +232,7 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_chat  TEXT    := NULLIF(btrim(COALESCE(p_cfg->>'chat_id','')), '');
   v_on    BOOLEAN := COALESCE((p_cfg->>'enabled')::boolean, true);
-  v_lim   INTEGER := GREATEST(3, LEAST(30, COALESCE((p_cfg->>'limit')::int, 15)));
+  v_lim   INTEGER := GREATEST(3, LEAST(30, COALESCE((p_cfg->>'limit')::int, 20)));
   v_am    TEXT    := COALESCE(NULLIF(p_cfg->>'am_time',''), '07:30');
   v_pm    TEXT    := COALESCE(NULLIF(p_cfg->>'pm_time',''), '13:30');
   v_risk  INTEGER := GREATEST(3,  LEAST(180, COALESCE((p_cfg->>'at_risk_min_days')::int, 21)));
